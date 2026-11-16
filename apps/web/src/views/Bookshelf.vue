@@ -24,6 +24,13 @@ const visible = computed(() => {
   return [...list].sort((a, b) => Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0))
 })
 
+const unread = (book) => {
+  const total = Number(book.totalChapterNum || 0)
+  if (!total) return 0
+  const read = Number(book.durChapterIndex || 0) + 1
+  return total > read ? total - read : 0
+}
+
 const progressOf = (book) => {
   const total = Number(book.totalChapterNum || 0)
   if (!total) return 0
@@ -45,6 +52,19 @@ async function load() {
 
 function open(book) {
   router.push({ path: '/read', query: { book: book.bookUrl } })
+}
+
+async function checkUpdates() {
+  try {
+    window.__toast?.('正在检查连载更新…')
+    const report = await api.checkChapterUpdates()
+    await load()
+    window.__toast?.(
+      report.updated > 0 ? `检查 ${report.checked} 本，${report.updated} 本有新章节` : `检查 ${report.checked} 本，暂无更新`,
+    )
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
 }
 
 async function addGroup() {
@@ -146,6 +166,7 @@ onMounted(load)
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
       <input ref="fileInput" type="file" accept=".txt,.epub,.docx,.mobi,.azw3,.azw,.pdf" hidden @change="importBook" />
+      <button class="ghost" @click="checkUpdates">检查更新</button>
       <button class="ghost" @click="showGroups = !showGroups">分组</button>
       <button @click="fileInput.click()">导入本地书</button>
       <button ghost class="ghost" :disabled="loading" @click="load">{{ loading ? '刷新中' : '刷新' }}</button>
@@ -190,6 +211,7 @@ onMounted(load)
         </div>
         <h3>{{ book.name }}</h3>
         <p>{{ book.durChapterTitle || book.author || '未开始' }}</p>
+        <span v-if="unread(book)" class="badge accent" style="margin-top: 4px">未读 {{ unread(book) }} 章</span>
         <div class="row" style="margin-top: 6px; gap: 6px" @click.stop>
           <button class="ghost" style="padding: 2px 8px; font-size: 12px" @click="editing = { ...book }">编辑</button>
           <button class="ghost" style="padding: 2px 8px; font-size: 12px" @click="cache(book)">缓存</button>

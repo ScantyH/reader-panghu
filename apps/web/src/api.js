@@ -35,6 +35,8 @@ export const api = {
   saveProgress: (bookUrl, index, position = 0) =>
     request('/saveBookProgress', { method: 'POST', body: { bookUrl, index, position } }),
   cacheBook: (bookUrl, count = 20) => request('/cacheBook', { method: 'POST', body: { bookUrl, count } }),
+  checkChapterUpdates: () => request('/checkChapterUpdates', { method: 'POST', body: { limit: 30 } }),
+  chapterUpdateStatus: () => request('/getChapterUpdateStatus'),
   groups: () => request('/getBookGroups'),
   saveBookGroup: (group) => request('/saveBookGroup', { method: 'POST', body: group }),
   deleteBookGroup: (groupId) => request('/deleteBookGroup', { method: 'POST', body: { groupId } }),
