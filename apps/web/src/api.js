@@ -72,6 +72,7 @@ export const api = {
   // bookmarks
   bookmarks: () => request('/getBookmarks'),
   saveBookmark: (bookmark) => request('/saveBookmark', { method: 'POST', body: bookmark }),
+  deleteBookmark: (bookmark) => request('/deleteBookmark', { method: 'POST', body: bookmark }),
 }
 
 /** SSE multi-source search: onBooks per source batch, resolves when the stream ends. */

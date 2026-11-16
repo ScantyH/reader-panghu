@@ -12,6 +12,8 @@ const current = ref(0)
 const content = ref('')
 const loading = ref(false)
 const showCatalog = ref(false)
+const showBookmarks = ref(false)
+const bookmarks = ref([])
 const readingEl = ref(null)
 
 const title = computed(() => book.value?.name || '加载中')
@@ -40,6 +42,36 @@ async function loadChapter(index) {
   }
 }
 
+async function loadBookmarks() {
+  try {
+    const all = await api.bookmarks()
+    bookmarks.value = all.filter((item) => item.bookUrl === props.bookUrl)
+  } catch {
+    /* 书签是辅助功能，读不到不影响阅读 */
+  }
+}
+
+async function addBookmark() {
+  const chapter = chapters.value[current.value]
+  if (!chapter) return
+  try {
+    await api.saveBookmark({ bookUrl: props.bookUrl, chapterIndex: current.value, chapterTitle: chapter.title })
+    await loadBookmarks()
+    window.__toast?.('已加入书签')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function removeBookmark(bookmark) {
+  try {
+    await api.deleteBookmark(bookmark)
+    await loadBookmarks()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 onMounted(async () => {
   try {
     const shelf = await api.bookshelf()
@@ -54,6 +86,7 @@ onMounted(async () => {
       tocUrl: book.value.tocUrl,
       bookSourceUrl: book.value.origin,
     })
+    await loadBookmarks()
     await loadChapter(Number(book.value.durChapterIndex || 0))
   } catch (error) {
     window.__toast?.(error.message)
@@ -66,6 +99,8 @@ onMounted(async () => {
     <div class="reader-bar">
       <button class="ghost" @click="router.back()">返回</button>
       <button class="ghost" @click="showCatalog = !showCatalog">目录</button>
+      <button class="ghost" @click="showBookmarks = !showBookmarks">书签</button>
+      <button class="ghost" @click="addBookmark">加书签</button>
       <div class="reader-title">
         {{ title }}<span v-if="chapterTitle" class="muted"> · {{ chapterTitle }}</span>
       </div>
@@ -83,6 +118,17 @@ onMounted(async () => {
         >
           {{ chapter.title }}
         </button>
+      </aside>
+
+      <aside v-if="showBookmarks" class="catalog">
+        <div class="muted" style="padding: 6px 10px; font-size: 12px">本书书签 · {{ bookmarks.length }}</div>
+        <div v-if="!bookmarks.length" class="muted" style="padding: 10px; font-size: 13px">还没有书签</div>
+        <div v-for="bookmark in bookmarks" :key="bookmark.id" class="row" style="gap: 4px">
+          <button style="flex: 1" :class="{ current: bookmark.chapterIndex === current }" @click="loadChapter(bookmark.chapterIndex)">
+            {{ bookmark.chapterTitle || ('第 ' + (bookmark.chapterIndex + 1) + ' 章') }}
+          </button>
+          <button class="ghost" style="padding: 2px 6px; font-size: 12px" @click="removeBookmark(bookmark)">删</button>
+        </div>
       </aside>
 
       <div ref="readingEl" class="reading">
