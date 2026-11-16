@@ -47,6 +47,7 @@ onMounted(async () => {
 <template>
   <div style="min-height: 100vh; display: grid; place-items: center; padding: 24px">
     <div style="width: min(420px, 100%)">
+      <img src="/brand/logo-256.png" alt="胖虎阅读" style="display: block; width: 104px; height: 104px; margin: 0 auto 14px; border-radius: 24px; box-shadow: var(--shadow-md)" />
       <h1 style="text-align: center; margin: 0 0 8px">胖虎<span style="color: var(--color-primary)">阅读</span></h1>
       <p class="muted" style="text-align: center; font-size: 13px; margin-bottom: 24px">
         {{ authEnabled ? '这个实例已启用多用户，请登录' : '这个实例未启用多用户，可直接使用' }}

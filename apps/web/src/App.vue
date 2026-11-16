@@ -59,7 +59,10 @@ onMounted(loadAuth)
 
   <div v-else class="app">
     <header class="app-header">
-      <div class="app-title">胖虎<span>阅读</span></div>
+      <div class="app-title">
+        <img class="app-logo" src="/brand/logo-128.png" alt="胖虎阅读" />
+        <span class="app-title-text">胖虎<span>阅读</span></span>
+      </div>
       <div v-if="showHeaderSearch()" class="header-search">
         <span class="muted" style="font-size: 13px">🔍</span>
         <input v-model="headerQuery" placeholder="搜索书名 / 作者" @keyup.enter="submitSearch" />

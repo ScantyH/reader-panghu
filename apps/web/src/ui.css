@@ -441,3 +441,21 @@
   font-size: 12px;
   font-weight: 600;
 }
+/* ─── 品牌图标 ─── */
+.app-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: var(--shadow-xs);
+}
+
+.app-title-text {
+  font-weight: var(--weight-bold, 700);
+}
