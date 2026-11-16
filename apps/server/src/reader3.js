@@ -16,6 +16,7 @@ import { extname, join } from 'node:path'
 import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
 import { convertText } from './text-convert.js'
+import { extractCards, extractDpMarkers, fetchComments } from './comment-markers.js'
 import { cleanIntro, cleanText } from './text.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
@@ -193,6 +194,30 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
       store.saveBook({ ...book, totalChapterNum: list.length })
     }
     return ok(list)
+  })
+
+  /** 段评 / 本章说：解析正文里的 dp 标记，可选拉取评论内容 */
+  app.post('/reader3/getParagraphComments', async (req) => {
+    const book = store.getBook(String(req.body?.bookUrl ?? ''))
+    if (!book) return fail('书籍不存在')
+    const origin = String(req.body?.bookSourceUrl || book.origin || '')
+    const chapters = store.getChapters(book.bookUrl, book.origin)
+    const target = String(req.body?.chapterUrl || chapters[Number(req.body?.index) || 0]?.url || '')
+    if (!target) return fail('缺少章节地址')
+    try {
+      const raw = await withRuntime(origin, (runtime) => runtime.content(target))
+      const markers = extractDpMarkers(raw)
+      const comments = []
+      if (req.body?.withComments) {
+        for (const marker of markers.slice(0, 5)) {
+          if (!marker.url) continue
+          comments.push({ paragraph: marker.paragraph, count: marker.count, ...(await fetchComments(marker.url)) })
+        }
+      }
+      return ok({ markers, comments, cards: extractCards(raw) })
+    } catch (error) {
+      return fail(error.message)
+    }
   })
 
   app.post('/reader3/getBookContent', async (req) => {

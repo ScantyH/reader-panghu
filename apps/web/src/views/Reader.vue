@@ -26,6 +26,30 @@ const catalogFilter = ref('')
 const convertMode = ref(localStorage.getItem('readerConvert') || '')
 const notes = ref([])
 const notesOpen = ref(false)
+const dpOpen = ref(false)
+const dpLoading = ref(false)
+const dpMarkers = ref([])
+const dpComments = ref([])
+const dpCards = ref([])
+
+async function openDuanping(withComments = false) {
+  dpOpen.value = true
+  dpLoading.value = true
+  try {
+    const result = await api.paragraphComments({
+      bookUrl: props.bookUrl,
+      index: current.value,
+      withComments,
+    })
+    dpMarkers.value = result.markers || []
+    dpComments.value = result.comments || []
+    dpCards.value = result.cards || []
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    dpLoading.value = false
+  }
+}
 const sourceOpen = ref(false)
 const sourceCandidates = ref([])
 const sourceLoading = ref(false)
@@ -304,6 +328,7 @@ onMounted(async () => {
       <button class="icon-btn" title="正文内查找" @click="searchOpen = !searchOpen">🔎</button>
       <button class="icon-btn" title="换源" @click="findSources">⇄</button>
       <button class="icon-btn" title="段落笔记" @click="notesOpen = true; loadNotes()">✎</button>
+      <button class="icon-btn" title="段评 / 本章说" @click="openDuanping(false)">💬</button>
       <button class="icon-btn" title="设置" @click="showSettings = true">Aa</button>
     </div>
 

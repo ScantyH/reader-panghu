@@ -87,6 +87,7 @@ export const api = {
   userList: () => request('/getUserList'),
   changePassword: (payload) => request('/changePassword', { method: 'POST', body: payload }),
   chapterNotes: (bookUrl) => request('/getChapterNotes?bookUrl=' + encodeURIComponent(bookUrl)),
+  paragraphComments: (payload) => request('/getParagraphComments', { method: 'POST', body: payload }),
   saveChapterNote: (payload) => request('/saveChapterNote', { method: 'POST', body: payload }),
   deleteChapterNote: (payload) => request('/deleteChapterNote', { method: 'POST', body: payload }),
   importSourceFile: (file) => {
