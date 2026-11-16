@@ -13,11 +13,13 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { createRuntime } from '@reader-panghu/source-runtime'
+import { parseDocx } from './docx.js'
+import { parseEpub } from './epub.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
 
-const CHAPTER_TITLE = /^\s*(第[0-9一二三四五六七八九十百千两零〇]+[章节回卷篇][^\n]{0,40}|序章[^\n]{0,40}|楔子[^\n]{0,40})\s*$/
+const CHAPTER_TITLE = /^\s*(第[0-9一二三四五六七八九十百千两零〇]+[章节回卷篇][^\n。！？]{0,20}|序章[^\n。！？]{0,20}|楔子[^\n。！？]{0,20})\s*$/
 
 function decodeText(buffer) {
   try {
@@ -51,7 +53,9 @@ export function splitTxtChapters(text) {
 
 export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   const booksDir = join(dataDir, 'books')
+  const coversDir = join(dataDir, 'covers')
   mkdirSync(booksDir, { recursive: true })
+  mkdirSync(coversDir, { recursive: true })
   const timeoutMs = Number(options.timeoutMs || 45000)
 
   const importable = (payload) => {
@@ -238,12 +242,104 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
     return ok(book)
   })
 
+  app.post('/reader3/uploadEpubBook', async (req) => {
+    const part = await req.file?.()
+    if (!part) return fail('缺少文件')
+    const filename = basename(part.filename || 'local.epub')
+    let parsed
+    try {
+      parsed = parseEpub(new Uint8Array(await part.toBuffer()))
+    } catch (error) {
+      return fail(`EPUB 解析失败：${error.message}`)
+    }
+    if (!parsed.chapters.length) return fail('EPUB 里没有可读章节')
+
+    const uuid = randomUUID()
+    const bookUrl = `local://epub/${uuid}`
+    const chapters = parsed.chapters.map((chapter, index) => ({
+      title: chapter.title,
+      url: `${bookUrl}#${index}`,
+      index,
+      content: chapter.text,
+    }))
+
+    let customCoverUrl = ''
+    if (parsed.cover) {
+      const ext = parsed.coverType === 'image/png' ? '.png' : parsed.coverType === 'image/webp' ? '.webp' : '.jpg'
+      writeFileSync(join(coversDir, uuid + ext), Buffer.from(parsed.cover))
+      customCoverUrl = `/reader3/bookCover/${uuid}`
+    }
+
+    const book = store.saveBook({
+      name: parsed.title || filename.replace(/\.epub$/i, ''),
+      author: parsed.author || '',
+      bookUrl,
+      origin: 'local://epub',
+      originName: '本地书籍',
+      coverUrl: '',
+      customCoverUrl,
+      tocUrl: '',
+      intro: parsed.intro || '',
+      kind: '',
+      latestChapterTitle: chapters.at(-1)?.title || '',
+      wordCount: String(chapters.reduce((sum, chapter) => sum + chapter.content.length, 0)),
+      type: 0,
+      canUpdate: false,
+      group: 0,
+      totalChapterNum: chapters.length,
+    })
+    store.saveChapters(bookUrl, 'local://epub', chapters.map(({ content, ...rest }) => rest))
+    store.saveChapters(`${bookUrl}#content`, 'local://epub', chapters)
+    return ok(book)
+  })
+
+  app.post('/reader3/uploadDocxBook', async (req) => {
+    const part = await req.file?.()
+    if (!part) return fail('缺少文件')
+    const filename = basename(part.filename || 'local.docx')
+    let parsed
+    try {
+      parsed = parseDocx(new Uint8Array(await part.toBuffer()))
+    } catch (error) {
+      return fail(`DOCX 解析失败：${error.message}`)
+    }
+    if (!parsed.chapters.length) return fail('DOCX 里没有可读章节')
+
+    const uuid = randomUUID()
+    const bookUrl = `local://docx/${uuid}`
+    const chapters = parsed.chapters.map((chapter, index) => ({
+      title: chapter.title,
+      url: `${bookUrl}#${index}`,
+      index,
+      content: chapter.text,
+    }))
+    const book = store.saveBook({
+      name: parsed.title || filename.replace(/\.docx?$/i, ''),
+      author: '',
+      bookUrl,
+      origin: 'local://docx',
+      originName: '本地书籍',
+      coverUrl: '',
+      tocUrl: '',
+      intro: '',
+      kind: '',
+      latestChapterTitle: chapters.at(-1)?.title || '',
+      wordCount: String(chapters.reduce((sum, chapter) => sum + chapter.content.length, 0)),
+      type: 0,
+      canUpdate: false,
+      group: 0,
+      totalChapterNum: chapters.length,
+    })
+    store.saveChapters(bookUrl, 'local://docx', chapters.map(({ content, ...rest }) => rest))
+    store.saveChapters(`${bookUrl}#content`, 'local://docx', chapters)
+    return ok(book)
+  })
+
   for (const [route, label] of [
-    ['uploadEpubBook', 'EPUB'],
     ['uploadPdfBook', 'PDF'],
-    ['uploadMobiBook', 'MOBI'],
+    ['uploadMobiBook', 'MOBI/AZW3'],
   ]) {
-    app.post(`/reader3/${route}`, async () => fail(`${label} 本地书籍尚未接入，当前请先上传 TXT`))
+    app.post(`/reader3/${route}`, async () => fail(`${label} 需要专门解析器，尚未接入；当前已支持 TXT / EPUB / DOCX`))
   }
 
   app.get('/reader3/getTxtTocRules', async () => ok([]))

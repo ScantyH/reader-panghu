@@ -55,10 +55,12 @@ export const api = {
   },
 
   // local books
-  uploadTxt: (file) => {
+  uploadLocal: (file) => {
+    const ext = (file.name.split('.').pop() || '').toLowerCase()
+    const route = ext === 'epub' ? '/uploadEpubBook' : ext === 'docx' ? '/uploadDocxBook' : '/uploadTxtBook'
     const form = new FormData()
     form.append('file', file)
-    return request('/uploadTxtBook', { method: 'POST', form })
+    return request(route, { method: 'POST', form })
   },
   uploadCover: (bookUrl, file) => {
     const form = new FormData()

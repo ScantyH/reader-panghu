@@ -1,17 +1,20 @@
 {
-  "name": "reader-panghu",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Unified reading server: Legado/阅读3 book sources, WebView book-source runtime, multi-device progress sync",
-  "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
-  "scripts": {
-    "start": "node apps/server/src/index.js",
-    "dev": "node --watch apps/server/src/index.js",
-    "test": "node --test packages/*/test/*.test.js",
-    "probe": "node scripts/probe-source.js"
-  },
-  "packageManager": "pnpm@11.28.5"
+    "name":  "reader-panghu",
+    "version":  "0.1.0",
+    "private":  true,
+    "description":  "Unified reading server: Legado/闃呰3 book sources, WebView book-source runtime, multi-device progress sync",
+    "type":  "module",
+    "engines":  {
+                    "node":  "\u003e=22"
+                },
+    "scripts":  {
+                    "start":  "node apps/server/src/index.js",
+                    "dev":  "node --watch apps/server/src/index.js",
+                    "test":  "node --test packages/*/test/*.test.js",
+                    "probe":  "node scripts/probe-source.js"
+                },
+    "packageManager":  "pnpm@11.28.5",
+    "devDependencies":  {
+                            "fflate":  "^0.8.2"
+                        }
 }

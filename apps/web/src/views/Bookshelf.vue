@@ -44,11 +44,11 @@ function open(book) {
   router.push({ path: '/read', query: { book: book.bookUrl } })
 }
 
-async function importTxt(event) {
+async function importBook(event) {
   const file = event.target.files?.[0]
   if (!file) return
   try {
-    const book = await api.uploadTxt(file)
+    const book = await api.uploadLocal(file)
     window.__toast?.(`已加入《${book.name}》`)
     await load()
   } catch (error) {
@@ -88,8 +88,8 @@ onMounted(load)
       <h1>{{ recentOnly ? '最近阅读' : '书架' }}</h1>
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
-      <input ref="fileInput" type="file" accept=".txt" hidden @change="importTxt" />
-      <button @click="fileInput.click()">导入 TXT</button>
+      <input ref="fileInput" type="file" accept=".txt,.epub,.docx" hidden @change="importBook" />
+      <button @click="fileInput.click()">导入本地书</button>
       <button ghost class="ghost" :disabled="loading" @click="load">{{ loading ? '刷新中' : '刷新' }}</button>
     </div>
 
@@ -107,7 +107,7 @@ onMounted(load)
     </div>
 
     <div v-if="!visible.length" class="empty">
-      书架还是空的。去 <router-link to="/search" style="color: var(--accent)">搜索</router-link> 找书，或导入一本 TXT。
+      书架还是空的。去 <router-link to="/search" style="color: var(--accent)">搜索</router-link> 找书，或导入一本 TXT / EPUB / DOCX。
     </div>
 
     <div v-else class="grid">

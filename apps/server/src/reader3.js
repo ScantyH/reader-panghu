@@ -140,9 +140,11 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
 
   /** Server-authoritative progress: the stored row always keeps the newest write. */
   app.post('/reader3/saveBookProgress', async (req) => {
-    const { bookUrl, index, position } = req.body || {}
-    const updated = store.saveProgress({ bookUrl: String(bookUrl ?? ''), index, position })
+    const { bookUrl, index, position, clientUpdatedAt } = req.body || {}
+    const updated = store.saveProgress({ bookUrl: String(bookUrl ?? ''), index, position, clientUpdatedAt })
     if (!updated) return fail('书籍不存在')
+    // The client adopts this timestamp; a rejected stale write still returns the
+    // server's authoritative one, which is what "backend latest wins" means here.
     return ok(String(updated.durChapterTime))
   })
 
@@ -183,13 +185,15 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   app.post('/reader3/getBookContent', async (req) => {
     const { bookUrl, chapterUrl, bookSourceUrl, index } = req.body || {}
     const book = bookUrl ? store.getBook(String(bookUrl)) : null
-    // Local TXT books carry their text in the chapter table; no source runtime.
-    // Keyed on the local-book origin only — a source may legitimately use a
-    // local:// book URL of its own (the synthetic test source does).
-    if (book && String(book.origin || '') === 'local://txt') {
+    // Local books (TXT / EPUB) carry their text in the chapter table. Detect them
+    // by the presence of that table rather than by URL scheme: a WebView source
+    // may legitimately use a local:// book URL of its own.
+    if (book) {
       const stored = store.getChapters(`${book.bookUrl}#content`, book.origin)
-      const chapter = stored?.find((item) => item.index === Number(index))
-      return chapter ? ok(cleanText(chapter.content)) : fail('本地章节不存在')
+      if (Array.isArray(stored) && stored.length) {
+        const chapter = stored.find((item) => item.index === Number(index))
+        return chapter ? ok(cleanText(chapter.content)) : fail('本地章节不存在')
+      }
     }
     const origin = String(bookSourceUrl || book?.origin || '')
     let target = String(chapterUrl || '')
@@ -383,7 +387,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
         const { createReadStream, existsSync } = await import('node:fs')
         const file = join(coversDir, id + ext)
         if (existsSync(file)) {
-          reply.header('content-type', `image/${ext.slice(1)}`)
+          reply.header('content-type', ext === '.jpg' ? 'image/jpeg' : `image/${ext.slice(1)}`)
           return reply.send(createReadStream(file))
         }
       } catch {

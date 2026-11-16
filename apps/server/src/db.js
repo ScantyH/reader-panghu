@@ -190,10 +190,19 @@ class Store {
     return books.map((book) => this.saveBook(book, userId))
   }
 
-  /** Progress writes are the sync primitive: the server keeps the latest one. */
-  saveProgress({ bookUrl, index, position }, userId = DEFAULT_USER_ID) {
+  /**
+   * Progress is the multi-device sync primitive, and the server is authoritative:
+   * a write that carries a clientUpdatedAt older than what we already stored is
+   * rejected so a stale web/APP client cannot roll back newer progress. The
+   * returned book always holds the value the client should adopt.
+   */
+  saveProgress({ bookUrl, index, position, clientUpdatedAt }, userId = DEFAULT_USER_ID) {
     const book = this.getBook(bookUrl, userId)
     if (!book) return null
+    const storedAt = Number(book.durChapterTime || 0)
+    if (clientUpdatedAt !== undefined && Number(clientUpdatedAt) <= storedAt) {
+      return { ...book, progressAccepted: false }
+    }
     const updated = {
       ...book,
       durChapterIndex: Number(index) || 0,
@@ -201,7 +210,7 @@ class Store {
       durChapterTime: Date.now(),
     }
     this.saveBook(updated, userId)
-    return updated
+    return { ...updated, progressAccepted: true }
   }
 
   deleteBook(bookUrl, userId = DEFAULT_USER_ID) {
