@@ -22,6 +22,7 @@ import { createRuleRuntime } from './rule-runtime.js'
 import { defaultDatabaseFile, openDatabase } from './db.js'
 import { registerReader3 } from './reader3.js'
 import { registerReader3Extras } from './reader3-extras.js'
+import { registerWarehouse } from './warehouse.js'
 import { cleanIntro, cleanText } from './text.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -171,6 +172,7 @@ app.setErrorHandler((error, _request, reply) => {
 
 registerReader3(app, { store, dataDir: DATA_DIR, options: { timeoutMs: SOURCE_TIMEOUT_MS } })
 registerReader3Extras(app, { store, dataDir: DATA_DIR, options: { timeoutMs: SOURCE_TIMEOUT_MS } })
+registerWarehouse(app, { store, dataDir: DATA_DIR })
 
 app.get('/api/health', async () => ({
   ok: true,

@@ -97,6 +97,20 @@ export const api = {
   webdavBackup: (payload) => request('/webdavBackup', { method: 'POST', body: payload }),
   webdavRestore: (payload) => request('/webdavRestore', { method: 'POST', body: payload }),
 
+  warehouse: (path = '') => request('/warehouse' + (path ? '?path=' + encodeURIComponent(path) : '')),
+  warehouseMkdir: (path, name) => request('/warehouse/mkdir', { method: 'POST', body: { path, name } }),
+  warehouseImport: (path) => request('/warehouse/import', { method: 'POST', body: { path } }),
+  warehouseDelete: (path) => request('/warehouse/delete', { method: 'POST', body: { path } }),
+  warehouseUpload: (path, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request('/warehouse/upload' + (path ? '?path=' + encodeURIComponent(path) : ''), { method: 'POST', form })
+  },
+
+  replaceRules: () => request('/getReplaceRules'),
+  saveReplaceRule: (rule) => request('/saveReplaceRule', { method: 'POST', body: rule }),
+  deleteReplaceRule: (name) => request('/deleteReplaceRule', { method: 'POST', body: { name } }),
+
   bookmarks: () => request('/getBookmarks'),
   saveBookmark: (bookmark) => request('/saveBookmark', { method: 'POST', body: bookmark }),
   deleteBookmark: (bookmark) => request('/deleteBookmark', { method: 'POST', body: bookmark }),

@@ -368,3 +368,43 @@
   word-break: break-all;
   color: var(--color-text-secondary);
 }
+/* ─── 书架列表布局 ─── */
+.grid.shelf-list {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.shelf-list .card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.shelf-list .card .cover {
+  width: 52px;
+  flex: none;
+  aspect-ratio: 3 / 4;
+  box-shadow: none;
+  border-radius: var(--radius-sm);
+}
+
+.shelf-list .card h3 {
+  margin: 0 0 2px;
+  -webkit-line-clamp: 1;
+}
+
+.shelf-list .card > div:last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.card.selected {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-lg);
+}

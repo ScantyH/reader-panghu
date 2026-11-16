@@ -17,7 +17,57 @@ const newGroupName = ref('')
 const fileInput = ref(null)
 const actionBook = ref(null)
 const pressing = ref('')
+const layout = ref(localStorage.getItem('shelfLayout') || 'grid')
+const selectMode = ref(false)
+const selected = ref([])
+const moveTarget = ref('0')
 let pressTimer = 0
+
+function setLayout(next) {
+  layout.value = next
+  localStorage.setItem('shelfLayout', next)
+}
+
+function toggleSelect(bookUrl) {
+  selected.value = selected.value.includes(bookUrl)
+    ? selected.value.filter((item) => item !== bookUrl)
+    : [...selected.value, bookUrl]
+}
+
+async function batchDelete() {
+  if (!selected.value.length) return
+  if (!confirm(`从书架删除选中的 ${selected.value.length} 本？`)) return
+  try {
+    await api.deleteBooks(selected.value.map((bookUrl) => ({ bookUrl })))
+    selected.value = []
+    selectMode.value = false
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function batchMove() {
+  if (!selected.value.length) return
+  try {
+    for (const bookUrl of selected.value) await api.saveBookGroupId(bookUrl, Number(moveTarget.value))
+    window.__toast?.(`已移动 ${selected.value.length} 本`)
+    selected.value = []
+    selectMode.value = false
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function refreshCache() {
+  const targets = visible.value.slice(0, 5)
+  if (!targets.length) return
+  window.__toast?.(`正在刷新前 ${targets.length} 本的缓存…`)
+  for (const book of targets) await api.cacheBook(book.bookUrl, 20, true).catch(() => {})
+  await load()
+  window.__toast?.('缓存已刷新')
+}
 
 /** 长按卡片弹出操作菜单（移动端 500ms，桌面端同样可用）。 */
 function startPress(book) {
@@ -193,7 +243,13 @@ onMounted(load)
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
       <input ref="fileInput" type="file" accept=".txt,.epub,.docx,.mobi,.azw3,.azw,.pdf" hidden @change="importBook" />
+      <button class="ghost" @click="setLayout(layout === 'grid' ? 'list' : 'grid')">{{ layout === 'grid' ? '列表' : '网格' }}</button>
+      <button class="ghost" @click="selectMode = !selectMode; selected = []">{{ selectMode ? '取消选择' : '管理' }}</button>
+      <router-link class="ghost" to="/warehouse" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">书仓</router-link>
+      <router-link class="ghost" to="/bookmarks" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">书签</router-link>
+      <router-link class="ghost" to="/replace" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">替换规则</router-link>
       <button class="ghost" @click="checkUpdates">检查更新</button>
+      <button class="ghost" @click="refreshCache">刷新缓存</button>
       <button class="primary" @click="fileInput.click()">导入</button>
     </div>
 
@@ -215,13 +271,23 @@ onMounted(load)
       书架还是空的。去「搜索」找书，或点右上角「导入」加一本本地书。
     </div>
 
-    <div v-else class="grid">
+    <div v-if="selectMode" class="row" style="margin-bottom: 12px; flex-wrap: wrap">
+      <span class="badge">已选 {{ selected.length }} 本</span>
+      <div class="spacer" />
+      <select v-model="moveTarget" style="max-width: 160px">
+        <option v-for="group in groups" :key="group.groupId" :value="group.groupId">{{ group.groupName }}</option>
+      </select>
+      <button :disabled="!selected.length" @click="batchMove">移动到分组</button>
+      <button :disabled="!selected.length" @click="batchDelete">删除选中</button>
+    </div>
+
+    <div class="grid" :class="{ 'shelf-list': layout === 'list' }">
       <div
         v-for="book in visible"
         :key="book.bookUrl"
         class="card"
-        :class="{ pressing: pressing === book.bookUrl }"
-        @click="open(book)"
+        :class="{ pressing: pressing === book.bookUrl, selected: selected.includes(book.bookUrl) }"
+        @click="selectMode ? toggleSelect(book.bookUrl) : open(book)"
         @mousedown="startPress(book)"
         @mouseup="cancelPress"
         @mouseleave="cancelPress"

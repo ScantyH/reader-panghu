@@ -204,7 +204,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
       const stored = store.getChapters(`${book.bookUrl}#content`, book.origin)
       if (Array.isArray(stored) && stored.length) {
         const chapter = stored.find((item) => item.index === Number(index))
-        return chapter ? ok(cleanText(chapter.content)) : fail('本地章节不存在')
+        return chapter ? ok(applyReplaceRules(cleanText(chapter.content), store.listReplaceRules())) : fail('本地章节不存在')
       }
     }
     const origin = String(bookSourceUrl || book?.origin || '')
@@ -218,10 +218,10 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     // Cached text is served as-is: caching exists so a book stays readable offline.
     if (!req.body?.refresh && book) {
       const cached = store.getChapterText(cacheKey(book), target)
-      if (cached) return ok(cached)
+      if (cached) return ok(applyReplaceRules(cached, store.listReplaceRules()))
     }
     const content = await withRuntime(origin, (runtime) => runtime.content(target))
-    const text = cleanText(content)
+    const text = applyReplaceRules(cleanText(content), store.listReplaceRules())
     if (book && text) store.saveChapterText(cacheKey(book), book.origin, target, text)
     return ok(text)
   })
@@ -474,6 +474,25 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   })
 
   /* -------------------------------------------------- chapter update checks */
+
+/** 应用用户的替换规则：默认按正则，isRegex 显式 false 时按纯文本。 */
+const applyReplaceRules = (text, rules = []) => {
+  let result = String(text ?? '')
+  for (const rule of rules) {
+    const pattern = rule.pattern ?? rule.find ?? rule.regex ?? ''
+    if (!pattern) continue
+    const replacement = rule.replacement ?? rule.replace ?? ''
+    try {
+      result =
+        rule.isRegex === false
+          ? result.split(pattern).join(replacement)
+          : result.replace(new RegExp(pattern, 'g'), replacement)
+    } catch {
+      // 规则写坏了就跳过，不影响阅读
+    }
+  }
+  return result
+}
 
 /** 正文缓存的键：书源 + 书籍地址，避免同一 URL 被不同书源复用时串内容。 */
 const cacheKey = (book) => `${book.origin || ''}|${book.bookUrl}`

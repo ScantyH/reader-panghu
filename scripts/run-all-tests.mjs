@@ -26,6 +26,7 @@ const SUITES = [
   'test-webdav',
   'test-rule-source',
   'test-source-tools',
+  'test-warehouse',
   'test-legado-client',
 ]
 

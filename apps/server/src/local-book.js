@@ -1,0 +1,110 @@
+/**
+ * 本地书籍的统一解析入口。
+ *
+ * 各个上传接口原本各写一份解析，书仓导入也需要同样的能力，这里收成一份：
+ * 按扩展名选择 txt / epub / docx / mobi / pdf 的解析器，统一返回
+ * `{ name, author, intro, cover, coverType, chapters:[{title,text}] }`。
+ */
+
+import { parseDocx } from './docx.js'
+import { parseEpub } from './epub.js'
+import { parseMobi } from './mobi.js'
+import { extractPdfText } from './pdf.js'
+
+const CHAPTER_TITLE =
+  /^\s*(第[0-9一二三四五六七八九十百千两零〇]+[章节回卷篇][^\n。！？]{0,20}|序章[^\n。！？]{0,20}|楔子[^\n。！？]{0,20})\s*$/
+
+export function decodeText(buffer) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+  } catch {
+    return new TextDecoder('gbk').decode(buffer)
+  }
+}
+
+/** 纯文本分章 */
+export function splitTextChapters(text, fallbackTitle = '正文') {
+  const lines = String(text).replace(/\r\n?/g, '\n').split('\n')
+  const chapters = []
+  let current = { title: fallbackTitle, lines: [] }
+  for (const line of lines) {
+    if (CHAPTER_TITLE.test(line)) {
+      if (current.lines.join('').trim()) chapters.push(current)
+      current = { title: line.trim(), lines: [] }
+    } else {
+      current.lines.push(line)
+    }
+  }
+  if (current.lines.join('').trim()) chapters.push(current)
+  return chapters.map((chapter, index) => ({
+    title: chapter.title || `第${index + 1}章`,
+    text: chapter.lines.join('\n').trim(),
+  }))
+}
+
+/**
+ * 按扩展名解析一个本地书籍文件。
+ * @param {Buffer|Uint8Array} buffer
+ * @param {string} filename
+ */
+export function parseLocalBook(buffer, filename) {
+  const name = String(filename || '本地书籍')
+  const ext = (name.split('.').pop() || '').toLowerCase()
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer)
+
+  if (ext === 'epub') {
+    const parsed = parseEpub(bytes)
+    return {
+      name: parsed.title || name.replace(/\.epub$/i, ''),
+      author: parsed.author || '',
+      intro: parsed.intro || '',
+      cover: parsed.cover,
+      coverType: parsed.coverType,
+      chapters: parsed.chapters,
+      origin: 'local://epub',
+    }
+  }
+
+  if (ext === 'docx') {
+    const parsed = parseDocx(bytes)
+    return {
+      name: parsed.title || name.replace(/\.docx$/i, ''),
+      author: '',
+      intro: '',
+      chapters: parsed.chapters,
+      origin: 'local://docx',
+    }
+  }
+
+  if (ext === 'mobi' || ext === 'azw' || ext === 'azw3') {
+    const parsed = parseMobi(bytes)
+    return {
+      name: parsed.title || name.replace(/\.(mobi|azw3?)$/i, ''),
+      author: parsed.author || '',
+      intro: parsed.intro || '',
+      chapters: parsed.chapters,
+      origin: 'local://mobi',
+    }
+  }
+
+  if (ext === 'pdf') {
+    const text = extractPdfText(bytes)
+    return {
+      name: name.replace(/\.pdf$/i, ''),
+      author: '',
+      intro: '',
+      chapters: splitTextChapters(text, '正文'),
+      origin: 'local://pdf',
+    }
+  }
+
+  // 默认按纯文本处理（txt 或未知扩展名）
+  const text = decodeText(bytes)
+  return {
+    name: name.replace(/\.txt$/i, ''),
+    author: '',
+    intro: '',
+    chapters: splitTextChapters(text, '正文'),
+    origin: 'local://txt',
+  }
+}
