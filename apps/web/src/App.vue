@@ -35,7 +35,11 @@ const NAV = [
     </header>
 
     <main class="app-main">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <transition name="fade" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
     </main>
 
     <nav class="bottom-nav">

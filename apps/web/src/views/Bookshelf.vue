@@ -14,7 +14,6 @@ const loading = ref(false)
 const editing = ref(null)
 const showGroups = ref(false)
 const newGroupName = ref('')
-const groupDraft = ref({ id: 0, name: '' })
 const fileInput = ref(null)
 
 const visible = computed(() => {
@@ -23,6 +22,8 @@ const visible = computed(() => {
   else if (activeGroup.value) list = list.filter((book) => Number(book.group || 0) === activeGroup.value)
   return [...list].sort((a, b) => Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0))
 })
+
+const tabs = computed(() => groups.value.filter((group) => group.groupId !== 0 || groups.value.length === 1))
 
 const unread = (book) => {
   const total = Number(book.totalChapterNum || 0)
@@ -50,33 +51,7 @@ async function load() {
   }
 }
 
-function open(book) {
-  router.push({ path: '/read', query: { book: book.bookUrl } })
-}
-
-async function checkUpdates() {
-  try {
-    const started = await api.checkChapterUpdates()
-    if (!started.started) {
-      window.__toast?.(started.reason === 'already-running' ? '已有检查在进行中' : '书架里还没有连载书')
-      return
-    }
-    window.__toast?.(`正在检查 ${started.total} 本…`)
-    // 后台任务：轮询进度，避免长时间挂住界面
-    for (let round = 0; round < 160; round += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      const status = await api.chapterUpdateStatus()
-      if (status.running) continue
-      await load()
-      const count = status.updatedBooks?.length || 0
-      window.__toast?.(count ? `${count} 本有新章节` : '暂无更新')
-      return
-    }
-    window.__toast?.('检查仍在后台进行，稍后刷新书架')
-  } catch (error) {
-    window.__toast?.(error.message)
-  }
-}
+const open = (book) => router.push({ path: '/read', query: { book: book.bookUrl } })
 
 async function addGroup() {
   const name = newGroupName.value.trim()
@@ -84,6 +59,7 @@ async function addGroup() {
   try {
     await api.saveBookGroup({ groupId: Date.now() % 100000, groupName: name })
     newGroupName.value = ''
+    showGroups.value = false
     await load()
     window.__toast?.('分组已创建')
   } catch (error) {
@@ -112,10 +88,23 @@ async function removeGroup(group) {
   }
 }
 
-async function moveToGroup(book, groupId) {
+async function checkUpdates() {
   try {
-    await api.saveBookGroupId(book.bookUrl, Number(groupId))
-    await load()
+    const started = await api.checkChapterUpdates()
+    if (!started.started) {
+      window.__toast?.(started.reason === 'already-running' ? '已有检查在进行中' : '书架里还没有连载书')
+      return
+    }
+    window.__toast?.(`正在检查 ${started.total} 本…`)
+    for (let round = 0; round < 160; round += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const status = await api.chapterUpdateStatus()
+      if (status.running) continue
+      await load()
+      const count = status.updatedBooks?.length || 0
+      window.__toast?.(count ? `${count} 本有新章节` : '暂无更新')
+      return
+    }
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -135,22 +124,22 @@ async function importBook(event) {
   }
 }
 
-async function saveEdited(book) {
+async function cache(book) {
   try {
-    await api.saveBook(book)
-    editing.value = null
-    window.__toast?.('已保存')
+    window.__toast?.(`正在缓存《${book.name}》…`)
+    const result = await api.cacheBook(book.bookUrl, 20)
+    window.__toast?.(`已缓存 ${result.cached} 章（累计 ${result.totalCached} 章）`)
     await load()
   } catch (error) {
     window.__toast?.(error.message)
   }
 }
 
-async function cache(book) {
+async function saveEdited(book) {
   try {
-    window.__toast?.(`正在缓存《${book.name}》…`)
-    const result = await api.cacheBook(book.bookUrl, 20)
-    window.__toast?.(`已缓存 ${result.cached} 章（累计 ${result.totalCached} 章）`)
+    await api.saveBook(book)
+    editing.value = null
+    window.__toast?.('已保存')
     await load()
   } catch (error) {
     window.__toast?.(error.message)
@@ -178,39 +167,25 @@ onMounted(load)
       <div class="spacer" />
       <input ref="fileInput" type="file" accept=".txt,.epub,.docx,.mobi,.azw3,.azw,.pdf" hidden @change="importBook" />
       <button class="ghost" @click="checkUpdates">检查更新</button>
-      <button class="ghost" @click="showGroups = !showGroups">分组</button>
-      <button @click="fileInput.click()">导入本地书</button>
-      <button ghost class="ghost" :disabled="loading" @click="load">{{ loading ? '刷新中' : '刷新' }}</button>
+      <button class="primary" @click="fileInput.click()">导入</button>
     </div>
 
-    <div v-if="showGroups" class="list" style="margin-bottom: 18px">
-      <div class="row">
-        <input v-model="newGroupName" placeholder="新分组名称" style="flex: 1" @keyup.enter="addGroup" />
-        <button class="primary" @click="addGroup">新建分组</button>
-      </div>
-      <div v-for="group in groups.filter((item) => item.groupId !== 0)" :key="group.groupId" class="list-item">
-        <span style="flex: 1">{{ group.groupName }}</span>
-        <span class="badge">{{ books.filter((book) => Number(book.group || 0) === group.groupId).length }} 本</span>
-        <button class="ghost" @click="renameGroup(group)">改名</button>
-        <button class="ghost" @click="removeGroup(group)">删除</button>
-      </div>
-    </div>
-
-    <div v-if="!recentOnly && groups.length > 1" class="row" style="flex-wrap: wrap; margin-bottom: 16px">
-      <button :class="{ primary: activeGroup === 0 }" class="ghost" @click="activeGroup = 0">全部</button>
+    <div v-if="!recentOnly" class="group-tabs">
+      <button class="group-tab" :class="{ active: activeGroup === 0 }" @click="activeGroup = 0">全部</button>
       <button
-        v-for="group in groups.filter((item) => item.groupId !== 0)"
+        v-for="group in tabs.filter((item) => item.groupId !== 0)"
         :key="group.groupId"
-        class="ghost"
-        :class="{ primary: activeGroup === group.groupId }"
+        class="group-tab"
+        :class="{ active: activeGroup === group.groupId }"
         @click="activeGroup = group.groupId"
       >
         {{ group.groupName }}
       </button>
+      <button class="group-tab" @click="showGroups = true">管理</button>
     </div>
 
     <div v-if="!visible.length" class="empty">
-      书架还是空的。去 <router-link to="/search" style="color: var(--accent)">搜索</router-link> 找书，或导入一本 TXT / EPUB / DOCX / MOBI / PDF。
+      书架还是空的。去「搜索」找书，或点右上角「导入」加一本本地书。
     </div>
 
     <div v-else class="grid">
@@ -219,18 +194,38 @@ onMounted(load)
           <img v-if="coverOf(book)" :src="coverOf(book)" :alt="book.name" loading="lazy" />
           <div v-else class="placeholder">{{ book.name }}</div>
           <div v-if="progressOf(book)" class="progress"><i :style="{ width: progressOf(book) + '%' }" /></div>
+          <div class="continue-badge">{{ book.durChapterTitle ? '继续阅读' : '开始阅读' }}</div>
         </div>
         <h3>{{ book.name }}</h3>
         <p>{{ book.durChapterTitle || book.author || '未开始' }}</p>
-        <span v-if="unread(book)" class="badge accent" style="margin-top: 4px">未读 {{ unread(book) }} 章</span>
         <div class="row" style="margin-top: 6px; gap: 6px" @click.stop>
-          <button class="ghost" style="padding: 2px 8px; font-size: 12px" @click="editing = { ...book }">编辑</button>
-          <button class="ghost" style="padding: 2px 8px; font-size: 12px" @click="cache(book)">缓存</button>
-          <button class="ghost" style="padding: 2px 8px; font-size: 12px" @click="remove(book)">删除</button>
+          <button class="ghost" style="padding: 3px 9px; font-size: 12px" @click="editing = { ...book }">编辑</button>
+          <button class="ghost" style="padding: 3px 9px; font-size: 12px" @click="cache(book)">缓存</button>
+          <button class="ghost" style="padding: 3px 9px; font-size: 12px" @click="remove(book)">删除</button>
         </div>
       </div>
     </div>
 
     <BookDetail v-if="editing" :book="editing" :groups="groups" mode="shelf" @close="editing = null" @save="saveEdited" />
+
+    <div v-if="showGroups" class="sheet-backdrop" @click.self="showGroups = false">
+      <div class="sheet">
+        <div class="sheet-handle" />
+        <h2>分组管理</h2>
+        <div class="row" style="margin-bottom: 16px">
+          <input v-model="newGroupName" placeholder="新分组名称" @keyup.enter="addGroup" />
+          <button class="primary" @click="addGroup">新建</button>
+        </div>
+        <div class="list">
+          <div v-for="group in tabs.filter((item) => item.groupId !== 0)" :key="group.groupId" class="list-item">
+            <span style="flex: 1">{{ group.groupName }}</span>
+            <span class="badge">{{ books.filter((book) => Number(book.group || 0) === group.groupId).length }} 本</span>
+            <button class="ghost" @click="renameGroup(group)">改名</button>
+            <button class="ghost" @click="removeGroup(group)">删除</button>
+          </div>
+          <div v-if="!tabs.filter((item) => item.groupId !== 0).length" class="muted" style="font-size: 13px">还没有分组</div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

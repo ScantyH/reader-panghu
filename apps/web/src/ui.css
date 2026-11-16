@@ -1,0 +1,239 @@
+/* ─── reader-next 风格补充：横滑 tabs、底部抽屉、浮动控制条、过渡 ─── */
+
+/* 横滑分组 tabs */
+.group-tabs {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding: 2px 0 var(--space-3);
+  margin-bottom: var(--space-2);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+.group-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.group-tab {
+  flex: none;
+  padding: 7px 16px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: var(--color-bg-sunken);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  white-space: nowrap;
+}
+
+.group-tab:hover {
+  background: var(--color-bg-active);
+}
+
+.group-tab.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 卡片「继续阅读」角标 */
+.continue-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 10.5px;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 200ms, transform 200ms;
+}
+
+.card:hover .continue-badge,
+.card:active .continue-badge {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ─── 底部抽屉（bottom sheet） ─── */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fade-in 200ms ease-out;
+}
+
+.sheet {
+  width: min(560px, 100%);
+  max-height: 82vh;
+  overflow: auto;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: 8px var(--space-5) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-lg);
+  animation: sheet-up 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sheet-handle {
+  width: 38px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  margin: 6px auto 14px;
+}
+
+.sheet h2 {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin: 0 0 var(--space-4);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ─── 阅读器浮动控制条 ─── */
+.reader-floating-top,
+.reader-floating-bottom {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-bg-elevated) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(16px);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border-light);
+  transition: opacity 260ms cubic-bezier(0.22, 1, 0.36, 1), transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reader-floating-top {
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  max-width: calc(100vw - 24px);
+}
+
+.reader-floating-bottom {
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.reader-floating-top.hidden {
+  opacity: 0;
+  transform: translate(-50%, -140%);
+  pointer-events: none;
+}
+
+.reader-floating-bottom.hidden {
+  opacity: 0;
+  transform: translate(-50%, 140%);
+  pointer-events: none;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  font-size: 15px;
+  color: var(--color-text-secondary);
+  transition: background 150ms, color 150ms;
+}
+
+.icon-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+}
+
+.reader-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* 阅读区留出浮动条的空间 */
+.reading {
+  padding-top: 76px;
+  padding-bottom: 96px;
+}
+
+/* ─── 视图过渡 ─── */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 卡片入场：轻微上浮 + 淡入 */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.grid .card {
+  animation: card-in 320ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.grid .card:nth-child(1) { animation-delay: 0ms; }
+.grid .card:nth-child(2) { animation-delay: 20ms; }
+.grid .card:nth-child(3) { animation-delay: 40ms; }
+.grid .card:nth-child(4) { animation-delay: 60ms; }
+.grid .card:nth-child(5) { animation-delay: 80ms; }
+.grid .card:nth-child(6) { animation-delay: 100ms; }
+.grid .card:nth-child(n + 7) { animation-delay: 120ms; }
