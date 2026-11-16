@@ -10,6 +10,7 @@
  */
 
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { runWithUser } from './db.js'
 
 export const DEFAULT_USER_ID = 1
 const SESSION_COOKIE = 'rp_session'
@@ -80,10 +81,30 @@ export function registerAuth(app, { store }) {
 
   // 把当前用户挂到请求上，供后续路由读取
   app.decorateRequest('userId', DEFAULT_USER_ID)
-  app.addHook('onRequest', async (req) => {
+  const PUBLIC_PATHS = new Set([
+    '/reader3/login',
+    '/reader3/register',
+    '/reader3/logout',
+    '/reader3/getAuthMode',
+    '/reader3/getUserInfo',
+    '/api/health',
+  ])
+
+  app.addHook('onRequest', (req, reply, done) => {
     const userId = resolveUserId(req)
+    const required = authEnabled()
     req.userId = userId
-    req.authRequired = authEnabled()
+    req.authRequired = required
+
+    // 开启多用户后，除公开端点外一律要求已登录
+    const path = String(req.raw?.url || '').split('?')[0]
+    if (required && !userId && !PUBLIC_PATHS.has(path)) {
+      reply.code(401).send({ isSuccess: false, errorMsg: 'NEED_LOGIN', data: null })
+      return
+    }
+
+    // 让这一请求的全部数据访问自动落到该用户
+    runWithUser(userId ?? DEFAULT_USER_ID, done)
   })
 
   app.get('/reader3/getAuthMode', async () => ok({ enabled: authEnabled(), userCount: userCount() }))

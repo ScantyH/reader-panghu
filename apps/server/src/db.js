@@ -9,9 +9,24 @@
 
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { DatabaseSync } from 'node:sqlite'
 
 export const DEFAULT_USER_ID = 1
+
+/**
+ * 当前请求的用户。由 auth 在 onRequest 钩子里注入，
+ * 单用户模式下始终回落到 DEFAULT_USER_ID，行为与改造前一致。
+ */
+const userContext = new AsyncLocalStorage()
+
+export function runWithUser(userId, fn) {
+  return userContext.run({ userId: Number(userId) || DEFAULT_USER_ID }, fn)
+}
+
+export function currentUserId() {
+  return userContext.getStore()?.userId ?? DEFAULT_USER_ID
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -131,21 +146,21 @@ class Store {
 
   /* ------------------------------------------------------------- book sources */
 
-  listSources(userId = DEFAULT_USER_ID) {
+  listSources(userId = currentUserId()) {
     const rows = this.db
       .prepare('SELECT json FROM book_sources WHERE user_id = ? ORDER BY id')
       .all(userId)
     return rows.map((row) => JSON.parse(row.json))
   }
 
-  getSource(bookSourceUrl, userId = DEFAULT_USER_ID) {
+  getSource(bookSourceUrl, userId = currentUserId()) {
     const row = this.db
       .prepare('SELECT json FROM book_sources WHERE user_id = ? AND book_source_url = ?')
       .get(userId, bookSourceUrl)
     return row ? JSON.parse(row.json) : null
   }
 
-  saveSource(source, userId = DEFAULT_USER_ID) {
+  saveSource(source, userId = currentUserId()) {
     const url = String(source.bookSourceUrl || '')
     if (!url) throw new Error('bookSourceUrl is required')
     this.db
@@ -157,44 +172,44 @@ class Store {
     return source
   }
 
-  saveSources(sources, userId = DEFAULT_USER_ID) {
+  saveSources(sources, userId = currentUserId()) {
     for (const source of sources) this.saveSource(source, userId)
     return sources.length
   }
 
-  deleteSource(bookSourceUrl, userId = DEFAULT_USER_ID) {
+  deleteSource(bookSourceUrl, userId = currentUserId()) {
     const result = this.db
       .prepare('DELETE FROM book_sources WHERE user_id = ? AND book_source_url = ?')
       .run(userId, bookSourceUrl)
     return result.changes > 0
   }
 
-  deleteSources(urls, userId = DEFAULT_USER_ID) {
+  deleteSources(urls, userId = currentUserId()) {
     let deleted = 0
     for (const url of urls) if (this.deleteSource(url, userId)) deleted += 1
     return deleted
   }
 
-  deleteAllSources(userId = DEFAULT_USER_ID) {
+  deleteAllSources(userId = currentUserId()) {
     const result = this.db.prepare('DELETE FROM book_sources WHERE user_id = ?').run(userId)
     return result.changes
   }
 
   /* -------------------------------------------------------------------- books */
 
-  listBooks(userId = DEFAULT_USER_ID) {
+  listBooks(userId = currentUserId()) {
     const rows = this.db
       .prepare(`SELECT json FROM books WHERE user_id = ? ORDER BY json_extract(json, '$.durChapterTime') DESC`)
       .all(userId)
     return rows.map((row) => JSON.parse(row.json))
   }
 
-  getBook(bookUrl, userId = DEFAULT_USER_ID) {
+  getBook(bookUrl, userId = currentUserId()) {
     const row = this.db.prepare('SELECT json FROM books WHERE user_id = ? AND book_url = ?').get(userId, bookUrl)
     return row ? JSON.parse(row.json) : null
   }
 
-  saveBook(book, userId = DEFAULT_USER_ID) {
+  saveBook(book, userId = currentUserId()) {
     const url = String(book.bookUrl || '')
     if (!url) throw new Error('bookUrl is required')
     const origin = String(book.origin || '')
@@ -209,7 +224,7 @@ class Store {
     return merged
   }
 
-  saveBooks(books, userId = DEFAULT_USER_ID) {
+  saveBooks(books, userId = currentUserId()) {
     return books.map((book) => this.saveBook(book, userId))
   }
 
@@ -219,7 +234,7 @@ class Store {
    * rejected so a stale web/APP client cannot roll back newer progress. The
    * returned book always holds the value the client should adopt.
    */
-  saveProgress({ bookUrl, index, position, clientUpdatedAt }, userId = DEFAULT_USER_ID) {
+  saveProgress({ bookUrl, index, position, clientUpdatedAt }, userId = currentUserId()) {
     const book = this.getBook(bookUrl, userId)
     if (!book) return null
     const storedAt = Number(book.durChapterTime || 0)
@@ -236,13 +251,13 @@ class Store {
     return { ...updated, progressAccepted: true }
   }
 
-  deleteBook(bookUrl, userId = DEFAULT_USER_ID) {
+  deleteBook(bookUrl, userId = currentUserId()) {
     const result = this.db.prepare('DELETE FROM books WHERE user_id = ? AND book_url = ?').run(userId, bookUrl)
     this.db.prepare('DELETE FROM chapters WHERE book_url = ?').run(bookUrl)
     return result.changes > 0
   }
 
-  deleteBooks(urls, userId = DEFAULT_USER_ID) {
+  deleteBooks(urls, userId = currentUserId()) {
     let deleted = 0
     for (const url of urls) if (this.deleteBook(url, userId)) deleted += 1
     return deleted
@@ -276,11 +291,11 @@ class Store {
 
   /* -------------------------------------------------------------- rss sources */
 
-  listRssSources(userId = DEFAULT_USER_ID) {
+  listRssSources(userId = currentUserId()) {
     return this.db.prepare('SELECT json FROM rss_sources WHERE user_id = ? ORDER BY id').all(userId).map((row) => JSON.parse(row.json))
   }
 
-  saveRssSource(source, userId = DEFAULT_USER_ID) {
+  saveRssSource(source, userId = currentUserId()) {
     const url = String(source?.sourceUrl || '')
     if (!url) throw new Error('sourceUrl is required')
     this.db
@@ -292,7 +307,7 @@ class Store {
     return source
   }
 
-  deleteRssSources(urls, userId = DEFAULT_USER_ID) {
+  deleteRssSources(urls, userId = currentUserId()) {
     let deleted = 0
     for (const url of urls) {
       deleted += this.db.prepare('DELETE FROM rss_sources WHERE user_id = ? AND source_url = ?').run(userId, String(url)).changes
@@ -344,13 +359,13 @@ class Store {
 
   /* ------------------------------------------------------------------- groups */
 
-  listGroups(userId = DEFAULT_USER_ID) {
+  listGroups(userId = currentUserId()) {
     return this.db
       .prepare('SELECT group_id AS groupId, group_name AS groupName, order_no AS orderNo FROM book_groups WHERE user_id = ? ORDER BY order_no, group_id')
       .all(userId)
   }
 
-  saveGroup({ groupId, groupName, orderNo }, userId = DEFAULT_USER_ID) {
+  saveGroup({ groupId, groupName, orderNo }, userId = currentUserId()) {
     this.db
       .prepare(
         `INSERT INTO book_groups (user_id, group_id, group_name, order_no) VALUES (?, ?, ?, ?)
@@ -360,27 +375,27 @@ class Store {
     return { groupId: Number(groupId) || 0, groupName: String(groupName || '未命名'), orderNo: Number(orderNo) || 0 }
   }
 
-  deleteGroup(groupId, userId = DEFAULT_USER_ID) {
+  deleteGroup(groupId, userId = currentUserId()) {
     return this.db.prepare('DELETE FROM book_groups WHERE user_id = ? AND group_id = ?').run(userId, Number(groupId)).changes > 0
   }
 
   /* --------------------------------------------------------------- bookmarks */
 
-  listBookmarks(bookUrl, userId = DEFAULT_USER_ID) {
+  listBookmarks(bookUrl, userId = currentUserId()) {
     const rows = bookUrl
       ? this.db.prepare('SELECT id, json FROM bookmarks WHERE user_id = ? AND book_url = ? ORDER BY id').all(userId, bookUrl)
       : this.db.prepare('SELECT id, json FROM bookmarks WHERE user_id = ? ORDER BY id').all(userId)
     return rows.map((row) => ({ ...JSON.parse(row.json), id: row.id }))
   }
 
-  saveBookmark(bookmark, userId = DEFAULT_USER_ID) {
+  saveBookmark(bookmark, userId = currentUserId()) {
     const result = this.db
       .prepare('INSERT INTO bookmarks (user_id, book_url, json) VALUES (?, ?, ?)')
       .run(userId, String(bookmark?.bookUrl ?? ''), JSON.stringify(bookmark || {}))
     return Number(result.lastInsertRowid)
   }
 
-  deleteBookmark(bookmark, userId = DEFAULT_USER_ID) {
+  deleteBookmark(bookmark, userId = currentUserId()) {
     if (bookmark?.id) {
       return this.db.prepare('DELETE FROM bookmarks WHERE user_id = ? AND id = ?').run(userId, Number(bookmark.id)).changes > 0
     }
@@ -393,11 +408,11 @@ class Store {
 
   /* ---------------------------------------------------------- replace rules */
 
-  listReplaceRules(userId = DEFAULT_USER_ID) {
+  listReplaceRules(userId = currentUserId()) {
     return this.db.prepare('SELECT json FROM replace_rules WHERE user_id = ? ORDER BY id').all(userId).map((row) => JSON.parse(row.json))
   }
 
-  saveReplaceRule(rule, userId = DEFAULT_USER_ID) {
+  saveReplaceRule(rule, userId = currentUserId()) {
     const name = String(rule?.name ?? '')
     if (!name) throw new Error('name is required')
     this.db
@@ -409,7 +424,7 @@ class Store {
     return rule
   }
 
-  deleteReplaceRules(names, userId = DEFAULT_USER_ID) {
+  deleteReplaceRules(names, userId = currentUserId()) {
     let deleted = 0
     for (const name of names) {
       deleted += this.db.prepare('DELETE FROM replace_rules WHERE user_id = ? AND name = ?').run(userId, String(name)).changes
@@ -419,12 +434,12 @@ class Store {
 
   /* -------------------------------------------------------------- user config */
 
-  getUserConfig(userId = DEFAULT_USER_ID) {
+  getUserConfig(userId = currentUserId()) {
     const row = this.db.prepare('SELECT json FROM user_config WHERE user_id = ?').get(userId)
     return row ? JSON.parse(row.json) : {}
   }
 
-  saveUserConfig(config, userId = DEFAULT_USER_ID) {
+  saveUserConfig(config, userId = currentUserId()) {
     this.db
       .prepare(
         `INSERT INTO user_config (user_id, json) VALUES (?, ?)
@@ -453,7 +468,7 @@ class Store {
     return { id: Number(result.lastInsertRowid), username }
   }
 
-  getUser(userId = DEFAULT_USER_ID) {
+  getUser(userId = currentUserId()) {
     return this.db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId)
   }
 }
