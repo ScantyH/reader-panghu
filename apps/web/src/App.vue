@@ -27,6 +27,8 @@ const isReader = () => route.name === 'reader'
       <router-link class="nav-link" active-class="active" to="/recent">最近</router-link>
       <router-link class="nav-link" active-class="active" to="/search">搜索</router-link>
       <router-link class="nav-link" active-class="active" to="/sources">书源</router-link>
+      <router-link class="nav-link" active-class="active" to="/rss">RSS</router-link>
+      <router-link class="nav-link" active-class="active" to="/backup">备份</router-link>
     </aside>
     <main class="main">
       <router-view />

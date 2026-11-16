@@ -3,6 +3,8 @@ import Bookshelf from './views/Bookshelf.vue'
 import Reader from './views/Reader.vue'
 import Search from './views/Search.vue'
 import Sources from './views/Sources.vue'
+import Rss from './views/Rss.vue'
+import Backup from './views/Backup.vue'
 
 export default createRouter({
   history: createWebHistory(),
@@ -12,6 +14,8 @@ export default createRouter({
     { path: '/recent', name: 'recent', component: Bookshelf, props: { recentOnly: true } },
     { path: '/search', name: 'search', component: Search },
     { path: '/sources', name: 'sources', component: Sources },
+    { path: '/rss', name: 'rss', component: Rss },
+    { path: '/backup', name: 'backup', component: Backup },
     { path: '/read', name: 'reader', component: Reader, props: (route) => ({ bookUrl: String(route.query.book || '') }) },
   ],
 })

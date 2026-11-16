@@ -79,6 +79,15 @@ export const api = {
   getUserConfig: () => request('/getUserConfig'),
   saveUserConfig: (config) => request('/saveUserConfig', { method: 'POST', body: config }),
 
+  rssSources: () => request('/getRssSources'),
+  saveRssSource: (source) => request('/saveRssSource', { method: 'POST', body: source }),
+  deleteRssSource: (sourceUrl) => request('/deleteRssSource', { method: 'POST', body: { sourceUrl } }),
+  rssArticles: (sourceUrl) => request('/getRssArticles', { method: 'POST', body: { sourceUrl } }),
+  rssContent: (link) => request('/getRssContent', { method: 'POST', body: { link } }),
+
+  webdavBackup: (payload) => request('/webdavBackup', { method: 'POST', body: payload }),
+  webdavRestore: (payload) => request('/webdavRestore', { method: 'POST', body: payload }),
+
   bookmarks: () => request('/getBookmarks'),
   saveBookmark: (bookmark) => request('/saveBookmark', { method: 'POST', body: bookmark }),
   deleteBookmark: (bookmark) => request('/deleteBookmark', { method: 'POST', body: bookmark }),
