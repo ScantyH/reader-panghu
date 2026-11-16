@@ -213,6 +213,32 @@ app.get('/api/content', async (req) => {
   return { content: cleanText(text) }
 })
 
+/** Subscription document: every WebView source as a 阅读3 book source. */
+function legadoSources(req, onlyId) {
+  const base = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.headers.host}`).replace(/\/+$/, '')
+  const list = webviewSources().filter((source) => !onlyId || sourceId(source) === onlyId)
+  return list.map((source) =>
+    generateLegadoSource({
+      id: sourceId(source),
+      name: `${source.bookSourceName}（服务端）`,
+      baseUrl: base,
+      group: source.bookSourceGroup || '自建',
+      upstreamNote: 'Subscribed from reader-panghu; rules read the server JSON API.',
+    }),
+  )
+}
+
+/** 书源订阅入口：Legado 客户端可直接填这个地址自动拉取/更新书源。 */
+app.get('/api/subscribe', async (req, reply) => {
+  reply.header('content-type', 'application/json; charset=utf-8')
+  return legadoSources(req)
+})
+
+app.get('/api/subscribe/:id', async (req, reply) => {
+  reply.header('content-type', 'application/json; charset=utf-8')
+  return legadoSources(req, String(req.params.id))
+})
+
 app.get('/api/legado-source/:id', async (req, reply) => {
   const source = pickSource(req.params.id)
   const base = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.headers.host}`).replace(/\/+$/, '')

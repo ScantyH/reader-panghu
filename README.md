@@ -21,6 +21,7 @@ Web UI 按 `reader-next` 的交互**独立重写**（Vue 3，未复制其源码�
 | 书签、替换规则 | ✅ | 落库 |
 | 多端进度同步（服务端权威） | ✅ | `saveBookProgress` 覆盖最新，书架回读一致 |
 | 本地书格式 TXT / EPUB / DOCX / MOBI | ✅ | 各自合成样本上传后分章、正文、封面均通过 |
+| 书源订阅（Legado 自动拉取） | ✅ | `/api/subscribe` 返回可导入的阅读3 书源数组 |
 | PDF / RSS / WebDAV | ⏳ | 接口明确返回“尚未接入”，不假装成功 |
 
 ## 快速开始
