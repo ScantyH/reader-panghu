@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine
+FROM node:24-alpine
 
 RUN corepack enable
 WORKDIR /app
@@ -7,15 +7,17 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages ./packages
 COPY apps ./apps
+COPY scripts ./scripts
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile \
+ && pnpm --filter reader-panghu-web run build
 
 ENV NODE_ENV=production \
     PORT=18080 \
     HOST=0.0.0.0 \
     DATA_DIR=/app/data
 
-RUN mkdir -p /app/data/sources
+RUN mkdir -p /app/data/sources /app/data/covers /app/data/books
 VOLUME ["/app/data"]
 EXPOSE 18080
 

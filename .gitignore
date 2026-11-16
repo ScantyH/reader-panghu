@@ -1,5 +1,6 @@
 node_modules/
 .pnpm-store/
+apps/web/dist/
 
 # Runtime data: databases, uploaded books, generated assets
 data/

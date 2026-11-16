@@ -2,96 +2,109 @@
 
 一个把「WebView 书源」「阅读3 书源」「本地书」「多端进度同步」收敛到同一套服务端的阅读服务。
 
-> 目标是替代多个互相不兼容的项目拼装：`reader-next` 的 Web UI + `hectorqin/reader` 的阅读3 生态 + `autobcb/qysg` 的书源运行时 + Legado 客户端（iOS/Android）的同步接口。
+Web UI 来自 `reader-next`（Vue 3），服务端实现了它的 `/reader3/*` 契约，同时对外提供阅读3 规则书源，Legado 客户端（iOS/Android）可直接导入。
 
 ## 现在能跑什么
 
-已经跑通并实测的（不是设计稿）：
+全部为本地实测，非设计稿。
 
-| 能力 | 状态 | 实测数据 |
+| 能力 | 状态 | 实测 |
 |---|---|---|
-| 服务端执行 WebView 书源（起点自建源，HTML 一行未改） | ✅ | 搜索 1.0s / 详情 1.3s / 目录 1.4s（952 章）/ 正文 3.0s（3848 字） |
-| 书源 HTML 的 `flutter_inappwebview` 桥在 Node 里实现 | ✅ | `http` / `cookie.*` / `cache.*` / `log` / `toast` |
-| 自动生成标准「阅读3 书源」指向本服务 | ✅ | `/api/legado-source/:id` |
-| 段评图片标记（`dp:*`）在正文中剥离 | ✅ | 17.9KB 原始 → 3.8KB 纯正文 |
-| 多书源注册 / 热加载 | ✅ | `data/sources/*.json` |
-| Web UI（reader-next Vue3） | ⏳ 下一步 | 计划直接对接 `/reader3/*` 契约 |
-| 本地书上传、封面/书名/作者/简介编辑、多端进度同步 | ⏳ 下一步 | 见 Roadmap |
+| 服务端执行 WebView 书源（起点自建源，HTML 未改） | ✅ | 搜索 1.0s / 详情 1.0s / 目录 952 章 0.9s / 正文 1.7s |
+| `flutter_inappwebview` 桥在 Node 里实现 | ✅ | `http` / `cookie.*` / `cache.*` / `log` / `toast` |
+| `/reader3/*` 契约（书架、搜索 SSE、目录、正文、进度） | ✅ | 14 项冒烟测试全过 |
+| reader-next Vue3 UI 构建并由同端口提供 | ✅ | `apps/web/dist`，SPA 回退可用 |
+| 阅读3 书源生成（给 Legado 客户端） | ✅ | `/api/legado-source/:id` |
+| 本地 TXT 上传 + 自动分章 + 阅读 | ✅ | 中文 GBK 兜底解码 |
+| 书源导入（文件 / 远程 URL） | ✅ | `readSourceFile`、`readRemoteSourceFile` |
+| 封面/书名/作者/简介手工编辑 | ✅ | `saveBook` + `uploadBookCover` |
+| 书签、替换规则 | ✅ | 落库 |
+| 多端进度同步（服务端权威） | ✅ | `saveBookProgress` 覆盖最新，书架回读一致 |
+| EPUB / MOBI / PDF / RSS / WebDAV | ⏳ | 接口返回明确的“尚未接入” |
 
 ## 快速开始
 
 ```bash
-# Node >= 22
 pnpm install
-PORT=18080 node apps/server/src/index.js
+pnpm --filter reader-panghu-web run build   # 构建 UI
+PORT=18080 node apps/server/src/index.js    # 同端口提供 UI + API
 ```
 
-把一个 Legado 包装的 WebView 书源放到 `data/sources/<id>.json`：
+打开 <http://localhost:18080>。
+
+放入书源（`data/sources/<id>.json`，首次启动会导入数据库）：
 
 ```json
 {
-  "id": "my-source",
-  "bookSourceName": "我的书源",
+  "bookSourceName": "起点·自建·家宽",
   "bookSourceUrl": "http://example.com/k/xxx",
   "html": "<!DOCTYPE html>…",
   "_runtime": {
     "rewrites": [{ "from": "http://dead-host:4280", "to": "http://live-host:4280" }],
-    "key": "书源密钥",
-    "timeoutMs": 45000
+    "key": "书源密钥"
   }
 }
 ```
 
-`_runtime` 是本服务加的运行参数，导入客户端前会被忽略；`rewrites` 用来把书源里写死的主线路换成可用线路（域名失效时很有用）。
+也可以用环境变量统一改线路（对所有书源生效）：
 
-## HTTP API
+```bash
+SOURCE_REWRITES='[{"from":"http://dead-host:4280","to":"http://live-host:4280"}]'
+```
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/api/health` | 存活与书源数 |
-| GET | `/api/sources` | 已注册书源 |
-| POST | `/api/sources` | 新增书源（body 为 Legado 条目，可数组） |
-| DELETE | `/api/sources/:id` | 删除书源 |
-| GET | `/api/search?q=&page=&source=` | 搜索，返回 `{books:[…]}` |
-| GET | `/api/book?url=&source=` | 详情 |
-| GET | `/api/toc?url=&source=` | 目录，返回 `{count,chapters:[…]}` |
-| GET | `/api/content?url=&source=` | 正文，返回 `{content}` |
-| GET | `/api/legado-source/:id` | 生成可直接导入的阅读3 书源 |
+`_runtime` 是本服务加的运行参数，导入阅读3 客户端时会被忽略。
 
-所有 `bookUrl` / `tocUrl` / `chapterId` 都由服务端改写成指回自身的 URL，所以生成出来的阅读3 书源不需要知道上游接口，只按 JSONPath 取字段即可。
+## 两套接口
+
+### `/reader3/*` — Web UI / 阅读3 客户端契约
+
+统一返回 `{isSuccess, errorMsg, data}`。主要端点：
+
+| 端点 | 说明 |
+|---|---|
+| `GET /getBookshelf` | 书架（含进度） |
+| `POST /getBookInfo` · `/getChapterList` · `/getBookContent` | 详情 / 目录 / 正文 |
+| `POST /saveBook` · `/saveBooks` · `/saveBookProgress` | 加入书架 / 编辑元数据 / 进度 |
+| `GET /getBookSources` · `POST /saveBookSources` | 书源管理 |
+| `GET /searchBookMultiSSE` | 跨书源搜索（SSE 流，`data:` 帧 + `end` 事件） |
+| `POST /uploadTxtBook` | 本地 TXT（自动分章） |
+| `POST /uploadBookCover` · `/resetBookCover` | 封面替换 / 还原 |
+| `GET/POST /getBookmarks` 系列、`/getReplaceRules` 系列 | 书签、替换规则 |
+
+### `/api/*` — 书源导向接口
+
+`/api/search`、`/api/book`、`/api/toc`、`/api/content`、`/api/legado-source/:id`，返回带自指 URL 的 JSON，供阅读3 规则书源直接消费。
 
 ## 目录结构
 
 ```
-apps/server/            HTTP 服务（Fastify）：书源注册、搜索/详情/目录/正文、书源生成
-packages/source-runtime/  WebView 书源运行时（jsdom + jQuery + 桥接实现）
-packages/legado-source/   阅读3 书源生成器
-docs/                   架构与整合计划
-docker/                 Dockerfile 与 compose
-data/                   运行数据（git 忽略）
+apps/server/             Fastify 服务：/reader3 契约、/api、SQLite、书源运行时调度
+apps/web/                reader-next 的 Vue 3 前端（构建到 dist/）
+packages/source-runtime/ WebView 书源运行时（jsdom + jQuery + 桥）
+packages/legado-source/  阅读3 书源生成器
+scripts/                 探针与冒烟测试（test-reader3 / test-extras / probe-source）
+docker/                  Dockerfile 与 compose
+docs/                    架构说明
+data/                    运行数据（git 忽略）
 ```
 
 ## 为什么需要「服务端书源运行时」
 
-Legado 家族的书源有两种形态：
+Legado 家族书源有两种形态：
 
-1. **规则型**（`ruleSearch` / JSONPath / CSS / `@js:`）——纯数据，任何服务端都能执行。
-2. **WebView 型**（`html` 字段 + `flutter_inappwebview.callHandler`）——本质是一段运行在 WebView 里的程序，依赖 `window`、DOM、jQuery 和原生桥。
+1. **规则型**（`ruleSearch` / JSONPath / CSS / `@js:`）——纯数据，客户端引擎执行。
+2. **WebView 型**（`html` 字段 + `flutter_inappwebview.callHandler`）——本质是运行在 WebView 里的程序。
 
-第二种在服务端跑不了，这就是本项目存在的理由：用 jsdom 提供 DOM、用 Node 实现桥，于是同一份书源既能给 Web UI 用，也能生成规则型书源给 Legado 客户端用。
+`legado-ios v0.1.14` 只支持第 1 种（二进制里有 `ruleSearch`、`SwiftSoup`、`java.ajax`，但没有 `flutter_inappwebview` / `callHandler`）。所以本项目在服务端实现 WebView 运行时，再把结果降维成规则型书源——APP 一行 Swift 都不用改。
 
-实测的 `legado-ios v0.1.14`（Swift，`ruleSearch` 20 处、`SwiftSoup`、`java.ajax`，但 `flutter_inappwebview` / `callHandler` 均为 0）只支持第 1 种，因此「适配 APP」= 服务端把它翻译成规则型书源，而不是去改 Swift。
+## 测试
 
-## Roadmap
-
-1. **M1（已完成）** 服务端执行 WebView 书源 + 阅读3 书源生成
-2. **M2** `/reader3/*` 契约实现 + reader-next Vue3 UI 接入（书架、阅读器）
-3. **M3** 本地书上传（TXT/EPUB/MOBI/PDF）+ 封面/书名/作者/简介手工编辑
-4. **M4** 多端同步：服务端为权威，进度带 `updatedAt`，后端最新进度覆盖 Web/APP 旧进度
-5. **M5** Docker 一键部署 + 书源订阅 + 章节缓存
+```bash
+node scripts/test-reader3.mjs   # 契约端到端（搜索→详情→目录→正文→进度→SSE）
+node scripts/test-extras.mjs    # 书签/替换规则/书源导入/本地 TXT
+node scripts/probe-source.js <source.json>   # 直接跑单个书源
+```
 
 ## 许可证
 
-AGPL-3.0。本仓库当前代码为原创，但整合目标包含 `hectorqin/reader`（AGPL-3.0）的能力，按最严格上游对齐。
-
-**注意**：`reader-next`（Maple0517 / 1432433gg）仓库未声明许可证，默认保留所有权利。把它作为 UI 复用前需要取得作者许可，否则只能参考其交互设计自行实现。
+AGPL-3.0。当前服务端与运行时为原创实现；`apps/web` 复用 `reader-next` 的界面代码，其上游仓库未声明许可证，来源与授权情况见 [NOTICE](NOTICE)。商业使用前请先取得原作者授权或替换 UI。
