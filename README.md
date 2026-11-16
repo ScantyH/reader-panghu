@@ -23,7 +23,7 @@ Web UI 按 `reader-next` 的交互**独立重写**（Vue 3，未复制其源码�
 | 本地书格式 TXT / EPUB / DOCX / MOBI | ✅ | 各自合成样本上传后分章、正文、封面均通过 |
 | 书源订阅（Legado 自动拉取） | ✅ | `/api/subscribe` 返回可导入的阅读3 书源数组 |
 | PDF（文字版） | 🧪 可选，非目标 | 提取 Tj/TJ + FlateDecode；不做扫描版/OCR，可随时移除 |
-| RSS 订阅 | ✅ | 订阅源增删查、RSS/Atom 解析、正文抓取（剔除 script） |
+| RSS 订阅 | ✅ | 源增删查 · RSS/Atom 解析 · 正文抓取（剔除 script）· 文章缓存 + 后台定时刷新 |
 | WebDAV 备份 | ✅ | `/reader3/webdavBackup` 与 `/webdavRestore`，异类备份包被拒 |
 
 ## 快速开始
@@ -100,6 +100,17 @@ Legado 家族书源有两种形态：
 2. **WebView 型**（`html` 字段 + `flutter_inappwebview.callHandler`）——本质是运行在 WebView 里的程序。
 
 `legado-ios v0.1.14` 只支持第 1 种（二进制里有 `ruleSearch`、`SwiftSoup`、`java.ajax`，但没有 `flutter_inappwebview` / `callHandler`）。所以本项目在服务端实现 WebView 运行时，再把结果降维成规则型书源——APP 一行 Swift 都不用改。
+
+## 部署到极空间 NAS（已实测）
+
+极空间 Compose **不支持 `build:`**，构建镜像要用挂载 `docker.sock` 的 builder 容器：
+
+```bash
+docker build -f docker/Dockerfile -t reader-panghu:nas <源码目录>
+# 再用 image: reader-panghu:nas 创建常驻容器，端口 18080:18080，数据挂到宿主机目录
+```
+
+注意：Dockerfile 顶部**不要**写 `# syntax=docker/dockerfile:1` —— 它会让 BuildKit 去 Docker Hub 拉前端镜像，受限网络下直接超时。
 
 ## 一键验证
 

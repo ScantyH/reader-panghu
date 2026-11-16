@@ -266,5 +266,21 @@ if (existsSync(WEB_DIST)) {
   console.log(`[web] serving UI from ${WEB_DIST}`)
 }
 
+// RSS 定时刷新：默认 30 分钟一次，0 关闭
+const rssIntervalMinutes = Number(process.env.RSS_REFRESH_MINUTES ?? 30)
+if (rssIntervalMinutes > 0) {
+  const timer = setInterval(async () => {
+    try {
+      const result = await app.readerPanghuRefreshRss()
+      if (result.refreshed || result.failed.length) {
+        app.log.info(`[rss] refreshed=${result.refreshed} failed=${result.failed.length}`)
+      }
+    } catch (error) {
+      app.log.warn(`[rss] 定时刷新失败: ${error.message}`)
+    }
+  }, rssIntervalMinutes * 60 * 1000)
+  timer.unref?.()
+}
+
 await app.listen({ port: PORT, host: HOST })
 console.log(`reader-panghu listening on http://${HOST}:${PORT}`)

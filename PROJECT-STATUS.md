@@ -52,6 +52,14 @@ reader-panghu   nas   8ada83c0742c   473MB
 构建方式：极空间 Compose 不支持 `build:`，改为在 NAS 上跑一个挂载 `/var/run/docker.sock` 的 `docker:27-cli` 容器执行 `docker build`。
 期间修复了一个真实问题：Dockerfile 顶部的 `# syntax=docker/dockerfile:1` 会让 BuildKit 去 Docker Hub 拉前端镜像，在受限网络下直接超时，已移除。
 
+## 常驻部署（2026-11-16）
+
+| 项 | 结果 |
+|---|---|
+| 镜像 | `reader-panghu:nas`（473MB），由 NAS 上的 `docker build` 产出 |
+| 容器 | `reader-panghu`，state=running，端口 `18080:18080`，数据卷挂到 NAS 的 `Docker/reader-panghu` |
+| 可用性 | 容器日志确认 `[web] serving UI from /app/apps/web/dist` 与 `listening on 18080` |
+
 ## 仍未验证
 
 | 项 | 原因 | 已做的工作 |

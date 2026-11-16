@@ -73,12 +73,28 @@ try {
   if (content.includes('bad()')) throw new Error('正文里混入了 script 内容')
   console.log(`  ✓ 抓取正文 → ${content.length} 字，已剔除 script`)
 
+  // 关掉本地订阅源，再次请求应命中缓存（证明定时刷新/缓存生效）
+  await new Promise((resolve) => { server.close(resolve) })
+  const cached = await call('/reader3/getRssArticles', { method: 'POST', body: { sourceUrl } })
+  if (cached.first.length !== 2) throw new Error(`缓存未命中：${cached.first.length} 篇`)
+  if (!cached.cached) throw new Error('响应未标记 cached')
+  console.log(`  ✓ 缓存命中（源已关闭仍可读，${cached.first.length} 篇）`)
+
+  // refresh:true 强制回源，此时源已关闭应失败
+  const forced = await fetch(`${base}/reader3/getRssArticles`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sourceUrl, refresh: true }),
+  }).then((response) => response.json())
+  if (forced.isSuccess !== false && !forced.data?.stale) throw new Error('强制刷新应回源失败或标记 stale')
+  console.log(`  ✓ 强制刷新回源失败时降级（${forced.data?.stale ? 'stale 缓存' : forced.errorMsg}）`)
+
   await call('/reader3/deleteRssSource', { method: 'POST', body: { sourceUrl } })
   const left = await call('/reader3/getRssSources')
   if (left.some((item) => item.sourceUrl === sourceUrl)) throw new Error('订阅源未删除')
   console.log('  ✓ 删除订阅源')
 } finally {
-  server.close()
+  try { server.close() } catch {}
 }
 
 console.log('\nRSS checks passed')

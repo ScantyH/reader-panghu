@@ -450,28 +450,58 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
     return ok({ deleted: store.deleteRssSources(list.map((item) => item?.sourceUrl)) })
   })
 
-  /** 拉取并解析一个订阅源，返回文章列表。 */
-  app.post('/reader3/getRssArticles', async (req) => {
-    const sourceUrl = String(req.body?.sourceUrl ?? '')
-    if (!sourceUrl) return fail('缺少 sourceUrl')
+  const RSS_TTL_MS = Number(process.env.RSS_TTL_MINUTES || 15) * 60 * 1000
+
+  /** 拉取并解析一个订阅源，结果写入缓存。 */
+  async function fetchRssArticles(sourceUrl) {
     const known = store.listRssSources().find((item) => item.sourceUrl === sourceUrl)
-    let xml
-    try {
-      const response = await fetch(sourceUrl, { headers: { 'user-agent': 'reader-panghu' } })
-      if (!response.ok) return fail(`订阅源返回 HTTP ${response.status}`)
-      xml = await response.text()
-    } catch (error) {
-      return fail(`拉取订阅源失败：${error.message}`)
-    }
-    const feed = parseFeed(xml)
-    const first = feed.items.map((item) => ({
+    const response = await fetch(sourceUrl, { headers: { 'user-agent': 'reader-panghu' } })
+    if (!response.ok) throw new Error(`订阅源返回 HTTP ${response.status}`)
+    const feed = parseFeed(await response.text())
+    const articles = feed.items.map((item) => ({
       ...item,
       origin: sourceUrl,
       sourceName: known?.sourceName || feed.title,
     }))
-    return ok({ first, second: null, title: feed.title })
+    store.saveCachedRss(sourceUrl, articles)
+    return { first: articles, second: null, title: feed.title }
+  }
+
+  /** 供后台定时任务调用：刷新全部订阅源，返回成功/失败数量。 */
+  app.readerPanghuRefreshRss = async () => {
+    const sources = store.listRssSources()
+    let refreshed = 0
+    const failed = []
+    for (const source of sources) {
+      try {
+        await fetchRssArticles(source.sourceUrl)
+        refreshed += 1
+      } catch (error) {
+        failed.push({ sourceUrl: source.sourceUrl, error: error.message })
+      }
+    }
+    return { refreshed, failed }
+  }
+
+  app.post('/reader3/getRssArticles', async (req) => {
+    const sourceUrl = String(req.body?.sourceUrl ?? '')
+    if (!sourceUrl) return fail('缺少 sourceUrl')
+    const cached = store.getCachedRss(sourceUrl)
+    const fresh = cached && Date.now() - cached.fetchedAt < RSS_TTL_MS
+    if (cached && fresh && !req.body?.refresh) {
+      return ok({ first: cached.articles, second: null, cached: true, fetchedAt: cached.fetchedAt })
+    }
+    try {
+      const result = await fetchRssArticles(sourceUrl)
+      return ok({ ...result, cached: false })
+    } catch (error) {
+      // 拉取失败时退回旧缓存，总比空白好
+      if (cached) return ok({ first: cached.articles, second: null, cached: true, stale: true, fetchedAt: cached.fetchedAt })
+      return fail(`拉取订阅源失败：${error.message}`)
+    }
   })
 
+  app.post('/reader3/refreshRss', async () => ok(await app.readerPanghuRefreshRss()))
   /** 抓取文章正文并转成纯文本。 */
   app.post('/reader3/getRssContent', async (req) => {
     const link = String(req.body?.link || req.body?.url || '')

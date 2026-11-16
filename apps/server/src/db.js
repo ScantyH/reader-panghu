@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS rss_sources (
   UNIQUE (user_id, source_url)
 );
 
+CREATE TABLE IF NOT EXISTS rss_articles (
+  source_url TEXT PRIMARY KEY,
+  json TEXT NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS book_groups (
   user_id INTEGER NOT NULL,
   group_id INTEGER NOT NULL,
@@ -292,6 +298,21 @@ class Store {
       deleted += this.db.prepare('DELETE FROM rss_sources WHERE user_id = ? AND source_url = ?').run(userId, String(url)).changes
     }
     return deleted
+  }
+
+  getCachedRss(sourceUrl) {
+    const row = this.db.prepare('SELECT json, fetched_at FROM rss_articles WHERE source_url = ?').get(String(sourceUrl))
+    return row ? { articles: JSON.parse(row.json), fetchedAt: row.fetched_at } : null
+  }
+
+  saveCachedRss(sourceUrl, articles) {
+    this.db
+      .prepare(
+        `INSERT INTO rss_articles (source_url, json, fetched_at) VALUES (?, ?, ?)
+         ON CONFLICT (source_url) DO UPDATE SET json = excluded.json, fetched_at = excluded.fetched_at`,
+      )
+      .run(String(sourceUrl), JSON.stringify(articles), Date.now())
+    return articles
   }
 
   /* -------------------------------------------------------- chapter caching */
