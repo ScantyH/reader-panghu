@@ -57,6 +57,14 @@ CREATE TABLE IF NOT EXISTS chapter_text (
   PRIMARY KEY (book_url, chapter_url)
 );
 
+CREATE TABLE IF NOT EXISTS rss_sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  source_url TEXT NOT NULL,
+  json TEXT NOT NULL,
+  UNIQUE (user_id, source_url)
+);
+
 CREATE TABLE IF NOT EXISTS book_groups (
   user_id INTEGER NOT NULL,
   group_id INTEGER NOT NULL,
@@ -258,6 +266,32 @@ class Store {
   countChapters(bookUrl, origin) {
     const chapters = this.getChapters(bookUrl, origin)
     return Array.isArray(chapters) ? chapters.length : 0
+  }
+
+  /* -------------------------------------------------------------- rss sources */
+
+  listRssSources(userId = DEFAULT_USER_ID) {
+    return this.db.prepare('SELECT json FROM rss_sources WHERE user_id = ? ORDER BY id').all(userId).map((row) => JSON.parse(row.json))
+  }
+
+  saveRssSource(source, userId = DEFAULT_USER_ID) {
+    const url = String(source?.sourceUrl || '')
+    if (!url) throw new Error('sourceUrl is required')
+    this.db
+      .prepare(
+        `INSERT INTO rss_sources (user_id, source_url, json) VALUES (?, ?, ?)
+         ON CONFLICT (user_id, source_url) DO UPDATE SET json = excluded.json`,
+      )
+      .run(userId, url, JSON.stringify({ ...source, sourceUrl: url }))
+    return source
+  }
+
+  deleteRssSources(urls, userId = DEFAULT_USER_ID) {
+    let deleted = 0
+    for (const url of urls) {
+      deleted += this.db.prepare('DELETE FROM rss_sources WHERE user_id = ? AND source_url = ?').run(userId, String(url)).changes
+    }
+    return deleted
   }
 
   /* -------------------------------------------------------- chapter caching */

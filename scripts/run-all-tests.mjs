@@ -22,6 +22,8 @@ const SUITES = [
   'test-mobi',
   'test-groups',
   'test-updates',
+  'test-rss',
+  'test-webdav',
   'test-legado-client',
 ]
 

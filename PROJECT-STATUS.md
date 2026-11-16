@@ -30,11 +30,33 @@ pnpm verify     # 28 项静态校验 + 11 个测试套件，退出码即结论
 
 所有套件使用仓库内合成样本，空数据库冷启动即可全绿，不依赖私有书源或密钥。
 
-## 明确未验证（环境限制，非代码问题）
+## 部署验证（已在真实 NAS 上完成）
+
+| 项 | 结论 |
+|---|---|
+| 真机运行 | 已在极空间 Z4S（Intel N5105）的 Docker 上完成：容器内 `pnpm install`（14s）→ 前端构建 → **11/11 测试套件全绿** → 服务监听 18080 |
+| 极空间 Compose | **不支持 `build:` 指令**（对照实验：带 build 秒失败，仅 image 成功），因此镜像需在他处构建后用 `docker images import` 导入 |
+| 客户端可达性 | 开发机与 NAS 不在同一网段（经 `zconnect.cn` 云代理访问），无法从本机直接 HTTP 探测 NAS 端口 |
+
+## 镜像构建实证（2026-11-16）
+
+```
+#14 exporting to image
+#14 writing image sha256:8ada83c0… done
+#14 naming to docker.io/library/reader-panghu:nas done
+reader-panghu   nas   8ada83c0742c   473MB
+```
+
+用该镜像启动的容器 `rp-image-run` 为 running，日志可见 `serving UI from /app/apps/web/dist` 与 `listening on 18080`。
+
+构建方式：极空间 Compose 不支持 `build:`，改为在 NAS 上跑一个挂载 `/var/run/docker.sock` 的 `docker:27-cli` 容器执行 `docker build`。
+期间修复了一个真实问题：Dockerfile 顶部的 `# syntax=docker/dockerfile:1` 会让 BuildKit 去 Docker Hub 拉前端镜像，在受限网络下直接超时，已移除。
+
+## 仍未验证
 
 | 项 | 原因 | 已做的工作 |
 |---|---|---|
-| Docker 镜像实际构建与启动 | 开发机 `HypervisorPresent=False`、WSL 无发行版，Docker Desktop 需管理员+重启 | Dockerfile/compose 交付；28 项静态校验；镜像内的三条关键命令（frozen install / 前端构建 / 服务启动）已在本地逐条跑通 |
+| Dockerfile 镜像构建 | 开发机无 Docker；NAS Compose 不支持 build | **已在你 NAS 上完成**：通过挂载 docker.sock 的 builder 容器执行 `docker build`，产出 `reader-panghu:nas`（473MB）；用该镜像启动的容器 running，日志确认 UI 与端口正常 |
 | Legado iOS 真机联调 | 需实体设备安装 IPA | 用 `test-legado-client` 模拟客户端逐步走完四条规则；真机仅剩网络可达性未知 |
 
 ## 范围之外（已确认放弃）

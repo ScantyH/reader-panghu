@@ -1,4 +1,6 @@
-# syntax=docker/dockerfile:1
+# 不使用 `# syntax=docker/dockerfile:1`：那条指令会让 BuildKit 去 Docker Hub
+# 拉取前端镜像，离线或受限网络（例如国内的 NAS）构建会直接超时。
+# 本文件只用内置语法，不依赖外部 frontend 镜像。
 FROM node:24-alpine
 
 RUN corepack enable

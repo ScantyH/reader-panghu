@@ -15,6 +15,7 @@ import { basename, join } from 'node:path'
 import { createRuntime } from '@reader-panghu/source-runtime'
 import { parseDocx } from './docx.js'
 import { parseEpub } from './epub.js'
+import { parseFeed } from './rss.js'
 import { parseMobi } from './mobi.js'
 import { extractPdfText } from './pdf.js'
 
@@ -426,26 +427,170 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
 
   /* ------------------------------------------------------ unimplemented stubs */
 
-  app.get('/reader3/getRssSources', async () => ok([]))
-  app.post('/reader3/saveRssSource', async () => ok('保存成功'))
-  app.post('/reader3/saveRssSources', async () => ok('保存成功'))
-  app.post('/reader3/deleteRssSource', async () => ok('删除成功'))
-  app.post('/reader3/deleteRssSources', async () => ok({ deleted: 0 }))
-  app.post('/reader3/getRssArticles', async () => ok({ first: [], second: null }))
-  app.post('/reader3/getRssContent', async () => ok(''))
-  app.post('/reader3/readRssSourceFile', async () => fail('RSS 尚未接入'))
-  app.post('/reader3/readRemoteRssSourceFile', async () => fail('RSS 尚未接入'))
+  app.get('/reader3/getRssSources', async () => ok(store.listRssSources()))
 
+  app.post('/reader3/saveRssSource', async (req) => {
+    store.saveRssSource(req.body || {})
+    return ok('保存成功')
+  })
+
+  app.post('/reader3/saveRssSources', async (req) => {
+    const list = Array.isArray(req.body) ? req.body : []
+    for (const source of list) store.saveRssSource(source)
+    return ok('保存成功')
+  })
+
+  app.post('/reader3/deleteRssSource', async (req) => {
+    store.deleteRssSources([req.body?.sourceUrl])
+    return ok('删除成功')
+  })
+
+  app.post('/reader3/deleteRssSources', async (req) => {
+    const list = Array.isArray(req.body) ? req.body : []
+    return ok({ deleted: store.deleteRssSources(list.map((item) => item?.sourceUrl)) })
+  })
+
+  /** 拉取并解析一个订阅源，返回文章列表。 */
+  app.post('/reader3/getRssArticles', async (req) => {
+    const sourceUrl = String(req.body?.sourceUrl ?? '')
+    if (!sourceUrl) return fail('缺少 sourceUrl')
+    const known = store.listRssSources().find((item) => item.sourceUrl === sourceUrl)
+    let xml
+    try {
+      const response = await fetch(sourceUrl, { headers: { 'user-agent': 'reader-panghu' } })
+      if (!response.ok) return fail(`订阅源返回 HTTP ${response.status}`)
+      xml = await response.text()
+    } catch (error) {
+      return fail(`拉取订阅源失败：${error.message}`)
+    }
+    const feed = parseFeed(xml)
+    const first = feed.items.map((item) => ({
+      ...item,
+      origin: sourceUrl,
+      sourceName: known?.sourceName || feed.title,
+    }))
+    return ok({ first, second: null, title: feed.title })
+  })
+
+  /** 抓取文章正文并转成纯文本。 */
+  app.post('/reader3/getRssContent', async (req) => {
+    const link = String(req.body?.link || req.body?.url || '')
+    if (!link) return fail('缺少文章地址')
+    try {
+      const response = await fetch(link, { headers: { 'user-agent': 'reader-panghu' } })
+      if (!response.ok) return fail(`文章返回 HTTP ${response.status}`)
+      const html = await response.text()
+      const body = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<(br|\/p|\/div|\/h[1-6]|\/li)[^>]*>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+      return ok(body)
+    } catch (error) {
+      return fail(`抓取正文失败：${error.message}`)
+    }
+  })
+
+  app.post('/reader3/readRemoteRssSourceFile', async (req) => {
+    const url = String(req.body?.url ?? '')
+    if (!url) return fail('缺少地址')
+    try {
+      const response = await fetch(url, { headers: { 'user-agent': 'reader-panghu' } })
+      if (!response.ok) return fail(`下载失败：HTTP ${response.status}`)
+      const parsed = JSON.parse(await response.text())
+      const list = Array.isArray(parsed) ? parsed : [parsed]
+      return ok(list.filter((item) => item?.sourceUrl).map((item) => JSON.stringify(item)))
+    } catch (error) {
+      return fail(`解析订阅源失败：${error.message}`)
+    }
+  })
+
+  app.post('/reader3/readRssSourceFile', async (req) => {
+    const part = await req.file?.()
+    if (!part) return fail('缺少文件')
+    try {
+      const parsed = JSON.parse(decodeText(await part.toBuffer()))
+      const list = Array.isArray(parsed) ? parsed : [parsed]
+      return ok(list.filter((item) => item?.sourceUrl))
+    } catch (error) {
+      return fail(`解析订阅源失败：${error.message}`)
+    }
+  })
   app.post('/reader3/exploreBook', async () => ok([]))
   app.post('/reader3/exploreBookGlobal', async () => ok({ books: [], lastIndex: -1, hasMore: false }))
   app.post('/reader3/getExploreKinds', async () => ok([]))
 
+  /** 备份包：书架 + 书源 + 分组 + 用户配置。 */
+  const buildBackup = () => ({
+    format: 'reader-panghu-backup',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    books: store.listBooks(),
+    sources: store.listSources(),
+    groups: store.listGroups(),
+    config: store.getUserConfig(),
+  })
+
+  const authHeader = (username, password) =>
+    username ? { authorization: `Basic ${Buffer.from(`${username}:${password || ''}`).toString('base64')}` } : {}
+
+  /** 备份到 WebDAV：PUT 一个 JSON 文件。 */
+  app.post('/reader3/webdavBackup', async (req) => {
+    const { url, username, password } = req.body || {}
+    if (!url) return fail('缺少 WebDAV 地址')
+    const payload = JSON.stringify(buildBackup())
+    try {
+      const response = await fetch(String(url), {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json; charset=utf-8', ...authHeader(username, password) },
+        body: payload,
+      })
+      if (!response.ok) return fail(`WebDAV 返回 HTTP ${response.status}`)
+      return ok({ uploaded: true, bytes: Buffer.byteLength(payload) })
+    } catch (error) {
+      return fail(`备份失败：${error.message}`)
+    }
+  })
+
+  /** 从 WebDAV 恢复：GET 备份文件并写回本地库。 */
+  app.post('/reader3/webdavRestore', async (req) => {
+    const { url, username, password } = req.body || {}
+    if (!url) return fail('缺少 WebDAV 地址')
+    let backup
+    try {
+      const response = await fetch(String(url), { headers: authHeader(username, password) })
+      if (!response.ok) return fail(`WebDAV 返回 HTTP ${response.status}`)
+      backup = JSON.parse(await response.text())
+    } catch (error) {
+      return fail(`读取备份失败：${error.message}`)
+    }
+    if (backup?.format !== 'reader-panghu-backup') return fail('不是 reader-panghu 的备份文件')
+
+    for (const source of backup.sources || []) store.saveSource(source)
+    for (const book of backup.books || []) store.saveBook(book)
+    for (const group of backup.groups || []) store.saveGroup(group)
+    if (backup.config) store.saveUserConfig(backup.config)
+    return ok({
+      restored: {
+        books: (backup.books || []).length,
+        sources: (backup.sources || []).length,
+        groups: (backup.groups || []).length,
+      },
+    })
+  })
+
   app.get('/reader3/getWebdavFileList', async () => ok([]))
   app.get('/reader3/getWebdavFile', async () => ok(''))
-  app.post('/reader3/uploadFileToWebdav', async () => fail('WebDAV 尚未接入'))
-  app.post('/reader3/deleteWebdavFile', async () => fail('WebDAV 尚未接入'))
-  app.post('/reader3/deleteWebdavFileList', async () => fail('WebDAV 尚未接入'))
-
+  app.post('/reader3/uploadFileToWebdav', async () => fail('WebDAV 文件浏览尚未接入；备份请用 /reader3/webdavBackup'))
+  app.post('/reader3/deleteWebdavFile', async () => fail('WebDAV 文件浏览尚未接入'))
+  app.post('/reader3/deleteWebdavFileList', async () => fail('WebDAV 文件浏览尚未接入'))
   app.get('/reader3/getUserList', async () => {
     const user = store.getUser()
     return ok([{ username: user?.username ?? 'reader', isAdmin: true, enable: true }])

@@ -23,7 +23,8 @@ Web UI 按 `reader-next` 的交互**独立重写**（Vue 3，未复制其源码�
 | 本地书格式 TXT / EPUB / DOCX / MOBI | ✅ | 各自合成样本上传后分章、正文、封面均通过 |
 | 书源订阅（Legado 自动拉取） | ✅ | `/api/subscribe` 返回可导入的阅读3 书源数组 |
 | PDF（文字版） | 🧪 可选，非目标 | 提取 Tj/TJ + FlateDecode；不做扫描版/OCR，可随时移除 |
-| RSS / WebDAV | ⏳ | 接口明确返回“尚未接入”，不假装成功 |
+| RSS 订阅 | ✅ | 订阅源增删查、RSS/Atom 解析、正文抓取（剔除 script） |
+| WebDAV 备份 | ✅ | `/reader3/webdavBackup` 与 `/webdavRestore`，异类备份包被拒 |
 
 ## 快速开始
 
