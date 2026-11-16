@@ -100,6 +100,15 @@ Legado 家族书源有两种形态：
 
 `legado-ios v0.1.14` 只支持第 1 种（二进制里有 `ruleSearch`、`SwiftSoup`、`java.ajax`，但没有 `flutter_inappwebview` / `callHandler`）。所以本项目在服务端实现 WebView 运行时，再把结果降维成规则型书源——APP 一行 Swift 都不用改。
 
+## 一键验证
+
+```bash
+pnpm verify          # 静态校验(28项) + 起临时实例跑全部 11 个套件
+pnpm verify:tests    # 只跑套件
+```
+
+退出码即结论（0 全绿），可直接用于 CI 或交付前自检。
+
 ## 测试
 
 ```bash
