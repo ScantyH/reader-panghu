@@ -6,7 +6,7 @@ const route = useRoute()
 const toast = ref('')
 let timer = 0
 
-/** Any view can call window.__toast('...') for a transient message. */
+/** 任何视图都可以用 window.__toast('...') 弹一条短提示。 */
 window.__toast = (message) => {
   toast.value = String(message)
   clearTimeout(timer)
@@ -14,25 +14,37 @@ window.__toast = (message) => {
 }
 
 const isReader = () => route.name === 'reader'
+
+const NAV = [
+  { to: '/bookshelf', label: '书架', icon: '📚' },
+  { to: '/search', label: '搜索', icon: '🔍' },
+  { to: '/sources', label: '书源', icon: '🔗' },
+  { to: '/rss', label: 'RSS', icon: '📰' },
+  { to: '/backup', label: '备份', icon: '💾' },
+]
 </script>
 
 <template>
-  <div v-if="isReader()" class="app-reader">
-    <router-view />
-  </div>
+  <router-view v-if="isReader()" />
+
   <div v-else class="app">
-    <aside class="sidebar">
-      <div class="brand">胖虎<span>阅读</span></div>
-      <router-link class="nav-link" active-class="active" to="/bookshelf">书架</router-link>
-      <router-link class="nav-link" active-class="active" to="/recent">最近</router-link>
-      <router-link class="nav-link" active-class="active" to="/search">搜索</router-link>
-      <router-link class="nav-link" active-class="active" to="/sources">书源</router-link>
-      <router-link class="nav-link" active-class="active" to="/rss">RSS</router-link>
-      <router-link class="nav-link" active-class="active" to="/backup">备份</router-link>
-    </aside>
-    <main class="main">
+    <header class="app-header">
+      <div class="app-title">胖虎<span>阅读</span></div>
+      <div class="spacer" />
+      <router-link class="badge" to="/recent">最近阅读</router-link>
+    </header>
+
+    <main class="app-main">
       <router-view />
     </main>
+
+    <nav class="bottom-nav">
+      <router-link v-for="item in NAV" :key="item.to" :to="item.to">
+        <span class="icon">{{ item.icon }}</span>
+        <span>{{ item.label }}</span>
+      </router-link>
+    </nav>
   </div>
+
   <div v-if="toast" class="toast">{{ toast }}</div>
 </template>
