@@ -56,12 +56,23 @@ function open(book) {
 
 async function checkUpdates() {
   try {
-    window.__toast?.('正在检查连载更新…')
-    const report = await api.checkChapterUpdates()
-    await load()
-    window.__toast?.(
-      report.updated > 0 ? `检查 ${report.checked} 本，${report.updated} 本有新章节` : `检查 ${report.checked} 本，暂无更新`,
-    )
+    const started = await api.checkChapterUpdates()
+    if (!started.started) {
+      window.__toast?.(started.reason === 'already-running' ? '已有检查在进行中' : '书架里还没有连载书')
+      return
+    }
+    window.__toast?.(`正在检查 ${started.total} 本…`)
+    // 后台任务：轮询进度，避免长时间挂住界面
+    for (let round = 0; round < 160; round += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const status = await api.chapterUpdateStatus()
+      if (status.running) continue
+      await load()
+      const count = status.updatedBooks?.length || 0
+      window.__toast?.(count ? `${count} 本有新章节` : '暂无更新')
+      return
+    }
+    window.__toast?.('检查仍在后台进行，稍后刷新书架')
   } catch (error) {
     window.__toast?.(error.message)
   }

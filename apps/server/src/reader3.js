@@ -466,69 +466,94 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
 /** 本地文件书的 origin 只可能是这几个；其他 local:// 是书源自己的 URL 方案。 */
   const isLocalBook = (book) => /^local:\/\/(txt|epub|docx|mobi|pdf)$/.test(String(book?.origin || ''))
 
-  /** 最近一次新章节检查的结果（进程内，重启清空）。 */
-  let lastUpdateReport = { lastCheckTime: 0, checkedBooks: 0, updatedBooks: [], failedBooks: [] }
+  /** 最近一次新章节检查的进度与结果（进程内，重启清空）。 */
+  let updateJob = {
+    running: false,
+    total: 0,
+    checked: 0,
+    lastCheckTime: 0,
+    updatedBooks: [],
+    failedBooks: [],
+  }
+
+  const toChapterList = (fetched) =>
+    (Array.isArray(fetched) ? fetched : []).map((chapter, index) => ({
+      title: String(chapter?.name ?? ('第' + (index + 1) + '章')),
+      url: String(chapter?.chapterId ?? ''),
+      index: Number(chapter?.index ?? index),
+    }))
+
+  /** 检查单本书；返回新章节信息或 null。 */
+  async function checkOneBook(book) {
+    const fetched = await withRuntime(book.origin, (runtime) => runtime.chapter(book.tocUrl || book.bookUrl))
+    const chapters = toChapterList(fetched)
+    if (!chapters.length) throw new Error('目录为空')
+
+    const before = Number(book.totalChapterNum || 0)
+    if (chapters.length > before) {
+      store.saveChapters(book.bookUrl, book.origin, chapters)
+      store.saveBook({
+        ...book,
+        totalChapterNum: chapters.length,
+        latestChapterTitle: chapters[chapters.length - 1].title,
+        lastCheckTime: Date.now(),
+      })
+      return { bookUrl: book.bookUrl, name: book.name, before, after: chapters.length }
+    }
+    store.saveBook({ ...book, lastCheckTime: Date.now() })
+    return null
+  }
+
+  /**
+   * 后台跑完整个书架：请求立即返回，界面轮询 getChapterUpdateStatus 看进度。
+   * 串行执行，避免同时打爆书源。
+   */
+  async function runUpdateCheck(books) {
+    updateJob = { running: true, total: books.length, checked: 0, lastCheckTime: updateJob.lastCheckTime, updatedBooks: [], failedBooks: [] }
+    for (const book of books) {
+      try {
+        const updated = await checkOneBook(book)
+        if (updated) updateJob.updatedBooks.push(updated)
+      } catch (error) {
+        updateJob.failedBooks.push({ bookUrl: book.bookUrl, name: book.name, error: error.message })
+      }
+      updateJob.checked += 1
+    }
+    updateJob.running = false
+    updateJob.lastCheckTime = Date.now()
+  }
 
   app.get('/reader3/getChapterUpdateStatus', async () => {
-    const books = store.listBooks()
-    const count = books.filter(isLocalBook).length
+    const localBooks = store.listBooks().filter(isLocalBook).length
     return ok({
-      running: false,
-      lastCheckTime: lastUpdateReport.lastCheckTime,
-      checkedBooks: lastUpdateReport.checkedBooks,
-      updatedBooks: lastUpdateReport.updatedBooks,
+      running: updateJob.running,
+      total: updateJob.total,
+      checked: updateJob.checked,
+      lastCheckTime: updateJob.lastCheckTime,
+      checkedBooks: updateJob.total,
+      updatedBooks: updateJob.updatedBooks,
       pendingBooks: [],
-      failedBooks: lastUpdateReport.failedBooks,
+      failedBooks: updateJob.failedBooks,
       report: null,
-      localBooks: count,
+      localBooks,
     })
   })
 
   /**
    * 检查书架上的连载书有没有新章节：重新抓目录，与已知章节数比较。
-   * 只处理非本地书；单次最多 30 本，避免一次请求打爆书源。
+   * 只处理非本地书；单次最多 30 本。
    */
   app.post('/reader3/checkChapterUpdates', async (req) => {
+    if (updateJob.running) return ok({ started: false, reason: 'already-running', total: updateJob.total })
     const limit = Math.min(Number(req.body?.limit) || 30, 30)
     const books = store
       .listBooks()
       .filter((book) => !isLocalBook(book))
       .slice(0, limit)
+    if (!books.length) return ok({ started: false, reason: 'no-books', total: 0 })
 
-    const updated = []
-    const failed = []
-    for (const book of books) {
-      try {
-        const fetched = await withRuntime(book.origin, (runtime) => runtime.chapter(book.tocUrl || book.bookUrl))
-        const chapters = (Array.isArray(fetched) ? fetched : []).map((chapter, index) => ({
-          title: String(chapter?.name ?? ('第' + (index + 1) + '章')),
-          url: String(chapter?.chapterId ?? ''),
-          index: Number(chapter?.index ?? index),
-        }))
-        if (!chapters.length) {
-          failed.push({ bookUrl: book.bookUrl, name: book.name, error: '目录为空' })
-          continue
-        }
-        const before = Number(book.totalChapterNum || 0)
-        if (chapters.length > before) {
-          updated.push({ bookUrl: book.bookUrl, name: book.name, before, after: chapters.length })
-          store.saveChapters(book.bookUrl, book.origin, chapters)
-          store.saveBook({
-            ...book,
-            totalChapterNum: chapters.length,
-            latestChapterTitle: chapters[chapters.length - 1].title,
-            lastCheckTime: Date.now(),
-          })
-        } else {
-          store.saveBook({ ...book, lastCheckTime: Date.now() })
-        }
-      } catch (error) {
-        failed.push({ bookUrl: book.bookUrl, name: book.name, error: error.message })
-      }
-    }
-
-    lastUpdateReport = { lastCheckTime: Date.now(), checkedBooks: books.length, updatedBooks: updated, failedBooks: failed }
-    return ok({ started: true, checked: books.length, updated: updated.length, books: updated, failed })
+    void runUpdateCheck(books)
+    return ok({ started: true, total: books.length })
   })
 
   app.log.info(`[reader3] registered · sources=${store.listSources().length} books=${store.listBooks().length}`)
