@@ -11,6 +11,7 @@ import ReplaceRules from './views/ReplaceRules.vue'
 import CacheManage from './views/CacheManage.vue'
 import Stats from './views/Stats.vue'
 import Webdav from './views/Webdav.vue'
+import Login from './views/Login.vue'
 
 export default createRouter({
   history: createWebHistory(),
@@ -28,6 +29,7 @@ export default createRouter({
     { path: '/cache', name: 'cache', component: CacheManage },
     { path: '/stats', name: 'stats', component: Stats },
     { path: '/webdav', name: 'webdav', component: Webdav },
+    { path: '/login', name: 'login', component: Login },
     { path: '/read', name: 'reader', component: Reader, props: (route) => ({ bookUrl: String(route.query.book || '') }) },
   ],
 })

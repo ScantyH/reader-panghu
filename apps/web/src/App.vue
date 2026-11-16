@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
@@ -16,6 +16,26 @@ window.__toast = (message) => {
 }
 
 const isReader = () => route.name === 'reader'
+const isLogin = () => route.name === 'login'
+const authUser = ref('')
+const authOn = ref(false)
+
+async function loadAuth() {
+  try {
+    const info = await api.getUserInfo()
+    authOn.value = Boolean(info?.authEnabled)
+    authUser.value = info?.username || ''
+  } catch {
+    authOn.value = true
+    authUser.value = ''
+  }
+}
+
+async function logout() {
+  await api.logout().catch(() => {})
+  authUser.value = ''
+  location.href = '/login'
+}
 const showHeaderSearch = () => route.name === 'bookshelf' || route.name === 'recent'
 
 function submitSearch() {
@@ -31,10 +51,11 @@ const NAV = [
   { to: '/rss', label: 'RSS', icon: '📰' },
   { to: '/backup', label: '备份', icon: '💾' },
 ]
+onMounted(loadAuth)
 </script>
 
 <template>
-  <router-view v-if="isReader()" />
+  <router-view v-if="isReader() || isLogin()" />
 
   <div v-else class="app">
     <header class="app-header">
@@ -45,6 +66,8 @@ const NAV = [
       </div>
       <div v-else class="spacer" />
       <router-link class="badge" to="/recent">最近阅读</router-link>
+      <span v-if="authUser" class="badge">{{ authUser }}</span>
+      <button v-if="authUser" class="ghost" style="padding: 3px 10px; font-size: 12px" @click="logout">退出</button>
     </header>
 
     <main class="app-main">

@@ -15,7 +15,7 @@ async function request(path, { method = 'GET', body, form } = {}) {
     init.headers = { 'content-type': 'application/json' }
     init.body = JSON.stringify(body)
   }
-  const response = await fetch(`${BASE}${path}`, init)
+  const response = await fetch(`${BASE}${path}`, { ...init, credentials: 'same-origin' })
   const text = await response.text()
   let payload
   try {
@@ -23,11 +23,23 @@ async function request(path, { method = 'GET', body, form } = {}) {
   } catch {
     throw new Error(`${path} → HTTP ${response.status} ${text.slice(0, 80)}`)
   }
-  if (payload.isSuccess === false) throw new Error(payload.errorMsg || '请求失败')
+  if (payload.isSuccess === false) {
+    if (payload.errorMsg === 'NEED_LOGIN' && !location.pathname.startsWith('/login')) {
+      location.href = '/login'
+    }
+    throw new Error(payload.errorMsg || '请求失败')
+  }
   return payload.data !== undefined ? payload.data : payload
 }
 
 export const api = {
+  // auth
+  getAuthMode: () => request('/getAuthMode'),
+  getUserInfo: () => request('/getUserInfo'),
+  login: (username, password) => request('/login', { method: 'POST', body: { username, password } }),
+  register: (username, password) => request('/register', { method: 'POST', body: { username, password } }),
+  logout: () => request('/logout', { method: 'POST', body: {} }),
+
   // shelf
   bookshelf: () => request('/getBookshelf'),
   shelfWithCache: () => request('/getShelfBookWithCacheInfo'),
