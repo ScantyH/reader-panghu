@@ -1,0 +1,8 @@
+﻿node_modules
+.pnpm-store
+data
+tmp-*
+*.log
+*.zip
+.git
+apps/web/dist

@@ -103,6 +103,7 @@ Legado 家族书源有两种形态：
 ## 测试
 
 ```bash
+node scripts/check-docker.mjs   # Docker 构建输入的静态校验（无 docker 环境时用）
 node scripts/test-reader3.mjs   # 契约端到端（搜索→详情→目录→正文→进度→SSE）
 node scripts/test-extras.mjs    # 书签/替换规则/书源导入/本地 TXT
 node scripts/probe-source.js <source.json>   # 直接跑单个书源
