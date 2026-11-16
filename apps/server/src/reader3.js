@@ -217,12 +217,12 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     if (!target) return fail('缺少章节地址')
     // Cached text is served as-is: caching exists so a book stays readable offline.
     if (!req.body?.refresh && book) {
-      const cached = store.getChapterText(book.bookUrl, target)
+      const cached = store.getChapterText(cacheKey(book), target)
       if (cached) return ok(cached)
     }
     const content = await withRuntime(origin, (runtime) => runtime.content(target))
     const text = cleanText(content)
-    if (book && text) store.saveChapterText(book.bookUrl, book.origin, target, text)
+    if (book && text) store.saveChapterText(cacheKey(book), book.origin, target, text)
     return ok(text)
   })
 
@@ -248,18 +248,18 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     for (let index = 0; index < limit; index += 1) {
       const chapter = chapters[index]
       if (!chapter?.url) continue
-      if (!refresh && store.getChapterText(book.bookUrl, chapter.url)) continue
+      if (!refresh && store.getChapterText(cacheKey(book), chapter.url)) continue
       try {
         const text = cleanText(await withRuntime(book.origin, (runtime) => runtime.content(chapter.url)))
         if (text) {
-          store.saveChapterText(book.bookUrl, book.origin, chapter.url, text)
+          store.saveChapterText(cacheKey(book), book.origin, chapter.url, text)
           cached += 1
         }
       } catch {
         /* skip a failing chapter, keep caching the rest */
       }
     }
-    return ok({ cached, requested: limit, totalCached: store.countChapterTexts(book.bookUrl) })
+    return ok({ cached, requested: limit, totalCached: store.countChapterTexts(cacheKey(book)) })
   })
 
   app.post('/reader3/deleteBookCache', async (req) => {
@@ -474,6 +474,9 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   })
 
   /* -------------------------------------------------- chapter update checks */
+
+/** 正文缓存的键：书源 + 书籍地址，避免同一 URL 被不同书源复用时串内容。 */
+const cacheKey = (book) => `${book.origin || ''}|${book.bookUrl}`
 
 /** 本地文件书的 origin 只可能是这几个；其他 local:// 是书源自己的 URL 方案。 */
   const isLocalBook = (book) => /^local:\/\/(txt|epub|docx|mobi|pdf)$/.test(String(book?.origin || ''))

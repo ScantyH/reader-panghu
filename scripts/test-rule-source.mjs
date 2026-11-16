@@ -49,7 +49,7 @@ const CONTENT_HTML = `<html><body>
 </body></html>`
 
 const server = createServer((req, res) => {
-  const url = req.url || '/'
+  const url = (req.url || '/').replace(/^\/xp/, '')
   const send = (html) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
     res.end(html)
@@ -130,6 +130,43 @@ try {
   if (!text.includes('第一章的正文')) throw new Error(`正文错误：${text}`)
   if (text.includes('广告内容')) throw new Error('正文混入了广告块')
   console.log(`  ✓ 正文 → ${text.replace(/\n/g, ' / ')}`)
+
+  // ── 第二种语法：XPath + JS 规则 ──
+  const xpOrigin = origin + '/xp'
+  const xpathSource = {
+    bookSourceName: 'XPath/JS 源',
+    bookSourceUrl: xpOrigin,
+    enabled: true,
+    searchUrl: `${origin}/xp/search?q={{key}}`,
+    ruleSearch: {
+      bookList: '@XPath://tr[@class="book"]',
+      name: '@XPath://h4/a/text()<js>result.trim()</js>',
+      author: 'class.author@text@js:result + "（脚本）"',
+      bookUrl: '@XPath://h4/a/@href',
+    },
+    ruleBookInfo: { name: 'class.book_name@tag.h1@text', tocUrl: 'class.toc-link@href' },
+    ruleToc: { chapterList: '@XPath://ul[@class="chapters"]/li', chapterName: 'tag.a@text', chapterUrl: 'tag.a@href' },
+    ruleContent: { content: 'class.content@textNodes##第二段。' },
+  }
+  await call('/reader3/saveBookSources', { method: 'POST', body: [xpathSource] })
+  const xpBooks = (await call('/reader3/searchBookMulti', { method: 'POST', body: { key: '规则' } })).filter(
+    (book) => book.originName === 'XPath/JS 源',
+  )
+  if (xpBooks.length !== 1) throw new Error(`XPath 搜索应返回 1 本，实际 ${xpBooks.length}`)
+  if (xpBooks[0].name !== '规则之书') throw new Error(`XPath 书名错误：${xpBooks[0].name}`)
+  if (!xpBooks[0].author.includes('脚本')) throw new Error(`JS 规则未生效：${xpBooks[0].author}`)
+  console.log(`  ✓ XPath + JS 搜索 → 《${xpBooks[0].name}》 / ${xpBooks[0].author}`)
+
+  const xpInfo = await call('/reader3/getBookInfo', { method: 'POST', body: { url: xpBooks[0].bookUrl, bookSourceUrl: xpOrigin } })
+  await call('/reader3/saveBook', { method: 'POST', body: xpInfo })
+  const xpToc = await call('/reader3/getChapterList', {
+    method: 'POST',
+    body: { bookUrl: xpInfo.bookUrl, tocUrl: xpInfo.tocUrl, bookSourceUrl: xpOrigin },
+  })
+  if (xpToc.length !== 2) throw new Error(`XPath 目录应有 2 章，实际 ${xpToc.length}`)
+  const xpText = await call('/reader3/getBookContent', { method: 'POST', body: { bookUrl: xpInfo.bookUrl, index: 0, bookSourceUrl: xpOrigin } })
+  if (xpText.includes('第二段')) throw new Error('正则替换未生效（第二段应被移除）')
+  console.log(`  ✓ XPath 目录 + 正则正文 → ${xpText.replace(/\n/g, ' / ')}`)
 } finally {
   server.close()
 }

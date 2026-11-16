@@ -38,6 +38,9 @@ importers:
       jsdom:
         specifier: '>=26'
         version: 31.0.1
+      xpath:
+        specifier: ^0.0.34
+        version: 0.0.34
 
   apps/web:
     dependencies:
@@ -1042,6 +1045,10 @@ packages:
   xmlchars@2.2.0:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
 
+  xpath@0.0.34:
+    resolution: {integrity: sha512-FxF6+rkr1rNSQrhUNYrAFJpRXNzlDoMxeXN5qI84939ylEv3qqPFKa85Oxr6tDaJKqwW6KKyo2v26TSv3k6LeA==}
+    engines: {node: '>=0.6.0'}
+
 snapshots:
 
   '@babel/helper-string-parser@7.29.14': {}
@@ -1887,3 +1894,5 @@ snapshots:
   xml-name-validator@5.0.0: {}
 
   xmlchars@2.2.0: {}
+
+  xpath@0.0.34: {}

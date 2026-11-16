@@ -47,6 +47,7 @@ export class RuleSourceRuntime {
     this.timeoutMs = timeoutMs
     this.userAgent = userAgent
     this.origin = ''
+    this.vars = {}
   }
 
   /** 与 WebView 运行时保持同名接口 */
@@ -93,9 +94,14 @@ export class RuleSourceRuntime {
     return new JSDOM(html, { url: this.origin || this.baseUrl, virtualConsole }).window.document
   }
 
-  #evaluate({ doc, json, rule, label }) {
+  #evaluate({ doc, json, rule, label, book = null }) {
     try {
-      return evaluateRule({ doc, json, rule })
+      return evaluateRule({
+        doc,
+        json,
+        rule,
+        context: { vars: this.vars, baseUrl: this.origin || this.baseUrl, book },
+      })
     } catch (error) {
       throw new Error(`${this.name} 的${label}规则不可用：${error.message}`)
     }
