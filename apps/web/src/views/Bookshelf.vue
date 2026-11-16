@@ -248,6 +248,8 @@ onMounted(load)
       <router-link class="ghost" to="/warehouse" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">书仓</router-link>
       <router-link class="ghost" to="/bookmarks" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">书签</router-link>
       <router-link class="ghost" to="/replace" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">替换规则</router-link>
+      <router-link class="ghost" to="/cache" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">缓存</router-link>
+      <router-link class="ghost" to="/stats" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">统计</router-link>
       <button class="ghost" @click="checkUpdates">检查更新</button>
       <button class="ghost" @click="refreshCache">刷新缓存</button>
       <button class="primary" @click="fileInput.click()">导入</button>
