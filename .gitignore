@@ -1,0 +1,28 @@
+node_modules/
+.pnpm-store/
+
+# Runtime data: databases, uploaded books, generated assets
+data/
+storage/
+*.db
+*.db-journal
+
+# Local book sources are user-private (they carry endpoints and 书源密钥)
+data/sources/*.json
+
+# Logs and probes
+*.log
+probe.log
+debug.log
+*.zip
+
+# Local env
+.env
+.env.local
+.env.docker
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

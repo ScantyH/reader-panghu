@@ -1,0 +1,10 @@
+{
+  "name": "@reader-panghu/legado-source",
+  "version": "0.1.0",
+  "description": "Generate a standard Legado/阅读3 rule-based book source that targets the unified server's HTTP API, from a WebView book source",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  }
+}

@@ -1,0 +1,21 @@
+services:
+  reader-panghu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: reader-panghu:local
+    container_name: reader-panghu
+    restart: unless-stopped
+    ports:
+      - '18080:18080'
+    environment:
+      PORT: '18080'
+      # 公网地址：生成阅读3 书源时用它做 base，留空则按请求 Host 推断
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      SOURCE_TIMEOUT_MS: '45000'
+      LOG_LEVEL: info
+    volumes:
+      - reader-data:/app/data
+
+volumes:
+  reader-data:
