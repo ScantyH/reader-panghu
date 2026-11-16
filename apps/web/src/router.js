@@ -13,6 +13,7 @@ import Stats from './views/Stats.vue'
 import Webdav from './views/Webdav.vue'
 import Login from './views/Login.vue'
 import Users from './views/Users.vue'
+import BookDetailPage from './views/BookDetailPage.vue'
 
 export default createRouter({
   history: createWebHistory(),
@@ -32,6 +33,7 @@ export default createRouter({
     { path: '/webdav', name: 'webdav', component: Webdav },
     { path: '/login', name: 'login', component: Login },
     { path: '/users', name: 'users', component: Users },
+    { path: '/book/:id', name: 'book-detail', component: BookDetailPage },
     { path: '/read', name: 'reader', component: Reader, props: (route) => ({ bookUrl: String(route.query.book || '') }) },
   ],
 })

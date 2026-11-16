@@ -326,6 +326,7 @@ onMounted(load)
             <div class="muted" style="font-size: 12.5px">{{ actionBook.author || '未知作者' }}</div>
           </div>
         </div>
+        <button class="action-sheet-item" @click="openDetail(actionBook)">📄 书籍详情</button>
         <button class="action-sheet-item" @click="runAction('edit')">✏️ 编辑信息与封面</button>
         <button class="action-sheet-item" @click="runAction('cache')">⬇️ 缓存前 20 章</button>
         <button class="action-sheet-item danger" @click="runAction('delete')">🗑️ 从书架删除</button>

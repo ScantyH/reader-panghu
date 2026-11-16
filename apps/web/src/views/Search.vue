@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf, searchStream } from '../api.js'
@@ -11,11 +11,18 @@ const results = ref([])
 const searching = ref(false)
 const picked = ref(null)
 const route = useRoute()
+const progress = ref({ seen: [], counts: {} })
+
+const progressText = computed(() => {
+  const total = sources.value.length
+  const done = progress.value.seen.length
+  return total ? `已搜 ${done}/${total} 个源` : ''
+})
 
 async function loadSources() {
   try {
-    sources.value = (await api.sources()).filter((source) => source.html)
-    if (!sources.value.length) window.__toast?.('还没有可用的 WebView 书源，去「书源」导入')
+    sources.value = (await api.sources()).filter((source) => source.html || source.searchUrl)
+    if (!sources.value.length) window.__toast?.('还没有可用的书源，先去「书源」页导入')
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -25,11 +32,18 @@ async function search() {
   const key = keyword.value.trim()
   if (!key || searching.value) return
   results.value = []
+  progress.value = { seen: [], counts: {} }
   searching.value = true
   try {
     await searchStream({ key, bookSourceUrl: scope.value || undefined }, (books) => {
-      const seen = new Set(results.value.map((book) => `${book.origin}::${book.bookUrl}`))
-      results.value = [...results.value, ...books.filter((book) => !seen.has(`${book.origin}::${book.bookUrl}`))]
+      const dedupe = new Set(results.value.map((book) => `${book.origin}::${book.bookUrl}`))
+      results.value = [...results.value, ...books.filter((book) => !dedupe.has(`${book.origin}::${book.bookUrl}`))]
+      // 按来源累计，没有结果的书源也要算作"已搜过"
+      const origins = new Set(books.map((book) => book.origin || '未知'))
+      const nextCounts = { ...progress.value.counts }
+      for (const origin of origins) nextCounts[origin] = (nextCounts[origin] || 0) + books.filter((book) => (book.origin || '未知') === origin).length
+      const seen = [...new Set([...progress.value.seen, ...origins])]
+      progress.value = { seen, counts: nextCounts }
     })
   } catch (error) {
     window.__toast?.(error.message)
@@ -73,7 +87,7 @@ onMounted(async () => {
     <div class="page-head">
       <h1>搜索</h1>
       <div class="spacer" />
-      <span v-if="searching" class="badge accent">搜索中…</span>
+      <span v-if="searching" class="badge accent">搜索中… {{ progressText }}</span>
       <span v-else-if="results.length" class="badge">{{ results.length }} 个结果</span>
     </div>
 
