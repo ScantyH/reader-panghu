@@ -1,11 +1,50 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '../api.js'
 
+const TAB = { manage: '管理', explore: '探索', check: '检测', debug: '调试' }
+const tab = ref('manage')
 const sources = ref([])
 const loading = ref(false)
-const testing = ref('')
+const keywordFilter = ref('')
+const groupFilter = ref('')
 const fileInput = ref(null)
+const remoteUrl = ref('')
+const editing = ref(null)
+
+// 检测
+const checkKeyword = ref('斗罗')
+const checking = ref(false)
+const checkResults = ref([])
+const checkProgress = ref('')
+const markInvalid = ref(true)
+
+// 探索
+const exploreSource = ref('')
+const exploreKinds = ref([])
+const exploreBooks = ref([])
+const exploreLoading = ref(false)
+
+// 调试
+const debugSource = ref('')
+const debugKeyword = ref('斗罗')
+const debugStage = ref('search')
+const debugUrl = ref('')
+const debugResult = ref(null)
+const debugLoading = ref(false)
+
+const groups = computed(() => [...new Set(sources.value.map((item) => item.bookSourceGroup || ''))].filter(Boolean))
+const filtered = computed(() =>
+  sources.value.filter((source) => {
+    if (groupFilter.value && (source.bookSourceGroup || '') !== groupFilter.value) return false
+    const q = keywordFilter.value.trim()
+    if (!q) return true
+    return (source.bookSourceName || '').includes(q) || (source.bookSourceUrl || '').includes(q)
+  }),
+)
+const exploreable = computed(() => sources.value.filter((item) => item.exploreUrl || item.ruleExplore?.findUrl))
+const invalidCount = computed(() => sources.value.filter((item) => item.invalid === true).length)
+const webviewCount = computed(() => sources.value.filter((item) => item.html).length)
 
 async function load() {
   loading.value = true
@@ -34,7 +73,22 @@ async function importFile(event) {
   }
 }
 
-async function remove(source) {
+async function importRemote() {
+  const url = remoteUrl.value.trim()
+  if (!url) return
+  try {
+    const list = await api.readRemoteSourceFile(url)
+    const parsed = list.map((item) => (typeof item === 'string' ? JSON.parse(item) : item))
+    await api.saveSources(parsed)
+    window.__toast?.(`已从远程导入 ${parsed.length} 个书源`)
+    remoteUrl.value = ''
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function removeSource(source) {
   if (!confirm(`删除书源「${source.bookSourceName}」？`)) return
   try {
     await api.deleteSource(source.bookSourceUrl)
@@ -44,18 +98,121 @@ async function remove(source) {
   }
 }
 
-async function test(source) {
-  testing.value = source.bookSourceUrl
+async function toggle(source) {
   try {
-    const report = await api.testSources([source.bookSourceUrl])
-    const result = report.results?.[0]
-    window.__toast?.(
-      result?.valid ? `可用：搜到 ${report.valid ? '结果' : '0 条'}` : `不可用：${result?.searchError || '无结果'}`,
-    )
+    const next = source.enabled === false
+    await api.setSourceEnabled(source.bookSourceUrl, next)
+    source.enabled = next
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function saveEdited(json) {
+  try {
+    const parsed = JSON.parse(json)
+    await api.saveSources([parsed])
+    editing.value = null
+    await load()
+    window.__toast?.('书源已保存')
+  } catch (error) {
+    window.__toast?.(`保存失败：${error.message}`)
+  }
+}
+
+async function runCheck() {
+  const targets = filtered.value.map((item) => item.bookSourceUrl)
+  if (!targets.length) return
+  checking.value = true
+  checkResults.value = []
+  const total = targets.length
+  let done = 0
+  const concurrency = 5
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < targets.length) {
+      const bookSourceUrl = targets[cursor++]
+      try {
+        const report = await api.testSources([bookSourceUrl], {
+          keyword: checkKeyword.value.trim() || '斗罗',
+          markInvalid: markInvalid.value,
+        })
+        const item = report.results?.[0]
+        checkResults.value = [...checkResults.value, item ?? { bookSourceUrl, valid: false, searchError: '无返回' }]
+      } catch (error) {
+        checkResults.value = [...checkResults.value, { bookSourceUrl, valid: false, searchError: error.message }]
+      }
+      done += 1
+      checkProgress.value = `${done}/${total}`
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, worker))
+  checking.value = false
+  await load()
+  const okCount = checkResults.value.filter((item) => item.valid).length
+  window.__toast?.(`检测完成：可用 ${okCount} / ${total}`)
+}
+
+async function purgeInvalid() {
+  const list = await api.invalidSources()
+  if (!list.length) {
+    window.__toast?.('没有标记为失效的书源')
+    return
+  }
+  if (!confirm(`删除 ${list.length} 个已标记失效的书源？`)) return
+  try {
+    const result = await api.deleteInvalidSources()
+    window.__toast?.(`已删除 ${result.deleted} 个`)
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function loadKinds() {
+  if (!exploreSource.value) return
+  exploreLoading.value = true
+  exploreBooks.value = []
+  try {
+    exploreKinds.value = await api.exploreKinds(exploreSource.value)
+    if (!exploreKinds.value.length) window.__toast?.('这个书源没有探索分类')
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
-    testing.value = ''
+    exploreLoading.value = false
+  }
+}
+
+async function openKind(kind) {
+  exploreLoading.value = true
+  try {
+    exploreBooks.value = await api.exploreBook(exploreSource.value, kind.url, 1)
+    if (!exploreBooks.value.length) window.__toast?.('该分类没有取到书籍')
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    exploreLoading.value = false
+  }
+}
+
+async function runDebug() {
+  if (!debugSource.value) {
+    window.__toast?.('先选一个书源')
+    return
+  }
+  debugLoading.value = true
+  debugResult.value = null
+  try {
+    debugResult.value = await api.debugSource({
+      bookSourceUrl: debugSource.value,
+      stage: debugStage.value,
+      keyword: debugKeyword.value,
+      url: debugUrl.value,
+    })
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    debugLoading.value = false
   }
 }
 
@@ -66,35 +223,166 @@ onMounted(load)
   <div>
     <div class="page-head">
       <h1>书源</h1>
-      <span class="badge">{{ sources.length }}</span>
+      <span class="badge">{{ sources.length }} 个 · WebView {{ webviewCount }} · 失效 {{ invalidCount }}</span>
       <div class="spacer" />
-      <input ref="fileInput" type="file" accept=".json" hidden @change="importFile" />
-      <button class="primary" @click="fileInput.click()">导入书源</button>
       <button class="ghost" :disabled="loading" @click="load">刷新</button>
     </div>
 
-    <p class="muted" style="font-size: 13px; margin-top: -8px">
-      WebView 书源（带 <code>html</code>）由服务端执行；规则型书源由客户端执行，这里只负责保存与同步。
-    </p>
+    <div class="group-tabs">
+      <button v-for="(label, key) in TAB" :key="key" class="group-tab" :class="{ active: tab === key }" @click="tab = key">
+        {{ label }}
+      </button>
+    </div>
 
-    <div v-if="!sources.length" class="empty">还没有书源。导入一个 Legado 包装的 JSON（内含 html 字段）。</div>
+    <!-- 管理 -->
+    <section v-if="tab === 'manage'">
+      <div class="row" style="margin-bottom: 12px; flex-wrap: wrap">
+        <input v-model="keywordFilter" placeholder="搜索名称或地址" style="flex: 1; min-width: 180px" />
+        <select v-model="groupFilter" style="max-width: 180px">
+          <option value="">全部分组</option>
+          <option v-for="group in groups" :key="group" :value="group">{{ group }}</option>
+        </select>
+        <input ref="fileInput" type="file" accept=".json" hidden @change="importFile" />
+        <button class="primary" @click="fileInput.click()">导入文件</button>
+      </div>
+      <div class="row" style="margin-bottom: 16px">
+        <input v-model="remoteUrl" placeholder="远程书源地址（订阅链接）" style="flex: 1" @keyup.enter="importRemote" />
+        <button @click="importRemote">从 URL 导入</button>
+      </div>
 
-    <div class="list">
-      <div v-for="source in sources" :key="source.bookSourceUrl" class="list-item">
-        <div style="flex: 1; min-width: 0">
-          <div class="row" style="gap: 8px">
-            <strong>{{ source.bookSourceName }}</strong>
-            <span class="badge" :class="{ accent: source.html }">{{ source.html ? 'WebView' : '规则型' }}</span>
-            <span v-if="source.bookSourceGroup" class="badge">{{ source.bookSourceGroup }}</span>
+      <div v-if="!filtered.length" class="empty">没有匹配的书源</div>
+      <div v-else class="list">
+        <div v-for="source in filtered" :key="source.bookSourceUrl" class="list-item">
+          <div style="flex: 1; min-width: 0">
+            <div class="row" style="gap: 6px; flex-wrap: wrap">
+              <strong>{{ source.bookSourceName }}</strong>
+              <span class="badge" :class="{ accent: source.html }">{{ source.html ? 'WebView' : '规则' }}</span>
+              <span v-if="source.bookSourceGroup" class="badge">{{ source.bookSourceGroup }}</span>
+              <span v-if="source.invalid" class="badge" style="color: var(--color-danger)">失效</span>
+              <span v-if="source.enabled === false" class="badge">已禁用</span>
+            </div>
+            <div class="muted" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+              {{ source.bookSourceUrl }}
+            </div>
           </div>
-          <div class="muted" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-            {{ source.bookSourceUrl }}
+          <button class="ghost" @click="toggle(source)">{{ source.enabled === false ? '启用' : '禁用' }}</button>
+          <button class="ghost" @click="editing = JSON.stringify(source, null, 2)">编辑</button>
+          <button class="ghost" @click="removeSource(source)">删除</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 探索 -->
+    <section v-if="tab === 'explore'">
+      <div class="row" style="margin-bottom: 16px; flex-wrap: wrap">
+        <select v-model="exploreSource" style="flex: 1; max-width: 420px" @change="loadKinds">
+          <option value="">选择带探索规则的书源（{{ exploreable.length }} 个可用）</option>
+          <option v-for="source in exploreable" :key="source.bookSourceUrl" :value="source.bookSourceUrl">
+            {{ source.bookSourceName }}
+          </option>
+        </select>
+        <button :disabled="exploreLoading || !exploreSource" @click="loadKinds">
+          {{ exploreLoading ? '加载中…' : '加载分类' }}
+        </button>
+      </div>
+
+      <div v-if="exploreKinds.length" class="group-tabs">
+        <button v-for="kind in exploreKinds" :key="kind.title" class="group-tab" @click="openKind(kind)">{{ kind.title }}</button>
+      </div>
+
+      <div v-if="exploreBooks.length" class="grid">
+        <div v-for="book in exploreBooks" :key="book.bookUrl" class="card">
+          <div class="cover">
+            <img v-if="book.coverUrl" :src="book.coverUrl" :alt="book.name" loading="lazy" />
+            <div v-else class="placeholder">{{ book.name }}</div>
+          </div>
+          <h3>{{ book.name }}</h3>
+          <p>{{ book.author }}</p>
+        </div>
+      </div>
+      <div v-else-if="!exploreLoading" class="empty">选一个书源和分类，这里会显示书籍。</div>
+    </section>
+
+    <!-- 检测 -->
+    <section v-if="tab === 'check'">
+      <div class="row" style="margin-bottom: 12px; flex-wrap: wrap">
+        <input v-model="checkKeyword" placeholder="测试关键词" style="max-width: 200px" />
+        <label class="row" style="gap: 6px; font-size: 13px">
+          <input v-model="markInvalid" type="checkbox" style="width: auto" /> 标记失效
+        </label>
+        <div class="spacer" />
+        <span v-if="checkProgress" class="badge">{{ checkProgress }}</span>
+        <button class="primary" :disabled="checking" @click="runCheck">
+          {{ checking ? '检测中…' : `检测 ${filtered.length} 个书源` }}
+        </button>
+        <button class="ghost" @click="purgeInvalid">删除已标记失效</button>
+      </div>
+
+      <div v-if="!checkResults.length" class="empty">用关键词跑一遍，能搜到书的算可用。</div>
+      <div v-else class="list">
+        <div v-for="item in checkResults" :key="item.bookSourceUrl" class="list-item">
+          <span class="badge" :class="{ accent: item.valid }">{{ item.valid ? '可用' : '失效' }}</span>
+          <div style="flex: 1; min-width: 0">
+            <strong>{{ item.bookSourceName || item.bookSourceUrl }}</strong>
+            <div class="muted" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+              {{ item.valid ? '搜索正常' : (item.searchError || '没有结果') }}
+            </div>
           </div>
         </div>
-        <button class="ghost" :disabled="testing === source.bookSourceUrl || !source.html" @click="test(source)">
-          {{ testing === source.bookSourceUrl ? '测试中' : '测试' }}
-        </button>
-        <button class="ghost" @click="remove(source)">删除</button>
+      </div>
+    </section>
+
+    <!-- 调试 -->
+    <section v-if="tab === 'debug'">
+      <div class="row" style="margin-bottom: 12px; flex-wrap: wrap">
+        <select v-model="debugSource" style="flex: 1; max-width: 420px">
+          <option value="">选择书源</option>
+          <option v-for="source in sources" :key="source.bookSourceUrl" :value="source.bookSourceUrl">
+            {{ source.bookSourceName }}
+          </option>
+        </select>
+        <select v-model="debugStage" style="max-width: 140px">
+          <option value="search">搜索</option>
+          <option value="info">详情</option>
+          <option value="toc">目录</option>
+          <option value="content">正文</option>
+        </select>
+      </div>
+      <div class="row" style="margin-bottom: 12px; flex-wrap: wrap">
+        <input v-if="debugStage === 'search'" v-model="debugKeyword" placeholder="关键词" style="max-width: 240px" />
+        <input v-else v-model="debugUrl" placeholder="页面地址（书籍/目录/章节）" style="flex: 1" />
+        <button class="primary" :disabled="debugLoading" @click="runDebug">{{ debugLoading ? '执行中…' : '执行' }}</button>
+      </div>
+
+      <div v-if="debugResult">
+        <div class="row" style="margin-bottom: 8px; flex-wrap: wrap">
+          <span class="badge" :class="{ accent: debugResult.ok }">{{ debugResult.ok ? '成功' : '失败' }}</span>
+          <span class="badge">{{ debugResult.elapsedMs }}ms</span>
+          <span class="muted" style="font-size: 12px; word-break: break-all">{{ debugResult.request }}</span>
+        </div>
+        <div v-if="debugResult.error" class="list-item" style="border-color: var(--color-danger)">
+          <span style="color: var(--color-danger)">{{ debugResult.error }}</span>
+        </div>
+
+        <h3 style="font-size: 14px; margin: 16px 0 8px">解析结果</h3>
+        <pre class="debug-pre">{{ JSON.stringify(debugResult.parsed, null, 2) }}</pre>
+
+        <h3 style="font-size: 14px; margin: 16px 0 8px">原始响应（前 4000 字符）</h3>
+        <pre class="debug-pre">{{ debugResult.raw || '(WebView 书源没有原始 HTML)' }}</pre>
+      </div>
+      <div v-else-if="!debugLoading" class="empty">选书源和阶段，点执行查看每一步的原始响应与解析结果。</div>
+    </section>
+
+    <!-- 编辑抽屉 -->
+    <div v-if="editing" class="sheet-backdrop" @click.self="editing = null">
+      <div class="sheet" style="width: min(760px, 100%)">
+        <div class="sheet-handle" />
+        <h2>编辑书源</h2>
+        <textarea v-model="editing" rows="18" style="font-family: ui-monospace, monospace; font-size: 12.5px" />
+        <div class="row" style="justify-content: flex-end; margin-top: 12px">
+          <button class="ghost" @click="editing = null">取消</button>
+          <button class="primary" @click="saveEdited(editing)">保存</button>
+        </div>
       </div>
     </div>
   </div>

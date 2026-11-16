@@ -117,24 +117,102 @@ export class RuleSourceRuntime {
     const nodes = queryNodes({ doc, rule: this.source.ruleSearch?.bookList })
     if (!nodes.length) return []
 
-    const rule = this.source.ruleSearch || {}
+    return this.#mapBooks(nodes, this.source.ruleSearch || {})
+  }
+
+  /** 把一组节点按字段规则映射成书籍（搜索与探索共用） */
+  #mapBooks(nodes, rule) {
     return nodes
-      .map((node) => {
-        const book = {
-          name: this.#evaluate({ doc: node, rule: rule.name, label: '书名' }),
-          author: this.#evaluate({ doc: node, rule: rule.author, label: '作者' }),
-          bookUrl: this.#absolute(this.#evaluate({ doc: node, rule: rule.bookUrl, label: '书籍地址' })),
-          coverUrl: this.#absolute(this.#evaluate({ doc: node, rule: rule.coverUrl, label: '封面' })),
-          intro: this.#evaluate({ doc: node, rule: rule.intro, label: '简介' }),
-          kind: this.#evaluate({ doc: node, rule: rule.kind, label: '分类' }),
-          latestChapterTitle: this.#evaluate({ doc: node, rule: rule.lastChapter, label: '最新章节' }),
-          wordCount: this.#evaluate({ doc: node, rule: rule.wordCount, label: '字数' }),
-          tocUrl: '',
-          type: 0,
-        }
-        return book
-      })
+      .map((node) => ({
+        name: this.#evaluate({ doc: node, rule: rule.name, label: '书名' }),
+        author: this.#evaluate({ doc: node, rule: rule.author, label: '作者' }),
+        bookUrl: this.#absolute(this.#evaluate({ doc: node, rule: rule.bookUrl, label: '书籍地址' })),
+        coverUrl: this.#absolute(this.#evaluate({ doc: node, rule: rule.coverUrl, label: '封面' })),
+        intro: this.#evaluate({ doc: node, rule: rule.intro, label: '简介' }),
+        kind: this.#evaluate({ doc: node, rule: rule.kind, label: '分类' }),
+        latestChapterTitle: this.#evaluate({ doc: node, rule: rule.lastChapter, label: '最新章节' }),
+        wordCount: this.#evaluate({ doc: node, rule: rule.wordCount, label: '字数' }),
+        tocUrl: '',
+        type: 0,
+      }))
       .filter((book) => book.name && book.bookUrl)
+  }
+
+  /** 公开取页，供探索与调试复用 */
+  async fetchPage(url) {
+    return this.#fetch(this.#absolute(url))
+  }
+
+  /** 探索分类页：优先 ruleExplore，退回 ruleSearch */
+  async explore(categoryUrl, page = 1) {
+    const target = String(categoryUrl).split('{{page}}').join(String(page))
+    const html = await this.#fetch(this.#absolute(target))
+    const doc = this.#dom(html)
+    const rule = this.source.ruleExplore?.bookList ? this.source.ruleExplore : this.source.ruleSearch
+    if (!rule?.bookList) return []
+    return this.#mapBooks(queryNodes({ doc, rule: rule.bookList }), rule)
+  }
+
+  /** 调试：逐阶段返回请求地址、原始响应与解析结果 */
+  async debug(stage, params = {}) {
+    const started = Date.now()
+    const result = { stage, request: '', ok: false, elapsedMs: 0, raw: '', parsed: null, error: '' }
+    try {
+      if (stage === 'search') {
+        const { url, options } = splitUrlOptions(this.source.searchUrl)
+        const target = url
+          .split('{{key}}').join(encodeURIComponent(params.keyword || ''))
+          .split('{{page}}').join(String(params.page || 1))
+        result.request = this.#absolute(target)
+        const html = await this.#fetch(result.request, options)
+        result.raw = html.slice(0, 4000)
+        const doc = this.#dom(html)
+        const rule = this.source.ruleSearch || {}
+        const nodes = queryNodes({ doc, rule: rule.bookList })
+        result.parsed = { bookList: nodes.length, books: this.#mapBooks(nodes, rule).slice(0, 5) }
+      } else if (stage === 'info') {
+        result.request = this.#absolute(params.url || '')
+        const html = await this.#fetch(result.request)
+        result.raw = html.slice(0, 4000)
+        const doc = this.#dom(html)
+        const rule = this.source.ruleBookInfo || {}
+        result.parsed = {
+          name: this.#evaluate({ doc, rule: rule.name, label: '书名' }),
+          author: this.#evaluate({ doc, rule: rule.author, label: '作者' }),
+          intro: this.#evaluate({ doc, rule: rule.intro, label: '简介' }).slice(0, 200),
+          tocUrl: this.#absolute(this.#evaluate({ doc, rule: rule.tocUrl, label: '目录地址' })),
+        }
+      } else if (stage === 'toc') {
+        result.request = this.#absolute(params.url || '')
+        const html = await this.#fetch(result.request)
+        result.raw = html.slice(0, 4000)
+        const doc = this.#dom(html)
+        const rule = this.source.ruleToc || {}
+        const nodes = queryNodes({ doc, rule: rule.chapterList })
+        result.parsed = {
+          chapterList: nodes.length,
+          chapters: nodes.slice(0, 10).map((node) => ({
+            title: this.#evaluate({ doc: node, rule: rule.chapterName, label: '章节名' }),
+            url: this.#absolute(this.#evaluate({ doc: node, rule: rule.chapterUrl, label: '章节地址' })),
+          })),
+        }
+      } else if (stage === 'content') {
+        result.request = this.#absolute(params.url || '')
+        const html = await this.#fetch(result.request)
+        result.raw = html.slice(0, 4000)
+        const doc = this.#dom(html)
+        const rule = this.source.ruleContent || {}
+        const text = this.#evaluate({ doc, rule: rule.content, label: '正文' })
+        result.parsed = { length: text.length, text: text.slice(0, 500) }
+      } else {
+        throw new Error(`未知阶段：${stage}`)
+      }
+      result.ok = true
+    } catch (error) {
+      result.error = error.message
+    }
+    result.elapsedMs = Date.now() - started
+    return result
   }
 
   async info(bookUrl) {

@@ -353,3 +353,18 @@
 .reader-zone.right {
   right: 0;
 }
+/* ─── 书源调试输出 ─── */
+.debug-pre {
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--color-text-secondary);
+}

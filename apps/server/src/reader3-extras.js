@@ -14,6 +14,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
+import { makeRuntime, parseExploreKinds } from './source-tools.js'
 import { parseDocx } from './docx.js'
 import { parseEpub } from './epub.js'
 import { parseFeed } from './rss.js'
@@ -143,8 +144,16 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
     }
   })
 
-  app.post('/reader3/getInvalidBookSources', async () => ok([]))
-  app.post('/reader3/deleteInvalidBookSources', async () => ok({ deleted: 0 }))
+  /** 失效书源：检测时标记为 invalid 的源 */
+  app.post('/reader3/getInvalidBookSources', async () => ok(store.listSources().filter((source) => source.invalid === true)))
+
+  app.post('/reader3/deleteInvalidBookSources', async () => {
+    const invalid = store.listSources().filter((source) => source.invalid === true)
+    let deleted = 0
+    for (const source of invalid) if (store.deleteSource(source.bookSourceUrl)) deleted += 1
+    return ok({ deleted })
+  })
+  app.post('/reader3/exploreBookGlobal', async () => ok({ books: [], lastIndex: -1, hasMore: false }))
   app.post('/reader3/setAsDefaultBookSources', async () => fail('单用户部署无需共享书源'))
 
   /** Real test: run the keyword search against each named source. */
@@ -200,6 +209,17 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
         runtime.dispose()
       }
     }
+    // 勾选「标记失效」时把不可用的源打上 invalid 标记，便于批量清理
+    if (req.body?.markInvalid) {
+      for (const item of results) {
+        if (item.valid) continue
+        const source = store.getSource(item.bookSourceUrl)
+        if (!source) continue
+        store.saveSource({ ...source, invalid: true })
+        item.markedInvalid = true
+      }
+    }
+
     const valid = results.filter((item) => item.valid).length
     return ok({ total: results.length, valid, invalid: results.length - valid, markedInvalid: 0, results })
   })
@@ -556,9 +576,68 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
       return fail(`解析订阅源失败：${error.message}`)
     }
   })
-  app.post('/reader3/exploreBook', async () => ok([]))
-  app.post('/reader3/exploreBookGlobal', async () => ok({ books: [], lastIndex: -1, hasMore: false }))
-  app.post('/reader3/getExploreKinds', async () => ok([]))
+  /** 探索：列出该书的分类入口 */
+  app.post('/reader3/getExploreKinds', async (req) => {
+    const source = store.getSource(String(req.body?.bookSourceUrl ?? ''))
+    if (!source) return fail('书源不存在')
+    const kinds = parseExploreKinds(source.exploreUrl || source.ruleExplore?.findUrl || '')
+    return ok(kinds)
+  })
+
+  /** 探索：打开某个分类页，返回书籍列表 */
+  app.post('/reader3/exploreBook', async (req) => {
+    const source = store.getSource(String(req.body?.bookSourceUrl ?? ''))
+    if (!source) return fail('书源不存在')
+    const categoryUrl = String(req.body?.url ?? '')
+    if (!categoryUrl) return fail('缺少分类地址')
+    const page = Number(req.body?.page) || 1
+    const runtime = makeRuntime(source)
+    try {
+      await runtime.init()
+      const books = await runtime.explore(categoryUrl, page)
+      return ok(Array.isArray(books) ? books : [])
+    } catch (error) {
+      return fail(`探索失败：${error.message}`)
+    } finally {
+      runtime.dispose()
+    }
+  })
+
+  /** 调试：逐阶段返回请求地址、原始响应与解析结果 */
+  app.post('/reader3/debugSource', async (req) => {
+    const source = store.getSource(String(req.body?.bookSourceUrl ?? ''))
+    if (!source) return fail('书源不存在')
+    const stage = String(req.body?.stage || 'search')
+    const runtime = makeRuntime(source)
+    try {
+      await runtime.init()
+      if (typeof runtime.debug === 'function') {
+        return ok(await runtime.debug(stage, { keyword: req.body?.keyword, url: req.body?.url, page: req.body?.page }))
+      }
+      // WebView 书源没有原始 HTML 可看，直接返回解析结果
+      const parsed =
+        stage === 'search'
+          ? { books: (await runtime.search(String(req.body?.keyword || ''), 1)).slice(0, 5) }
+          : stage === 'info'
+            ? { info: await runtime.info(String(req.body?.url || '')) }
+            : stage === 'toc'
+              ? { chapters: (await runtime.chapter(String(req.body?.url || ''))).slice(0, 10) }
+              : { content: String(await runtime.content(String(req.body?.url || ''))).slice(0, 500) }
+      return ok({ stage, ok: true, request: String(req.body?.url || ''), raw: '', parsed, elapsedMs: 0, error: '' })
+    } catch (error) {
+      return ok({ stage, ok: false, request: String(req.body?.url || ''), raw: '', parsed: null, elapsedMs: 0, error: error.message })
+    } finally {
+      runtime.dispose()
+    }
+  })
+
+  /** 启用 / 禁用书源 */
+  app.post('/reader3/setSourceEnabled', async (req) => {
+    const source = store.getSource(String(req.body?.bookSourceUrl ?? ''))
+    if (!source) return fail('书源不存在')
+    store.saveSource({ ...source, enabled: Boolean(req.body?.enabled) })
+    return ok({ saved: true, enabled: Boolean(req.body?.enabled) })
+  })
 
   /** 备份包：书架 + 书源 + 分组 + 用户配置。 */
   const buildBackup = () => ({

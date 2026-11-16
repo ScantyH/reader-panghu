@@ -53,7 +53,16 @@ export const api = {
   sources: () => request('/getBookSources'),
   saveSources: (sources) => request('/saveBookSources', { method: 'POST', body: sources }),
   deleteSource: (bookSourceUrl) => request('/deleteBookSource', { method: 'POST', body: { bookSourceUrl } }),
-  testSources: (bookSourceUrls) => request('/testBookSources', { method: 'POST', body: { bookSourceUrls } }),
+  testSources: (bookSourceUrls, options = {}) =>
+    request('/testBookSources', { method: 'POST', body: { bookSourceUrls, ...options } }),
+  setSourceEnabled: (bookSourceUrl, enabled) =>
+    request('/setSourceEnabled', { method: 'POST', body: { bookSourceUrl, enabled } }),
+  invalidSources: () => request('/getInvalidBookSources', { method: 'POST', body: {} }),
+  deleteInvalidSources: () => request('/deleteInvalidBookSources', { method: 'POST', body: {} }),
+  exploreKinds: (bookSourceUrl) => request('/getExploreKinds', { method: 'POST', body: { bookSourceUrl } }),
+  exploreBook: (bookSourceUrl, url, page = 1) =>
+    request('/exploreBook', { method: 'POST', body: { bookSourceUrl, url, page } }),
+  debugSource: (payload) => request('/debugSource', { method: 'POST', body: payload }),
   importSourceFile: (file) => {
     const form = new FormData()
     form.append('file', file)
