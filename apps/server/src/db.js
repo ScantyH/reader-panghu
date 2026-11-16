@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS chapters (
   PRIMARY KEY (book_url, origin)
 );
 
+CREATE TABLE IF NOT EXISTS chapter_text (
+  book_url TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  chapter_url TEXT NOT NULL,
+  content TEXT NOT NULL,
+  cached_at INTEGER NOT NULL,
+  PRIMARY KEY (book_url, chapter_url)
+);
+
 CREATE TABLE IF NOT EXISTS book_groups (
   user_id INTEGER NOT NULL,
   group_id INTEGER NOT NULL,
@@ -249,6 +258,33 @@ class Store {
   countChapters(bookUrl, origin) {
     const chapters = this.getChapters(bookUrl, origin)
     return Array.isArray(chapters) ? chapters.length : 0
+  }
+
+  /* -------------------------------------------------------- chapter caching */
+
+  getChapterText(bookUrl, chapterUrl) {
+    const row = this.db
+      .prepare('SELECT content FROM chapter_text WHERE book_url = ? AND chapter_url = ?')
+      .get(bookUrl, chapterUrl)
+    return row ? row.content : null
+  }
+
+  saveChapterText(bookUrl, origin, chapterUrl, content) {
+    this.db
+      .prepare(
+        `INSERT INTO chapter_text (book_url, origin, chapter_url, content, cached_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (book_url, chapter_url) DO UPDATE SET content = excluded.content, cached_at = excluded.cached_at`,
+      )
+      .run(bookUrl, origin, chapterUrl, content, Date.now())
+    return content
+  }
+
+  countChapterTexts(bookUrl) {
+    return this.db.prepare('SELECT COUNT(*) AS n FROM chapter_text WHERE book_url = ?').get(bookUrl).n
+  }
+
+  clearChapterTexts(bookUrl) {
+    return this.db.prepare('DELETE FROM chapter_text WHERE book_url = ?').run(bookUrl).changes
   }
 
   /* ------------------------------------------------------------------- groups */

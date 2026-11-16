@@ -203,11 +203,55 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
       target = chapter?.url || ''
     }
     if (!target) return fail('缺少章节地址')
+    // Cached text is served as-is: caching exists so a book stays readable offline.
+    if (!req.body?.refresh && book) {
+      const cached = store.getChapterText(book.bookUrl, target)
+      if (cached) return ok(cached)
+    }
     const content = await withRuntime(origin, (runtime) => runtime.content(target))
-    return ok(cleanText(content))
+    const text = cleanText(content)
+    if (book && text) store.saveChapterText(book.bookUrl, book.origin, target, text)
+    return ok(text)
+  })
+
+  /** Pre-cache the first N chapters so the book can be read offline. */
+  app.post('/reader3/cacheBook', async (req) => {
+    const { bookUrl, count = 20, refresh } = req.body || {}
+    const book = store.getBook(String(bookUrl ?? ''))
+    if (!book) return fail('书籍不存在')
+    let chapters = store.getChapters(book.bookUrl, book.origin) || []
+    if (!chapters.length) {
+      // 缓存被清空过：重新抓一次目录，再继续缓存
+      const fetched = await withRuntime(book.origin, (runtime) => runtime.chapter(book.tocUrl || book.bookUrl))
+      chapters = (Array.isArray(fetched) ? fetched : []).map((chapter, index) => ({
+        title: String(chapter?.name ?? `第${index + 1}章`),
+        url: String(chapter?.chapterId ?? ''),
+        index: Number(chapter?.index ?? index),
+      }))
+      if (!chapters.length) return fail('取不到目录')
+      store.saveChapters(book.bookUrl, book.origin, chapters)
+    }
+    const limit = Math.min(Number(count) || 20, chapters.length)
+    let cached = 0
+    for (let index = 0; index < limit; index += 1) {
+      const chapter = chapters[index]
+      if (!chapter?.url) continue
+      if (!refresh && store.getChapterText(book.bookUrl, chapter.url)) continue
+      try {
+        const text = cleanText(await withRuntime(book.origin, (runtime) => runtime.content(chapter.url)))
+        if (text) {
+          store.saveChapterText(book.bookUrl, book.origin, chapter.url, text)
+          cached += 1
+        }
+      } catch {
+        /* skip a failing chapter, keep caching the rest */
+      }
+    }
+    return ok({ cached, requested: limit, totalCached: store.countChapterTexts(book.bookUrl) })
   })
 
   app.post('/reader3/deleteBookCache', async (req) => {
+    store.clearChapterTexts(String(req.body?.bookUrl ?? ''))
     store.deleteChapters(String(req.body?.bookUrl ?? ''))
     return ok('已清除缓存')
   })
