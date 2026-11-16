@@ -237,3 +237,119 @@
 .grid .card:nth-child(5) { animation-delay: 80ms; }
 .grid .card:nth-child(6) { animation-delay: 100ms; }
 .grid .card:nth-child(n + 7) { animation-delay: 120ms; }
+
+/* ─── 目录卷名 ─── */
+.catalog .volume {
+  display: block;
+  width: 100%;
+  padding: 12px 10px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  letter-spacing: 0.4px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+
+.catalog button.chapter {
+  padding-left: 20px;
+}
+
+/* ─── 阅读底部细进度线 ─── */
+.reader-progress-line {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--color-border-light);
+  z-index: 45;
+}
+
+.reader-progress-line i {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── 顶部栏搜索框 ─── */
+.header-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  max-width: 320px;
+  margin: 0 auto;
+  padding: 0 12px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-sunken);
+  border: 1px solid transparent;
+  transition: border-color 150ms, background 150ms;
+}
+
+.header-search:focus-within {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-primary-border);
+}
+
+.header-search input {
+  border: none;
+  background: transparent;
+  padding: 0;
+  height: 100%;
+  box-shadow: none;
+}
+
+.header-search input:focus {
+  box-shadow: none;
+  border: none;
+}
+
+/* ─── 长按操作菜单 ─── */
+.action-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  font-size: var(--text-base);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.action-sheet-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.action-sheet-item.danger {
+  color: var(--color-danger);
+}
+
+.card.pressing {
+  transform: scale(0.97);
+}
+
+/* 点击左右翻页热区提示（桌面端 hover 才显示） */
+.reader-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28%;
+  z-index: 15;
+}
+
+.reader-zone.left {
+  left: 0;
+}
+
+.reader-zone.right {
+  right: 0;
+}

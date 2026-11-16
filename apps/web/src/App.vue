@@ -1,9 +1,11 @@
 <script setup>
 import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
 const toast = ref('')
+const headerQuery = ref('')
 let timer = 0
 
 /** 任何视图都可以用 window.__toast('...') 弹一条短提示。 */
@@ -14,6 +16,13 @@ window.__toast = (message) => {
 }
 
 const isReader = () => route.name === 'reader'
+const showHeaderSearch = () => route.name === 'bookshelf' || route.name === 'recent'
+
+function submitSearch() {
+  const q = headerQuery.value.trim()
+  if (!q) return
+  router.push({ path: '/search', query: { q } })
+}
 
 const NAV = [
   { to: '/bookshelf', label: '书架', icon: '📚' },
@@ -30,7 +39,11 @@ const NAV = [
   <div v-else class="app">
     <header class="app-header">
       <div class="app-title">胖虎<span>阅读</span></div>
-      <div class="spacer" />
+      <div v-if="showHeaderSearch()" class="header-search">
+        <span class="muted" style="font-size: 13px">🔍</span>
+        <input v-model="headerQuery" placeholder="搜索书名 / 作者" @keyup.enter="submitSearch" />
+      </div>
+      <div v-else class="spacer" />
       <router-link class="badge" to="/recent">最近阅读</router-link>
     </header>
 

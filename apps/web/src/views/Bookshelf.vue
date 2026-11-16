@@ -15,6 +15,33 @@ const editing = ref(null)
 const showGroups = ref(false)
 const newGroupName = ref('')
 const fileInput = ref(null)
+const actionBook = ref(null)
+const pressing = ref('')
+let pressTimer = 0
+
+/** 长按卡片弹出操作菜单（移动端 500ms，桌面端同样可用）。 */
+function startPress(book) {
+  pressing.value = book.bookUrl
+  clearTimeout(pressTimer)
+  pressTimer = setTimeout(() => {
+    actionBook.value = book
+    pressing.value = ''
+  }, 500)
+}
+
+function cancelPress() {
+  clearTimeout(pressTimer)
+  pressing.value = ''
+}
+
+function runAction(action) {
+  const book = actionBook.value
+  actionBook.value = null
+  if (!book) return
+  if (action === 'edit') editing.value = { ...book }
+  else if (action === 'cache') cache(book)
+  else if (action === 'delete') remove(book)
+}
 
 const visible = computed(() => {
   let list = books.value
@@ -189,7 +216,19 @@ onMounted(load)
     </div>
 
     <div v-else class="grid">
-      <div v-for="book in visible" :key="book.bookUrl" class="card" @click="open(book)">
+      <div
+        v-for="book in visible"
+        :key="book.bookUrl"
+        class="card"
+        :class="{ pressing: pressing === book.bookUrl }"
+        @click="open(book)"
+        @mousedown="startPress(book)"
+        @mouseup="cancelPress"
+        @mouseleave="cancelPress"
+        @touchstart.passive="startPress(book)"
+        @touchend="cancelPress"
+        @contextmenu.prevent="actionBook = book"
+      >
         <div class="cover">
           <img v-if="coverOf(book)" :src="coverOf(book)" :alt="book.name" loading="lazy" />
           <div v-else class="placeholder">{{ book.name }}</div>
@@ -207,6 +246,22 @@ onMounted(load)
     </div>
 
     <BookDetail v-if="editing" :book="editing" :groups="groups" mode="shelf" @close="editing = null" @save="saveEdited" />
+
+    <!-- 长按操作菜单 -->
+    <div v-if="actionBook" class="sheet-backdrop" @click.self="actionBook = null">
+      <div class="sheet">
+        <div class="sheet-handle" />
+        <div class="row" style="margin-bottom: 12px">
+          <div style="flex: 1; min-width: 0">
+            <strong>{{ actionBook.name }}</strong>
+            <div class="muted" style="font-size: 12.5px">{{ actionBook.author || '未知作者' }}</div>
+          </div>
+        </div>
+        <button class="action-sheet-item" @click="runAction('edit')">✏️ 编辑信息与封面</button>
+        <button class="action-sheet-item" @click="runAction('cache')">⬇️ 缓存前 20 章</button>
+        <button class="action-sheet-item danger" @click="runAction('delete')">🗑️ 从书架删除</button>
+      </div>
+    </div>
 
     <div v-if="showGroups" class="sheet-backdrop" @click.self="showGroups = false">
       <div class="sheet">

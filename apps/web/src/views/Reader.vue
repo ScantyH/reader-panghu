@@ -112,9 +112,22 @@ function jump(bookmark) {
   loadChapter(bookmark.chapterIndex)
 }
 
-/** 点正文切换控制条（reader-next 的行为）。 */
+/** 点正文切换控制条；点左右两侧翻页（reader-next 的行为）。 */
 function toggleChrome() {
   chromeVisible.value = !chromeVisible.value
+}
+
+function onReadingClick(event) {
+  const ratio = event.clientX / window.innerWidth
+  if (ratio < 0.28) {
+    if (hasPrev.value) loadChapter(current.value - 1)
+    return
+  }
+  if (ratio > 0.72) {
+    if (hasNext.value) loadChapter(current.value + 1)
+    return
+  }
+  toggleChrome()
 }
 
 onMounted(async () => {
@@ -154,17 +167,20 @@ onMounted(async () => {
 
     <div class="reader-body">
       <aside v-if="showCatalog" class="catalog">
-        <button
-          v-for="chapter in chapters"
-          :key="chapter.index"
-          :class="{ current: chapter.index === current }"
-          @click="loadChapter(chapter.index)"
-        >
-          {{ chapter.title }}
-        </button>
+        <template v-for="chapter in chapters" :key="chapter.index">
+          <div v-if="chapter.isVolume" class="volume">{{ chapter.title }}</div>
+          <button
+            v-else
+            class="chapter"
+            :class="{ current: chapter.index === current }"
+            @click="loadChapter(chapter.index)"
+          >
+            {{ chapter.title }}
+          </button>
+        </template>
       </aside>
 
-      <div ref="readingEl" class="reading" :style="{ background: THEMES[prefs.theme]?.bg }" @click="toggleChrome">
+      <div ref="readingEl" class="reading" :style="{ background: THEMES[prefs.theme]?.bg }" @click="onReadingClick">
         <h2 v-if="chapterTitle" :style="{ color: THEMES[prefs.theme]?.text }">{{ chapterTitle }}</h2>
         <div v-if="loading" class="muted">加载中…</div>
         <div
@@ -186,6 +202,9 @@ onMounted(async () => {
       </div>
       <button class="icon-btn" :disabled="!hasNext" title="下一章" @click="loadChapter(current + 1)">›</button>
     </div>
+
+    <!-- 底部阅读进度细线 -->
+    <div class="reader-progress-line"><i :style="{ width: percent + '%' }" /></div>
 
     <!-- 设置：底部抽屉 -->
     <div v-if="showSettings" class="sheet-backdrop" @click.self="showSettings = false">

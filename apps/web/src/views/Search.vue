@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf, searchStream } from '../api.js'
 
@@ -9,6 +10,7 @@ const scope = ref('')
 const results = ref([])
 const searching = ref(false)
 const picked = ref(null)
+const route = useRoute()
 
 async function loadSources() {
   try {
@@ -55,7 +57,15 @@ async function addToShelf(book) {
   }
 }
 
-onMounted(loadSources)
+onMounted(async () => {
+  await loadSources()
+  // 顶部栏搜索框跳过来时带着 q，直接搜
+  const q = String(route.query.q || '').trim()
+  if (q) {
+    keyword.value = q
+    search()
+  }
+})
 </script>
 
 <template>

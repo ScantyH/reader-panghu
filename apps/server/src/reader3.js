@@ -170,10 +170,13 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
       if (cached?.length) return ok(cached)
     }
     const chapters = await withRuntime(origin, (runtime) => runtime.chapter(target))
+    // 卷名/分组信息一并返回，前端据此做缩进
     const list = (Array.isArray(chapters) ? chapters : []).map((chapter, index) => ({
       title: String(chapter?.name ?? `第${index + 1}章`),
       url: String(chapter?.chapterId ?? ''),
       index: Number(chapter?.index ?? index),
+      isVolume: Boolean(chapter?.isVolume),
+      tag: String(chapter?.tag ?? ''),
     }))
     if (book && list.length) {
       store.saveChapters(book.bookUrl, book.origin, list)
