@@ -12,6 +12,9 @@ const groups = ref([])
 const activeGroup = ref(0)
 const loading = ref(false)
 const editing = ref(null)
+const showGroups = ref(false)
+const newGroupName = ref('')
+const groupDraft = ref({ id: 0, name: '' })
 const fileInput = ref(null)
 
 const visible = computed(() => {
@@ -42,6 +45,49 @@ async function load() {
 
 function open(book) {
   router.push({ path: '/read', query: { book: book.bookUrl } })
+}
+
+async function addGroup() {
+  const name = newGroupName.value.trim()
+  if (!name) return
+  try {
+    await api.saveBookGroup({ groupId: Date.now() % 100000, groupName: name })
+    newGroupName.value = ''
+    await load()
+    window.__toast?.('分组已创建')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function renameGroup(group) {
+  const name = prompt('新的分组名', group.groupName)
+  if (!name || name === group.groupName) return
+  try {
+    await api.saveBookGroup({ groupId: group.groupId, groupName: name, orderNo: group.orderNo || 0 })
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function removeGroup(group) {
+  if (!confirm('删除分组「' + group.groupName + '」？组内书籍会回到"全部"，不会被删除')) return
+  try {
+    await api.deleteBookGroup(group.groupId)
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function moveToGroup(book, groupId) {
+  try {
+    await api.saveBookGroupId(book.bookUrl, Number(groupId))
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
 }
 
 async function importBook(event) {
@@ -100,8 +146,22 @@ onMounted(load)
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
       <input ref="fileInput" type="file" accept=".txt,.epub,.docx,.mobi,.azw3,.azw,.pdf" hidden @change="importBook" />
+      <button class="ghost" @click="showGroups = !showGroups">分组</button>
       <button @click="fileInput.click()">导入本地书</button>
       <button ghost class="ghost" :disabled="loading" @click="load">{{ loading ? '刷新中' : '刷新' }}</button>
+    </div>
+
+    <div v-if="showGroups" class="list" style="margin-bottom: 18px">
+      <div class="row">
+        <input v-model="newGroupName" placeholder="新分组名称" style="flex: 1" @keyup.enter="addGroup" />
+        <button class="primary" @click="addGroup">新建分组</button>
+      </div>
+      <div v-for="group in groups.filter((item) => item.groupId !== 0)" :key="group.groupId" class="list-item">
+        <span style="flex: 1">{{ group.groupName }}</span>
+        <span class="badge">{{ books.filter((book) => Number(book.group || 0) === group.groupId).length }} 本</span>
+        <button class="ghost" @click="renameGroup(group)">改名</button>
+        <button class="ghost" @click="removeGroup(group)">删除</button>
+      </div>
     </div>
 
     <div v-if="!recentOnly && groups.length > 1" class="row" style="flex-wrap: wrap; margin-bottom: 16px">
@@ -138,6 +198,6 @@ onMounted(load)
       </div>
     </div>
 
-    <BookDetail v-if="editing" :book="editing" mode="shelf" @close="editing = null" @save="saveEdited" />
+    <BookDetail v-if="editing" :book="editing" :groups="groups" mode="shelf" @close="editing = null" @save="saveEdited" />
   </div>
 </template>

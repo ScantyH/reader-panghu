@@ -28,8 +28,9 @@ const info = await call('/reader3/getBookInfo', { method: 'POST', body: { url: f
 await call('/reader3/saveBook', { method: 'POST', body: info })
 await call('/reader3/getChapterList', { method: 'POST', body: { bookUrl: info.bookUrl, tocUrl: info.tocUrl, bookSourceUrl: info.origin } })
 
-const result = await call('/reader3/cacheBook', { method: 'POST', body: { bookUrl: info.bookUrl, count: 2 } })
-if (result.cached !== 2) throw new Error(`应缓存 2 章，实际 ${result.cached}`)
+// refresh:true 保证从零开始计数——阅读正文本身也会顺手写缓存
+const result = await call('/reader3/cacheBook', { method: 'POST', body: { bookUrl: info.bookUrl, count: 2, refresh: true } })
+if (result.totalCached !== 2) throw new Error(`应缓存 2 章，实际 ${result.totalCached}`)
 console.log(`  ✓ cacheBook → cached=${result.cached}, totalCached=${result.totalCached}`)
 
 const text = await call('/reader3/getBookContent', { method: 'POST', body: { bookUrl: info.bookUrl, index: 0 } })

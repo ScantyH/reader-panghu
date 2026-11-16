@@ -4,6 +4,7 @@ import { api, coverOf } from '../api.js'
 
 const props = defineProps({
   book: { type: Object, required: true },
+  groups: { type: Array, default: () => [] },
   mode: { type: String, default: 'shelf' }, // 'shelf' | 'search'
 })
 const emit = defineEmits(['close', 'save'])
@@ -64,6 +65,13 @@ function submit() {
       <div class="field">
         <label>分类</label>
         <input v-model="draft.kind" />
+      </div>
+
+      <div v-if="mode === 'shelf'" class="field">
+        <label>分组</label>
+        <select v-model.number="draft.group" style="width: 100%; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px">
+          <option v-for="group in groups" :key="group.groupId" :value="group.groupId">{{ group.groupName }}</option>
+        </select>
       </div>
 
       <div class="field">
