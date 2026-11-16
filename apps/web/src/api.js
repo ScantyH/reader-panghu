@@ -57,7 +57,7 @@ export const api = {
   // local books
   uploadLocal: (file) => {
     const ext = (file.name.split('.').pop() || '').toLowerCase()
-    const routes = { epub: '/uploadEpubBook', docx: '/uploadDocxBook', mobi: '/uploadMobiBook', azw3: '/uploadMobiBook', azw: '/uploadMobiBook' }
+    const routes = { epub: '/uploadEpubBook', docx: '/uploadDocxBook', mobi: '/uploadMobiBook', azw3: '/uploadMobiBook', azw: '/uploadMobiBook', pdf: '/uploadPdfBook' }
     const route = routes[ext] || '/uploadTxtBook'
     const form = new FormData()
     form.append('file', file)

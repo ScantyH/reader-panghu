@@ -16,6 +16,7 @@ import { createRuntime } from '@reader-panghu/source-runtime'
 import { parseDocx } from './docx.js'
 import { parseEpub } from './epub.js'
 import { parseMobi } from './mobi.js'
+import { extractPdfText } from './pdf.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
@@ -378,7 +379,48 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
     return ok(book)
   })
 
-  app.post('/reader3/uploadPdfBook', async () => fail('PDF 需要 PDF 引擎，尚未接入；当前已支持 TXT / EPUB / DOCX / MOBI'))
+  app.post('/reader3/uploadPdfBook', async (req) => {
+    const part = await req.file?.()
+    if (!part) return fail('缺少文件')
+    const filename = basename(part.filename || 'local.pdf')
+    let text
+    try {
+      text = extractPdfText(new Uint8Array(await part.toBuffer()))
+    } catch (error) {
+      return fail(`PDF 解析失败：${error.message}`)
+    }
+
+    const uuid = randomUUID()
+    const bookUrl = `local://pdf/${uuid}`
+    const parsed = splitTxtChapters(text)
+    if (!parsed.length) return fail('PDF 里没有可读章节')
+    const chapters = parsed.map((chapter, index) => ({
+      title: chapter.title,
+      url: `${bookUrl}#${index}`,
+      index,
+      content: chapter.content,
+    }))
+    const book = store.saveBook({
+      name: filename.replace(/\.pdf$/i, ''),
+      author: '',
+      bookUrl,
+      origin: 'local://pdf',
+      originName: '本地书籍',
+      coverUrl: '',
+      tocUrl: '',
+      intro: '',
+      kind: '',
+      latestChapterTitle: chapters.at(-1)?.title || '',
+      wordCount: String(text.replace(/\s/g, '').length),
+      type: 0,
+      canUpdate: false,
+      group: 0,
+      totalChapterNum: chapters.length,
+    })
+    store.saveChapters(bookUrl, 'local://pdf', chapters.map(({ content, ...rest }) => rest))
+    store.saveChapters(`${bookUrl}#content`, 'local://pdf', chapters)
+    return ok(book)
+  })
 
   app.get('/reader3/getTxtTocRules', async () => ok([]))
 

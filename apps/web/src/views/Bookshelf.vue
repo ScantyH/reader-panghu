@@ -88,7 +88,7 @@ onMounted(load)
       <h1>{{ recentOnly ? '最近阅读' : '书架' }}</h1>
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
-      <input ref="fileInput" type="file" accept=".txt,.epub,.docx,.mobi,.azw3,.azw" hidden @change="importBook" />
+      <input ref="fileInput" type="file" accept=".txt,.epub,.docx,.mobi,.azw3,.azw,.pdf" hidden @change="importBook" />
       <button @click="fileInput.click()">导入本地书</button>
       <button ghost class="ghost" :disabled="loading" @click="load">{{ loading ? '刷新中' : '刷新' }}</button>
     </div>
@@ -107,7 +107,7 @@ onMounted(load)
     </div>
 
     <div v-if="!visible.length" class="empty">
-      书架还是空的。去 <router-link to="/search" style="color: var(--accent)">搜索</router-link> 找书，或导入一本 TXT / EPUB / DOCX / MOBI。
+      书架还是空的。去 <router-link to="/search" style="color: var(--accent)">搜索</router-link> 找书，或导入一本 TXT / EPUB / DOCX / MOBI / PDF。
     </div>
 
     <div v-else class="grid">
