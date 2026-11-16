@@ -30,6 +30,8 @@ async function request(path, { method = 'GET', body, form } = {}) {
 export const api = {
   // shelf
   bookshelf: () => request('/getBookshelf'),
+  shelfWithCache: () => request('/getShelfBookWithCacheInfo'),
+  deleteBookCache: (bookUrl) => request('/deleteBookCache', { method: 'POST', body: { bookUrl } }),
   saveBook: (book) => request('/saveBook', { method: 'POST', body: book }),
   deleteBooks: (books) => request('/deleteBooks', { method: 'POST', body: books }),
   saveProgress: (bookUrl, index, position = 0) =>

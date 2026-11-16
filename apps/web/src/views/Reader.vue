@@ -18,6 +18,43 @@ const showBookmarks = ref(false)
 const bookmarks = ref([])
 const prefs = ref({ fontSize: 17, lineHeight: 1.95, theme: 'light' })
 const readingEl = ref(null)
+const ttsOn = ref(false)
+const searchOpen = ref(false)
+const searchText = ref('')
+const searchResult = ref('')
+
+/** 朗读当前章：用浏览器内置语音，停止时立刻 cancel。 */
+function toggleTts() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
+    window.__toast?.('当前浏览器不支持语音朗读')
+    return
+  }
+  if (ttsOn.value) {
+    window.speechSynthesis.cancel()
+    ttsOn.value = false
+    return
+  }
+  const text = String(content.value || '').trim()
+  if (!text) {
+    window.__toast?.('本章没有可朗读的正文')
+    return
+  }
+  const utterance = new SpeechSynthesisUtterance(text.slice(0, 20000))
+  utterance.lang = 'zh-CN'
+  utterance.rate = 1
+  utterance.onend = () => (ttsOn.value = false)
+  window.speechSynthesis.cancel()
+  window.speechSynthesis.speak(utterance)
+  ttsOn.value = true
+}
+
+/** 正文内查找：用浏览器原生 find，向前/向后循环。 */
+function findInChapter(backwards = false) {
+  const needle = searchText.value.trim()
+  if (!needle) return
+  const found = typeof window.find === 'function' ? window.find(needle, false, backwards, true) : false
+  searchResult.value = found ? '已定位' : '没有找到'
+}
 
 const THEMES = {
   light: { bg: '#faf9f7', text: '#1a1a1a' },
@@ -162,7 +199,16 @@ onMounted(async () => {
       <div class="spacer" />
       <button class="icon-btn" title="书签" @click="showBookmarks = true">🔖</button>
       <button class="icon-btn" title="加入书签" @click="addBookmark">＋</button>
+      <button class="icon-btn" :title="ttsOn ? '停止朗读' : '朗读'" @click="toggleTts">{{ ttsOn ? '⏹' : '🔊' }}</button>
+      <button class="icon-btn" title="正文内查找" @click="searchOpen = !searchOpen">🔎</button>
       <button class="icon-btn" title="设置" @click="showSettings = true">Aa</button>
+    </div>
+
+    <div v-if="searchOpen" class="reader-floating-top" style="top: 60px; padding: 6px 10px">
+      <input v-model="searchText" placeholder="在正文中查找" style="min-width: 180px" @keyup.enter="findInChapter(false)" />
+      <button class="icon-btn" title="上一个" @click="findInChapter(true)">‹</button>
+      <button class="icon-btn" title="下一个" @click="findInChapter(false)">›</button>
+      <span class="muted" style="font-size: 12px">{{ searchResult }}</span>
     </div>
 
     <div class="reader-body">
