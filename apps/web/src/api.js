@@ -65,6 +65,11 @@ export const api = {
   exploreBook: (bookSourceUrl, url, page = 1) =>
     request('/exploreBook', { method: 'POST', body: { bookSourceUrl, url, page } }),
   debugSource: (payload) => request('/debugSource', { method: 'POST', body: payload }),
+  availableSources: (payload) => request('/getAvailableBookSource', { method: 'POST', body: payload }),
+  saveReadingTime: (payload) => request('/saveReadingTime', { method: 'POST', body: payload }),
+  readingStats: () => request('/getReadingStats'),
+  chapterSummary: (text) => request('/getChapterSummary', { method: 'POST', body: { text } }),
+  webdavList: (payload) => request('/webdavList', { method: 'POST', body: payload }),
   importSourceFile: (file) => {
     const form = new FormData()
     form.append('file', file)

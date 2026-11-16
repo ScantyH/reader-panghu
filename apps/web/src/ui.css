@@ -408,3 +408,36 @@
   outline-offset: 2px;
   border-radius: var(--radius-lg);
 }
+/* ─── 翻页动画 ─── */
+.reading.next .text,
+.reading.next h2 {
+  animation: page-next 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reading.prev .text,
+.reading.prev h2 {
+  animation: page-prev 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes page-next {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes page-prev {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ─── 统计徽标 ─── */
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+}

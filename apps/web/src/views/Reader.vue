@@ -22,6 +22,63 @@ const ttsOn = ref(false)
 const searchOpen = ref(false)
 const searchText = ref('')
 const searchResult = ref('')
+const sourceOpen = ref(false)
+const sourceCandidates = ref([])
+const sourceLoading = ref(false)
+const turnDirection = ref('')
+let chapterStartedAt = Date.now()
+
+/** 把这一章的停留时长上报（切章时调用） */
+function reportReadingTime() {
+  const seconds = Math.round((Date.now() - chapterStartedAt) / 1000)
+  chapterStartedAt = Date.now()
+  if (seconds > 3 && seconds < 6 * 3600) {
+    api.saveReadingTime({ bookUrl: props.bookUrl, seconds, chapters: 1 }).catch(() => {})
+  }
+}
+
+/** 找其它书源里的同名书 */
+async function findSources() {
+  sourceOpen.value = true
+  sourceLoading.value = true
+  sourceCandidates.value = []
+  try {
+    const result = await api.availableSources({
+      name: book.value?.name || '',
+      author: book.value?.author || '',
+      origin: book.value?.origin || '',
+      resultLimit: 10,
+    })
+    sourceCandidates.value = result.books || []
+    if (!sourceCandidates.value.length) window.__toast?.('其它书源里没有找到同名书')
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    sourceLoading.value = false
+  }
+}
+
+/** 换到另一个书源，保留阅读进度 */
+async function switchSource(candidate) {
+  try {
+    const updated = await api.setBookSource({
+      bookUrl: props.bookUrl,
+      newUrl: candidate.bookUrl,
+      bookSourceUrl: candidate.origin,
+    })
+    sourceOpen.value = false
+    window.__toast?.(`已切换到「${candidate.originName}」`)
+    book.value = updated
+    chapters.value = await api.chapterList({
+      bookUrl: updated.bookUrl,
+      tocUrl: updated.tocUrl,
+      bookSourceUrl: updated.origin,
+    })
+    await loadChapter(Number(updated.durChapterIndex || 0))
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
 
 /** 朗读当前章：用浏览器内置语音，停止时立刻 cancel。 */
 function toggleTts() {
@@ -104,9 +161,11 @@ async function loadBookmarks() {
 
 async function loadChapter(index) {
   if (!chapters.value.length) return
+  reportReadingTime()
   const target = Math.max(0, Math.min(chapters.value.length - 1, index))
   loading.value = true
   try {
+    turnDirection.value = target > current.value ? 'next' : target < current.value ? 'prev' : ''
     content.value = await api.content({ bookUrl: props.bookUrl, index: target })
     current.value = target
     if (book.value) {
@@ -201,6 +260,7 @@ onMounted(async () => {
       <button class="icon-btn" title="加入书签" @click="addBookmark">＋</button>
       <button class="icon-btn" :title="ttsOn ? '停止朗读' : '朗读'" @click="toggleTts">{{ ttsOn ? '⏹' : '🔊' }}</button>
       <button class="icon-btn" title="正文内查找" @click="searchOpen = !searchOpen">🔎</button>
+      <button class="icon-btn" title="换源" @click="findSources">⇄</button>
       <button class="icon-btn" title="设置" @click="showSettings = true">Aa</button>
     </div>
 
@@ -226,7 +286,7 @@ onMounted(async () => {
         </template>
       </aside>
 
-      <div ref="readingEl" class="reading" :style="{ background: THEMES[prefs.theme]?.bg }" @click="onReadingClick">
+      <div ref="readingEl" class="reading" :class="turnDirection" :style="{ background: THEMES[prefs.theme]?.bg }" @click="onReadingClick">
         <h2 v-if="chapterTitle" :style="{ color: THEMES[prefs.theme]?.text }">{{ chapterTitle }}</h2>
         <div v-if="loading" class="muted">加载中…</div>
         <div
@@ -251,6 +311,25 @@ onMounted(async () => {
 
     <!-- 底部阅读进度细线 -->
     <div class="reader-progress-line"><i :style="{ width: percent + '%' }" /></div>
+
+    <!-- 换源：底部抽屉 -->
+    <div v-if="sourceOpen" class="sheet-backdrop" @click.self="sourceOpen = false">
+      <div class="sheet">
+        <div class="sheet-handle" />
+        <h2>换源 · {{ book?.name }}</h2>
+        <div v-if="sourceLoading" class="muted">正在其它书源里搜索…</div>
+        <div v-else-if="!sourceCandidates.length" class="muted" style="font-size: 13px">没有找到其它来源。</div>
+        <div v-else class="list">
+          <div v-for="candidate in sourceCandidates" :key="candidate.origin + candidate.bookUrl" class="list-item">
+            <div style="flex: 1; min-width: 0">
+              <strong style="font-size: 14px">{{ candidate.originName }}</strong>
+              <div class="muted" style="font-size: 12px">{{ candidate.author || '未知作者' }}</div>
+            </div>
+            <button class="primary" @click="switchSource(candidate)">切到此处</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 设置：底部抽屉 -->
     <div v-if="showSettings" class="sheet-backdrop" @click.self="showSettings = false">

@@ -712,8 +712,6 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   app.post('/reader3/updateUser', async () => fail('单用户部署不支持多用户'))
   app.post('/reader3/deleteUsers', async () => fail('单用户部署不支持多用户'))
 
-  app.get('/reader3/getAvailableBookSource', async () => ok({ books: [], lastIndex: -1, hasMore: false }))
-  app.post('/reader3/getAvailableBookSource', async () => ok({ books: [], lastIndex: -1, hasMore: false }))
   app.get('/reader3/getAvailableBookSourceSSE', async (req, reply) => {
     reply.raw.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' })
     reply.raw.write(`data: ${JSON.stringify(ok({ books: [], lastIndex: -1, hasMore: false }))}\n\n`)
