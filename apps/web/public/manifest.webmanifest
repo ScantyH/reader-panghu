@@ -5,10 +5,13 @@
   "start_url": "/bookshelf",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
-  "background_color": "#faf9f7",
+  "background_color": "#f9f7f0",
   "theme_color": "#d4812a",
   "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["books", "entertainment"],
   "icons": [
     {
       "src": "/brand/icon-192.png",
@@ -23,21 +26,49 @@
       "purpose": "any"
     },
     {
-      "src": "/brand/apple-touch-icon.png",
-      "sizes": "180x180",
+      "src": "/brand/maskable-192.png",
+      "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "/brand/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/brand/icon-512-white.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "monochrome"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/brand/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide"
     }
   ],
   "shortcuts": [
     {
       "name": "书架",
+      "short_name": "书架",
       "url": "/bookshelf",
       "icons": [{ "src": "/brand/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "搜索",
+      "short_name": "搜索",
       "url": "/search",
+      "icons": [{ "src": "/brand/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "书源",
+      "short_name": "书源",
+      "url": "/sources",
       "icons": [{ "src": "/brand/icon-192.png", "sizes": "192x192" }]
     }
   ]
