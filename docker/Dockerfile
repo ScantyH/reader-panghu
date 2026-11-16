@@ -9,7 +9,7 @@ COPY packages ./packages
 COPY apps ./apps
 COPY scripts ./scripts
 
-RUN pnpm install --frozen-lockfile \
+RUN pnpm install --frozen-lockfile --config.strict-dep-builds=false \
  && pnpm --filter reader-panghu-web run build
 
 ENV NODE_ENV=production \
