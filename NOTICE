@@ -1,33 +1,32 @@
-reader-panghu 第三方代码来源说明
-=================================
+reader-panghu 第三方来源说明
+============================
 
-本项目服务端（apps/server、packages/*）为原创实现，按 AGPL-3.0 发布。
+本项目全部代码为原创实现，按 AGPL-3.0 发布。
 
-apps/web —— Web 界面
----------------------
-来源：reader-next
-  - https://github.com/Maple0517/reader-next   （"Independent continuation of reader-rust"）
-  - https://github.com/1432433gg/reader-next    （同一脉络的续作，本仓库界面取自这一份）
-  - 上游原始项目：https://github.com/givenge/reader-rust
+参考项目（未复制代码）
+----------------------
+* hectorqin/reader (AGPL-3.0)
+  阅读3 服务端生态、《阅读3 服务端 API》的接口形态参考。
+  本项目 /reader3 契约按阅读3 家族的通行请求/响应形态设计。
 
-许可证状态：上述两个 reader-next 仓库均**未声明许可证**。按照默认的著作权规则，
-未声明许可证意味着保留所有权利（All rights reserved），并不自动授予再分发许可。
+* Maple0517/reader-next、1432433gg/reader-next、givenge/reader-rust
+  Web 界面的**交互设计**参考（书架网格、阅读器目录抽屉、跨书源搜索、
+  书籍详情编辑）。本项目 apps/web 是独立编写的 Vue 3 实现，未复制其源码。
+  其仓库未声明许可证，因此这里只借鉴交互，不搬运代码。
 
-因此：
-  * 本仓库把 apps/web 作为"待授权"代码保留，仅用于个人自用与二次开发评估。
-  * 若要公开发布、商用或分发，必须先取得 reader-next 作者的书面许可，
-    或按相同交互自行重写界面（服务端契约已完整实现，替换 UI 不需要改后端）。
-  * 上游若补充了许可证，请以彼时上游声明为准，并更新本文件。
+* autobcb/qysg（《轻悦时光》）
+  WebView 书源运行时的**行为规范**来源。其 README 记载了书源函数契约
+  （search / info / chapter / content / getfinds / find / pay / login）
+  与桥接口（FlutterJSBridge / Http / Cookie / Cache）。
+  packages/source-runtime 是在 Node 上对该契约的独立实现（jsdom + 原生桥），
+  不包含 qysg 的代码。
 
-其他参考项目（未直接复制代码）
-------------------------------
-  * hectorqin/reader (AGPL-3.0) —— 阅读3 服务端生态与接口形态的参考
-  * autobcb/qysg —— 《轻悦时光》WebView 书源运行时，其 README 记载的书源函数契约
-    （search/info/chapter/content/getfinds/find 与 FlutterJSBridge/Http/Cookie/Cache）
-    是本项目 packages/source-runtime 桥实现的行为规范来源。
-  * autobcb/read —— 移动端阅读器，作为多端同步需求的产品参考
+* autobcb/read（轻阅读）
+  多端同步与移动端阅读体验的需求参考。
 
-书源
-----
-data/sources/ 下的书源由使用者自行提供，不入库。书源是用户的自有配置，
-其 endpoint、密钥与登录态不属于本项目的分发内容。
+书源与密钥
+----------
+data/sources/ 下的书源由使用者自行提供，不入库。
+书源是用户自有配置，其 endpoint、密钥、登录态不属于本项目的分发内容。
+仓库自带的测试使用 scripts/fixtures/synthetic-source.json（合成书源），
+不依赖任何真实书源。

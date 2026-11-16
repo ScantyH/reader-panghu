@@ -2,7 +2,7 @@
 
 一个把「WebView 书源」「阅读3 书源」「本地书」「多端进度同步」收敛到同一套服务端的阅读服务。
 
-Web UI 来自 `reader-next`（Vue 3），服务端实现了它的 `/reader3/*` 契约，同时对外提供阅读3 规则书源，Legado 客户端（iOS/Android）可直接导入。
+Web UI 按 `reader-next` 的交互**独立重写**（Vue 3，未复制其源码），服务端实现 `/reader3/*` 契约，同时对外提供阅读3 规则书源，Legado 客户端（iOS/Android）可直接导入。
 
 ## 现在能跑什么
 
@@ -107,4 +107,4 @@ node scripts/probe-source.js <source.json>   # 直接跑单个书源
 
 ## 许可证
 
-AGPL-3.0。当前服务端与运行时为原创实现；`apps/web` 复用 `reader-next` 的界面代码，其上游仓库未声明许可证，来源与授权情况见 [NOTICE](NOTICE)。商业使用前请先取得原作者授权或替换 UI。
+AGPL-3.0。全部代码为本项目原创实现：服务端、书源运行时、以及按 reader-next 交互独立重写的 Vue UI。参考项目与借鉴范围见 [NOTICE](NOTICE)。

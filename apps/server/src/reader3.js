@@ -183,8 +183,10 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   app.post('/reader3/getBookContent', async (req) => {
     const { bookUrl, chapterUrl, bookSourceUrl, index } = req.body || {}
     const book = bookUrl ? store.getBook(String(bookUrl)) : null
-    // Local books carry their text in the chapter table; no source runtime involved.
-    if (book && String(book.origin || '').startsWith('local://')) {
+    // Local TXT books carry their text in the chapter table; no source runtime.
+    // Keyed on the local-book origin only — a source may legitimately use a
+    // local:// book URL of its own (the synthetic test source does).
+    if (book && String(book.origin || '') === 'local://txt') {
       const stored = store.getChapters(`${book.bookUrl}#content`, book.origin)
       const chapter = stored?.find((item) => item.index === Number(index))
       return chapter ? ok(cleanText(chapter.content)) : fail('本地章节不存在')

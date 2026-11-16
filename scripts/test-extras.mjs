@@ -43,7 +43,7 @@ if (rules.length < 1) throw new Error('替换规则未保存')
 expectOk('deleteReplaceRule', await call('/reader3/deleteReplaceRule', { method: 'POST', body: { name: '去广告' } }))
 
 // book source import (multipart)
-const sourceJson = readFileSync('data/sources/qidian-jiajuan.json', 'utf8')
+const sourceJson = readFileSync('scripts/fixtures/synthetic-source.json', 'utf8')
 const form = new FormData()
 form.append('file', new Blob([sourceJson], { type: 'application/json' }), 'source.json')
 const imported = expectOk('readSourceFile', await call('/reader3/readSourceFile', { method: 'POST', body: form }))

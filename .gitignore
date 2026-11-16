@@ -5,6 +5,7 @@ apps/web/dist/
 # Runtime data: databases, uploaded books, generated assets
 data/
 storage/
+tmp-test-data/
 *.db
 *.db-journal
 
@@ -15,6 +16,8 @@ data/sources/*.json
 *.log
 probe.log
 debug.log
+t1.log
+t2.log
 *.zip
 
 # Local env

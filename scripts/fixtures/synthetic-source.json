@@ -1,0 +1,8 @@
+{
+  "bookSourceName": "合成测试源",
+  "bookSourceGroup": "测试",
+  "bookSourceUrl": "local://synthetic",
+  "bookSourceType": 0,
+  "enabled": true,
+  "html": "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>synthetic</title></head><body><script>\nasync function search(key, page) {\n  if (page > 1) return JSON.stringify([])\n  return JSON.stringify([{ bookUrl: 'local://synthetic/book/1', name: '合成书 ' + key, author: '测试作者', kind: '测试', coverUrl: '', intro: '这是合成书源的简介', tocUrl: 'local://synthetic/book/1/catalog', wordCount: '12345', latestChapterTitle: '第二章', type: 0 }])\n}\nasync function info(url) {\n  return JSON.stringify({ bookUrl: url, name: '合成书', author: '测试作者', kind: '测试', coverUrl: '', intro: '这是合成书源的简介', tocUrl: 'local://synthetic/book/1/catalog', wordCount: '12345', latestChapterTitle: '第二章', type: 0 })\n}\nasync function chapter(tocUrl) {\n  return JSON.stringify([\n    { name: '第一章 开端', chapterId: 'local://synthetic/chapter/1', index: 0 },\n    { name: '第二章 继续', chapterId: 'local://synthetic/chapter/2', index: 1 }\n  ])\n}\nasync function content(url) {\n  return url.endsWith('/1') ? '第一章的正文内容。' : '第二章的正文内容。'\n}\n</script></body></html>"
+}

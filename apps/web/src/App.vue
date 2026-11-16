@@ -1,94 +1,36 @@
-<template>
-  <div id="app">
-    <AppTopBar v-if="showHeader" />
-    <main class="app-main" :class="{ 'with-bottom-nav': showBottomNav, 'without-header': !showHeader }">
-      <router-view />
-    </main>
-    <AppBottomNav v-if="showBottomNav" />
-    <SettingsDrawer v-model="appStore.showSettingsDrawer" />
-    <LoginModal v-model="appStore.showLoginModal" />
-    <SourceManager v-model="appStore.showSourceManager" />
-    <UserManager v-model="appStore.showUserManager" />
-    <WebdavManager v-model="appStore.showWebdavManager" />
-
-    <!-- Toast notifications -->
-    <div class="toast-container">
-      <TransitionGroup name="slide-up">
-        <div
-          v-for="toast in appStore.toasts"
-          :key="toast.id"
-          class="toast"
-          :class="toast.type"
-        >
-          {{ toast.message }}
-        </div>
-      </TransitionGroup>
-    </div>
-  </div>
-</template>
-
-<script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+<script setup>
+import { ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useAppStore } from './stores/app'
-import AppTopBar from './components/AppTopBar.vue'
-import AppBottomNav from './components/AppBottomNav.vue'
-import SettingsDrawer from './components/SettingsDrawer.vue'
-import LoginModal from './components/LoginModal.vue'
-import SourceManager from './components/SourceManager.vue'
-import UserManager from './components/UserManager.vue'
-import WebdavManager from './components/WebdavManager.vue'
 
 const route = useRoute()
-const appStore = useAppStore()
+const toast = ref('')
+let timer = 0
 
-const showHeader = computed(() => route.name !== 'reader')
-const showBottomNav = computed(() => route.name !== 'reader')
-
-onMounted(() => {
-  appStore.fetchUserInfo()
-})
-
-async function handleNeedLogin() {
-  await appStore.fetchUserInfo()
-  if (!appStore.isLoggedIn) {
-    appStore.showLoginModal = true
-  }
+/** Any view can call window.__toast('...') for a transient message. */
+window.__toast = (message) => {
+  toast.value = String(message)
+  clearTimeout(timer)
+  timer = setTimeout(() => (toast.value = ''), 2600)
 }
 
-onMounted(() => {
-  window.addEventListener('need-login', handleNeedLogin)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('need-login', handleNeedLogin)
-})
+const isReader = () => route.name === 'reader'
 </script>
 
-<style>
-html,
-body {
-  height: var(--app-height, 100dvh);
-  overflow: hidden;
-}
-
-#app {
-  height: var(--app-height, 100dvh);
-  overflow: hidden;
-}
-
-.app-main {
-  height: calc(var(--app-height, 100dvh) - var(--header-height) - var(--safe-area-top));
-  min-height: 0;
-  overflow: hidden;
-}
-
-.app-main.without-header {
-  height: var(--app-height, 100dvh);
-}
-
-.app-main.with-bottom-nav {
-  padding-bottom: var(--bottom-nav-space);
-  height: calc(var(--app-height, 100dvh) - var(--header-height) - var(--safe-area-top));
-}
-</style>
+<template>
+  <div v-if="isReader()" class="app-reader">
+    <router-view />
+  </div>
+  <div v-else class="app">
+    <aside class="sidebar">
+      <div class="brand">胖虎<span>阅读</span></div>
+      <router-link class="nav-link" active-class="active" to="/bookshelf">书架</router-link>
+      <router-link class="nav-link" active-class="active" to="/recent">最近</router-link>
+      <router-link class="nav-link" active-class="active" to="/search">搜索</router-link>
+      <router-link class="nav-link" active-class="active" to="/sources">书源</router-link>
+    </aside>
+    <main class="main">
+      <router-view />
+    </main>
+  </div>
+  <div v-if="toast" class="toast">{{ toast }}</div>
+</template>

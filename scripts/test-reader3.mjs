@@ -7,6 +7,8 @@
  * on the first broken step.
  */
 
+import { readFileSync } from 'node:fs'
+
 const base = (process.argv[2] || 'http://127.0.0.1:18086').replace(/\/+$/, '')
 const keyword = process.argv[3] || '大奉打更人'
 
@@ -37,7 +39,12 @@ const step = async (label, run) => {
 
 console.log(`base: ${base}`)
 
-const sources = await step('getBookSources', () => call('/reader3/getBookSources'))
+let sources = await step('getBookSources', () => call('/reader3/getBookSources'))
+if (!sources.some((item) => item.html)) {
+  const fixture = JSON.parse(readFileSync('scripts/fixtures/synthetic-source.json', 'utf8'))
+  await call('/reader3/saveBookSources', { method: 'POST', body: [fixture] })
+  sources = await step('getBookSources (after fixture import)', () => call('/reader3/getBookSources'))
+}
 const source = sources.find((item) => item.html)
 if (!source) throw new Error('没有可执行的 WebView 书源，先导入一个（POST /reader3/saveBookSources）')
 console.log(`  source: ${source.bookSourceName} (${source.bookSourceUrl})`)
