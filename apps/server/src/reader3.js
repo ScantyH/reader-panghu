@@ -15,6 +15,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
+import { convertText } from './text-convert.js'
 import { cleanIntro, cleanText } from './text.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
@@ -407,7 +408,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
 
   /* ------------------------------------------------------------ user config */
 
-  app.post('/reader3/changePassword', async () => fail('当前部署未启用密码登录'))
+  app.post('/reader3/resetPassword', async () => fail('请用 /reader3/changePassword'))
 
   app.get('/reader3/getUserConfig', async () => ok(store.getUserConfig()))
   app.post('/reader3/saveUserConfig', async (req) => ok(store.saveUserConfig(req.body || {})))

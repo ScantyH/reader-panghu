@@ -24,6 +24,8 @@ import { registerReader3 } from './reader3.js'
 import { registerReader3Extras } from './reader3-extras.js'
 import { registerAuth } from './auth.js'
 import { registerReadingExtras } from './reading-extras.js'
+import { registerPortability } from './portability.js'
+import { registerConvertHook, registerNotes } from './text-convert.js'
 import { registerWarehouse } from './warehouse.js'
 import { cleanIntro, cleanText } from './text.js'
 
@@ -175,6 +177,9 @@ app.setErrorHandler((error, _request, reply) => {
 registerReader3(app, { store, dataDir: DATA_DIR, options: { timeoutMs: SOURCE_TIMEOUT_MS } })
 registerReader3Extras(app, { store, dataDir: DATA_DIR, options: { timeoutMs: SOURCE_TIMEOUT_MS } })
 registerAuth(app, { store })
+registerPortability(app, { store })
+registerNotes(app, { store })
+registerConvertHook(app)
 registerWarehouse(app, { store, dataDir: DATA_DIR })
 registerReadingExtras(app, { store, dataDir: DATA_DIR })
 

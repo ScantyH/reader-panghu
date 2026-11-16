@@ -82,6 +82,13 @@ export const api = {
   readingStats: () => request('/getReadingStats'),
   chapterSummary: (text) => request('/getChapterSummary', { method: 'POST', body: { text } }),
   webdavList: (payload) => request('/webdavList', { method: 'POST', body: payload }),
+  exportBookSources: () => fetch('/reader3/exportBookSources').then((r) => r.blob()),
+  exportBackup: () => fetch('/reader3/exportBackup').then((r) => r.blob()),
+  userList: () => request('/getUserList'),
+  changePassword: (payload) => request('/changePassword', { method: 'POST', body: payload }),
+  chapterNotes: (bookUrl) => request('/getChapterNotes?bookUrl=' + encodeURIComponent(bookUrl)),
+  saveChapterNote: (payload) => request('/saveChapterNote', { method: 'POST', body: payload }),
+  deleteChapterNote: (payload) => request('/deleteChapterNote', { method: 'POST', body: payload }),
   importSourceFile: (file) => {
     const form = new FormData()
     form.append('file', file)

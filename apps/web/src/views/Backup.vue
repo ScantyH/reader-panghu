@@ -10,6 +10,17 @@ const lastResult = ref('')
 
 const SUGGESTED = '/reader-panghu-backup.json'
 
+/** 直接下载整包备份 JSON */
+async function downloadBackup() {
+  const blob = await api.exportBackup()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'reader-panghu-backup.json'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 async function backup() {
   if (!url.value.trim()) {
     window.__toast?.('先填 WebDAV 文件地址')

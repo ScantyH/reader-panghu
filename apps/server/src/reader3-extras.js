@@ -703,12 +703,7 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   app.post('/reader3/uploadFileToWebdav', async () => fail('WebDAV 文件浏览尚未接入；备份请用 /reader3/webdavBackup'))
   app.post('/reader3/deleteWebdavFile', async () => fail('WebDAV 文件浏览尚未接入'))
   app.post('/reader3/deleteWebdavFileList', async () => fail('WebDAV 文件浏览尚未接入'))
-  app.get('/reader3/getUserList', async () => {
-    const user = store.getUser()
-    return ok([{ username: user?.username ?? 'reader', isAdmin: true, enable: true }])
-  })
-  app.post('/reader3/addUser', async () => fail('单用户部署不支持新增用户'))
-  app.post('/reader3/resetPassword', async () => fail('当前部署未启用密码登录'))
+  app.post('/reader3/addUser', async () => fail('多用户请用 /reader3/register'))
   app.post('/reader3/updateUser', async () => fail('单用户部署不支持多用户'))
   app.post('/reader3/deleteUsers', async () => fail('单用户部署不支持多用户'))
 

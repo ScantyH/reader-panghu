@@ -73,6 +73,17 @@ async function importFile(event) {
   }
 }
 
+async function exportSources() {
+  const blob = await api.exportBookSources()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'book-sources.json'
+  link.click()
+  URL.revokeObjectURL(url)
+  window.__toast?.('已导出 ' + sources.value.length + ' 个书源')
+}
+
 async function importRemote() {
   const url = remoteUrl.value.trim()
   if (!url) return
@@ -244,6 +255,7 @@ onMounted(load)
         </select>
         <input ref="fileInput" type="file" accept=".json" hidden @change="importFile" />
         <button class="primary" @click="fileInput.click()">导入文件</button>
+        <button @click="exportSources">导出</button>
       </div>
       <div class="row" style="margin-bottom: 16px">
         <input v-model="remoteUrl" placeholder="远程书源地址（订阅链接）" style="flex: 1" @keyup.enter="importRemote" />

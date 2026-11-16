@@ -16,12 +16,16 @@ const showCatalog = ref(false)
 const showSettings = ref(false)
 const showBookmarks = ref(false)
 const bookmarks = ref([])
-const prefs = ref({ fontSize: 17, lineHeight: 1.95, theme: 'light' })
+const prefs = ref({ fontSize: 17, lineHeight: 1.95, theme: 'light', fontFamily: localStorage.getItem('readerFont') || '' })
 const readingEl = ref(null)
 const ttsOn = ref(false)
 const searchOpen = ref(false)
 const searchText = ref('')
 const searchResult = ref('')
+const catalogFilter = ref('')
+const convertMode = ref(localStorage.getItem('readerConvert') || '')
+const notes = ref([])
+const notesOpen = ref(false)
 const sourceOpen = ref(false)
 const sourceCandidates = ref([])
 const sourceLoading = ref(false)
@@ -159,6 +163,44 @@ async function loadBookmarks() {
   }
 }
 
+const filteredChapters = computed(() => {
+  const q = catalogFilter.value.trim()
+  if (!q) return chapters.value
+  return chapters.value.filter((chapter) => String(chapter.title || '').includes(q))
+})
+
+/** 切简繁：只影响显示，不改缓存 */
+async function setConvert(mode) {
+  convertMode.value = mode
+  localStorage.setItem('readerConvert', mode)
+  await loadChapter(current.value)
+}
+
+async function loadNotes() {
+  try {
+    notes.value = await api.chapterNotes(props.bookUrl)
+  } catch {
+    notes.value = []
+  }
+}
+
+/** 划选一段正文，加段落笔记 */
+async function addNote() {
+  const selection = String(window.getSelection?.() || '').trim()
+  if (!selection) {
+    window.__toast?.('先选中一段正文')
+    return
+  }
+  const note = prompt('这段的笔记（可留空）') ?? ''
+  try {
+    await api.saveChapterNote({ bookUrl: props.bookUrl, chapterIndex: current.value, quote: selection, note })
+    await loadNotes()
+    window.__toast?.('已保存笔记')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 async function loadChapter(index) {
   if (!chapters.value.length) return
   reportReadingTime()
@@ -166,7 +208,7 @@ async function loadChapter(index) {
   loading.value = true
   try {
     turnDirection.value = target > current.value ? 'next' : target < current.value ? 'prev' : ''
-    content.value = await api.content({ bookUrl: props.bookUrl, index: target })
+    content.value = await api.content({ bookUrl: props.bookUrl, index: target, convert: convertMode.value || undefined })
     current.value = target
     if (book.value) {
       book.value.durChapterIndex = target
@@ -261,6 +303,7 @@ onMounted(async () => {
       <button class="icon-btn" :title="ttsOn ? '停止朗读' : '朗读'" @click="toggleTts">{{ ttsOn ? '⏹' : '🔊' }}</button>
       <button class="icon-btn" title="正文内查找" @click="searchOpen = !searchOpen">🔎</button>
       <button class="icon-btn" title="换源" @click="findSources">⇄</button>
+      <button class="icon-btn" title="段落笔记" @click="notesOpen = true; loadNotes()">✎</button>
       <button class="icon-btn" title="设置" @click="showSettings = true">Aa</button>
     </div>
 
@@ -273,7 +316,7 @@ onMounted(async () => {
 
     <div class="reader-body">
       <aside v-if="showCatalog" class="catalog">
-        <template v-for="chapter in chapters" :key="chapter.index">
+        <template v-for="chapter in filteredChapters" :key="chapter.index">
           <div v-if="chapter.isVolume" class="volume">{{ chapter.title }}</div>
           <button
             v-else
@@ -316,6 +359,7 @@ onMounted(async () => {
     <div v-if="sourceOpen" class="sheet-backdrop" @click.self="sourceOpen = false">
       <div class="sheet">
         <div class="sheet-handle" />
+        <input v-model="catalogFilter" placeholder="搜索章节名" style="margin-bottom: 10px" />
         <h2>换源 · {{ book?.name }}</h2>
         <div v-if="sourceLoading" class="muted">正在其它书源里搜索…</div>
         <div v-else-if="!sourceCandidates.length" class="muted" style="font-size: 13px">没有找到其它来源。</div>

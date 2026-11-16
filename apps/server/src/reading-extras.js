@@ -13,17 +13,25 @@ const DAY = 24 * 60 * 60 * 1000
 export function registerReadingExtras(app, { store, dataDir, options = {} }) {
   /* ------------------------------------------------------------- 阅读统计 */
 
-  // 进程内累计，按天归并；重启后从零开始（够用且不占库）
-  /** @type {Map<string, {seconds: number, chapters: number, date: string}>} */
-  const readingStats = new Map()
+  // 统计落在 user_config 里，重启不丢
   const todayKey = () => new Date().toISOString().slice(0, 10)
+  const loadStats = () => {
+    const config = store.getUserConfig() || {}
+    return config.readingDays && typeof config.readingDays === 'object' ? { ...config.readingDays } : {}
+  }
+  const saveStats = (days) => {
+    const config = store.getUserConfig() || {}
+    store.saveUserConfig({ ...config, readingDays: days })
+  }
 
   const bumpStats = (bookUrl, seconds, chapters) => {
     const date = todayKey()
-    const entry = readingStats.get(date) || { seconds: 0, chapters: 0, date }
+    const days = loadStats()
+    const entry = days[date] || { seconds: 0, chapters: 0, date }
     entry.seconds += Math.max(0, Math.min(Number(seconds) || 0, 3600))
     entry.chapters += Math.max(0, Math.min(Number(chapters) || 0, 100))
-    readingStats.set(date, entry)
+    days[date] = entry
+    saveStats(days)
     const book = store.getBook(String(bookUrl || ''))
     if (book) {
       store.saveBook({ ...book, readingSeconds: (Number(book.readingSeconds) || 0) + (Number(seconds) || 0) })
@@ -37,7 +45,7 @@ export function registerReadingExtras(app, { store, dataDir, options = {} }) {
   })
 
   app.get('/reader3/getReadingStats', async () => {
-    const days = [...readingStats.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-30)
+    const days = Object.values(loadStats()).sort((a, b) => a.date.localeCompare(b.date)).slice(-30)
     const totalSeconds = days.reduce((sum, item) => sum + item.seconds, 0)
     const totalChapters = days.reduce((sum, item) => sum + item.chapters, 0)
     const shelf = store.listBooks()
