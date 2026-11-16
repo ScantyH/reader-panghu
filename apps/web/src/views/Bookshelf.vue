@@ -69,6 +69,17 @@ async function saveEdited(book) {
   }
 }
 
+async function cache(book) {
+  try {
+    window.__toast?.(`正在缓存《${book.name}》…`)
+    const result = await api.cacheBook(book.bookUrl, 20)
+    window.__toast?.(`已缓存 ${result.cached} 章（累计 ${result.totalCached} 章）`)
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 async function remove(book) {
   if (!confirm(`从书架删除《${book.name}》？`)) return
   try {
@@ -121,6 +132,7 @@ onMounted(load)
         <p>{{ book.durChapterTitle || book.author || '未开始' }}</p>
         <div class="row" style="margin-top: 6px; gap: 6px" @click.stop>
           <button class="ghost" style="padding: 2px 8px; font-size: 12px" @click="editing = { ...book }">编辑</button>
+          <button class="ghost" style="padding: 2px 8px; font-size: 12px" @click="cache(book)">缓存</button>
           <button class="ghost" style="padding: 2px 8px; font-size: 12px" @click="remove(book)">删除</button>
         </div>
       </div>

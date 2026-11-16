@@ -34,6 +34,7 @@ export const api = {
   deleteBooks: (books) => request('/deleteBooks', { method: 'POST', body: books }),
   saveProgress: (bookUrl, index, position = 0) =>
     request('/saveBookProgress', { method: 'POST', body: { bookUrl, index, position } }),
+  cacheBook: (bookUrl, count = 20) => request('/cacheBook', { method: 'POST', body: { bookUrl, count } }),
   groups: () => request('/getBookGroups'),
   saveGroup: (group) => request('/saveBookGroup', { method: 'POST', body: group }),
   deleteGroup: (groupId) => request('/deleteBookGroup', { method: 'POST', body: { groupId } }),
