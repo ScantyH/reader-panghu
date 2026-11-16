@@ -41,15 +41,15 @@
 | 能力 | 参考项目 | 影响 | 备注 |
 |---|---|---|---|
 | 多用户 / 登录 | hectorqin, reader-next | 中 | 当前单用户；`getUserInfo` 等接口是固定返回 |
-| WebDAV 文件浏览 | reader-next | 低 | 目前只做整包备份/恢复，不能浏览远端目录 |
-| 换源 | hectorqin, reader-next | 中 | 阅读器内切换同书其它来源 |
-| AI 章节摘要 / 资料库 | Maple0517 | 低（可选） | 需要模型供应商配置，非核心阅读链路 |
-| 阅读时长 / 统计 | reader-next | 低 | 会话统计目前只有进度与章节数 |
+| WebDAV 文件浏览 | reader-next | 🟡 | 后端 `webdavList`（PROPFIND）已实现，UI 未接 |
+| 换源 | hectorqin, reader-next | ✅ | 阅读器 ⇄ 按钮，跨书源搜同名书并保留进度 |
+| AI 章节摘要 | Maple0517 | 🟡 | `getChapterSummary` 需配 `DEEPSEEK_API_KEY`；资料库/关系图谱未做 |
+| 阅读时长 / 统计 | reader-next | 🟡 | 后端 `getReadingStats` + 阅读器上报，UI 统计页未做 |
 | 漫画 / 有声 / 视频库 | Maple0517 | 低 | 属于其它内容形态，超出小说阅读范围 |
-| 章节内容本地文件缓存 | hectorqin | 低 | 缓存存在服务端 SQLite，未落独立文件 |
+| 章节内容本地文件缓存 | hectorqin | ❌ | 仍存在服务端 SQLite，未落独立文件 |
 | 书源变量/登录态 | hectorqin | 中 | 需要 CookieJar 与登录流程，`java.ajax` 等仍不支持 |
-| 自动更新检查调度 | reader-next | 低 | 手动触发，未做定时任务 |
-| 阅读页翻页动画 | reader-next | 低 | 目前是滚动阅读 |
+| 自动更新检查调度 | reader-next | ✅ | 每 24 小时（`CHAPTER_CHECK_INTERVAL_HOURS`）后台检查一次 |
+| 阅读页翻页动画 | reader-next | ✅ | 切章按方向左右滑入 |
 
 ## 结论
 
@@ -59,3 +59,15 @@
 1. **多用户与登录态**：hectorqin 有完整用户体系，本项目是单用户。
 2. **换源与登录书源**：依赖书源登录/验证码的能力，服务端难以可靠模拟。
 3. **内容形态扩展**（AI 摘要、漫画、有声、视频）：超出"小说阅读"范围。
+
+
+## 本轮补充（2026-11-16 第二批）
+
+已完成：换源、阅读统计（后端）、定时章节检查、翻页动画、AI 摘要（需 key）、WebDAV 目录浏览（后端）。
+
+仍缺：
+1. 多用户与登录体系（所有表已预留 user_id，但查询硬编码单用户）
+2. 书源登录态 / CookieJar（`java.ajax` 与验证码流程）
+3. 章节内容落独立文件
+4. 漫画 / 有声 / 视频库（内容形态，超出小说阅读）
+5. 阅读统计页、WebDAV 浏览页（后端已就绪，仅缺 UI）
