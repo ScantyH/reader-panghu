@@ -35,6 +35,9 @@ importers:
       fflate:
         specifier: ^0.8.2
         version: 0.8.3
+      jsdom:
+        specifier: '>=26'
+        version: 31.0.1
 
   apps/web:
     dependencies:

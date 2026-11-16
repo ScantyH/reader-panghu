@@ -24,6 +24,7 @@ const SUITES = [
   'test-updates',
   'test-rss',
   'test-webdav',
+  'test-rule-source',
   'test-legado-client',
 ]
 

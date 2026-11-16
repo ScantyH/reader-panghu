@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
+import { createRuleRuntime } from './rule-runtime.js'
 import { cleanIntro, cleanText } from './text.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
@@ -32,12 +33,19 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   function runtimeFor(bookSourceUrl) {
     const source = store.getSource(bookSourceUrl)
     if (!source) throw new SourceError(`书源不存在：${bookSourceUrl || '(空)'}`, { code: 'SOURCE_NOT_FOUND' })
+    const runtimeConfig = source._runtime || {}
+    // 规则型书源（有 searchUrl / ruleSearch、没有 html）走规则引擎
     if (!source.html) {
-      throw new SourceError(`书源「${source.bookSourceName || bookSourceUrl}」是规则型书源，服务端暂不执行`, {
-        code: 'SOURCE_RULE_UNSUPPORTED',
+      if (!source.searchUrl && !source.ruleSearch) {
+        throw new SourceError(`书源「${source.bookSourceName || bookSourceUrl}」既没有 html 也没有搜索规则`, {
+          code: 'SOURCE_INVALID',
+        })
+      }
+      return createRuleRuntime(source, {
+        timeoutMs: runtimeConfig.timeoutMs || timeoutMs,
+        userAgent: runtimeConfig.userAgent,
       })
     }
-    const runtimeConfig = source._runtime || {}
     return createRuntime(source, {
       name: source.bookSourceName,
       key: runtimeConfig.key || globalKey,
@@ -58,7 +66,8 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     }
   }
 
-  const enabledSources = () => store.listSources().filter((source) => source.enabled !== false && source.html)
+  const enabledSources = () =>
+    store.listSources().filter((source) => source.enabled !== false && (source.html || source.searchUrl || source.ruleSearch))
 
   const toSearchBook = (book, source) => ({
     name: String(book?.name ?? ''),

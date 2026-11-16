@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { generateLegadoSource } from '@reader-panghu/legado-source'
 import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
+import { createRuleRuntime } from './rule-runtime.js'
 import { defaultDatabaseFile, openDatabase } from './db.js'
 import { registerReader3 } from './reader3.js'
 import { registerReader3Extras } from './reader3-extras.js'
@@ -67,11 +68,12 @@ const slug = (input) =>
 
 const sourceId = (source) => slug(source.id || source.bookSourceName || source.bookSourceUrl)
 
-/** WebView sources only: the rule-type ones are executed by the client. */
-const webviewSources = () => store.listSources().filter((source) => source.html)
+/** 可执行的书源：WebView（html）或规则型（searchUrl / ruleSearch）。 */
+const executableSources = () =>
+  store.listSources().filter((source) => source.enabled !== false && (source.html || source.searchUrl || source.ruleSearch))
 
 function pickSource(id) {
-  const all = webviewSources()
+  const all = executableSources()
   if (id) {
     const found = all.find((source) => sourceId(source) === String(id))
     if (found) return found
@@ -120,6 +122,16 @@ function normalizeChapter(chapter, req, source, index) {
 }
 
 async function withRuntime(source, run) {
+  const runtimeConfig = source._runtime || {}
+  if (!source.html) {
+    const runtime = createRuleRuntime(source, { timeoutMs: SOURCE_TIMEOUT_MS })
+    await runtime.init()
+    try {
+      return await run(runtime)
+    } finally {
+      runtime.dispose()
+    }
+  }
   const runtime = createRuntime(source, {
     name: source.bookSourceName,
     key: (source._runtime || {}).key || process.env.SOURCE_KEY || '',
@@ -163,7 +175,7 @@ registerReader3Extras(app, { store, dataDir: DATA_DIR, options: { timeoutMs: SOU
 app.get('/api/health', async () => ({
   ok: true,
   sources: store.listSources().length,
-  webviewSources: webviewSources().length,
+  webviewSources: executableSources().length,
   books: store.listBooks().length,
   uptime: Math.round(process.uptime()),
 }))
@@ -216,7 +228,7 @@ app.get('/api/content', async (req) => {
 /** Subscription document: every WebView source as a 阅读3 book source. */
 function legadoSources(req, onlyId) {
   const base = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.headers.host}`).replace(/\/+$/, '')
-  const list = webviewSources().filter((source) => !onlyId || sourceId(source) === onlyId)
+  const list = executableSources().filter((source) => !onlyId || sourceId(source) === onlyId)
   return list.map((source) =>
     generateLegadoSource({
       id: sourceId(source),

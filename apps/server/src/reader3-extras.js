@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { createRuntime } from '@reader-panghu/source-runtime'
+import { createRuleRuntime } from './rule-runtime.js'
 import { parseDocx } from './docx.js'
 import { parseEpub } from './epub.js'
 import { parseFeed } from './rss.js'
@@ -152,7 +153,7 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
     const word = String(keyword || '大奉').trim()
     const urls = Array.isArray(bookSourceUrls) && bookSourceUrls.length
       ? bookSourceUrls.map(String)
-      : store.listSources().filter((source) => source.html).map((source) => source.bookSourceUrl)
+      : store.listSources().filter((source) => source.html || source.searchUrl || source.ruleSearch).map((source) => source.bookSourceUrl)
     const results = []
     for (const url of urls) {
       const source = store.getSource(url)
@@ -160,13 +161,15 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
         results.push({ bookSourceName: url, bookSourceUrl: url, valid: false, searchOk: false, exploreOk: false, keyword: word, searchError: '书源不存在', markedInvalid: false })
         continue
       }
-      const runtime = createRuntime(source, {
-        name: source.bookSourceName,
-        key: (source._runtime || {}).key || process.env.SOURCE_KEY || '',
-        rewrites: (source._runtime || {}).rewrites || [],
-        timeoutMs,
-        baseUrl: source.bookSourceUrl,
-      })
+      const runtime = source.html
+        ? createRuntime(source, {
+            name: source.bookSourceName,
+            key: (source._runtime || {}).key || process.env.SOURCE_KEY || '',
+            rewrites: (source._runtime || {}).rewrites || [],
+            timeoutMs,
+            baseUrl: source.bookSourceUrl,
+          })
+        : createRuleRuntime(source, { timeoutMs })
       try {
         await runtime.init()
         const books = await runtime.search(word, 1)
