@@ -15,6 +15,7 @@ import { basename, join } from 'node:path'
 import { createRuntime } from '@reader-panghu/source-runtime'
 import { parseDocx } from './docx.js'
 import { parseEpub } from './epub.js'
+import { parseMobi } from './mobi.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
@@ -335,12 +336,49 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
     return ok(book)
   })
 
-  for (const [route, label] of [
-    ['uploadPdfBook', 'PDF'],
-    ['uploadMobiBook', 'MOBI/AZW3'],
-  ]) {
-    app.post(`/reader3/${route}`, async () => fail(`${label} 需要专门解析器，尚未接入；当前已支持 TXT / EPUB / DOCX`))
-  }
+  app.post('/reader3/uploadMobiBook', async (req) => {
+    const part = await req.file?.()
+    if (!part) return fail('缺少文件')
+    const filename = basename(part.filename || 'local.mobi')
+    let parsed
+    try {
+      parsed = parseMobi(new Uint8Array(await part.toBuffer()))
+    } catch (error) {
+      return fail(`MOBI 解析失败：${error.message}`)
+    }
+    if (!parsed.chapters.length) return fail('MOBI 里没有可读章节')
+
+    const uuid = randomUUID()
+    const bookUrl = `local://mobi/${uuid}`
+    const chapters = parsed.chapters.map((chapter, index) => ({
+      title: chapter.title,
+      url: `${bookUrl}#${index}`,
+      index,
+      content: chapter.text,
+    }))
+    const book = store.saveBook({
+      name: parsed.title || filename.replace(/\.(mobi|azw3?)$/i, ''),
+      author: parsed.author || '',
+      bookUrl,
+      origin: 'local://mobi',
+      originName: '本地书籍',
+      coverUrl: '',
+      tocUrl: '',
+      intro: parsed.intro || '',
+      kind: '',
+      latestChapterTitle: chapters.at(-1)?.title || '',
+      wordCount: String(chapters.reduce((sum, chapter) => sum + chapter.content.length, 0)),
+      type: 0,
+      canUpdate: false,
+      group: 0,
+      totalChapterNum: chapters.length,
+    })
+    store.saveChapters(bookUrl, 'local://mobi', chapters.map(({ content, ...rest }) => rest))
+    store.saveChapters(`${bookUrl}#content`, 'local://mobi', chapters)
+    return ok(book)
+  })
+
+  app.post('/reader3/uploadPdfBook', async () => fail('PDF 需要 PDF 引擎，尚未接入；当前已支持 TXT / EPUB / DOCX / MOBI'))
 
   app.get('/reader3/getTxtTocRules', async () => ok([]))
 
