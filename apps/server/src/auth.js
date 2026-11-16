@@ -142,12 +142,29 @@ export function registerAuth(app, { store }) {
   app.get('/reader3/getUserInfo', async (req) => {
     if (!authEnabled()) {
       const user = store.getUser()
-      return ok({ username: user?.username ?? 'reader', secure: false, authEnabled: false })
+      return ok({ username: user?.username ?? 'reader', role: user?.role ?? 'admin', secure: false, authEnabled: false })
     }
     if (!req.userId) return fail('NEED_LOGIN')
     const user = store.getUserById(req.userId)
-    return ok({ username: user?.username ?? '', secure: true, authEnabled: true })
+    return ok({ username: user?.username ?? '', role: user?.role ?? 'user', secure: true, authEnabled: true })
   })
+
+  // 用环境变量种一个管理员账号（已存在则只补角色）
+  const seedAdmin = process.env.ADMIN_USERNAME
+  const seedPassword = process.env.ADMIN_PASSWORD
+  if (seedAdmin && seedPassword) {
+    const existing = store.findUserByName(seedAdmin)
+    if (!existing) {
+      store.createUser(seedAdmin, hashPassword(seedPassword), 'admin')
+      app.log.info(`[auth] 已创建管理员 ${seedAdmin}`)
+    } else {
+      const current = store.getUserById(existing.id)
+      if (current?.role !== 'admin') {
+        store.setUserRole(existing.id, 'admin')
+        app.log.info(`[auth] 已把 ${seedAdmin} 提升为管理员`)
+      }
+    }
+  }
 
   app.log.info(`[auth] 多用户 ${authEnabled() ? '已启用' : '未启用（单用户模式）'}`)
 }

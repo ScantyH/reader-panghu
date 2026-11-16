@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   password TEXT,
+  role TEXT NOT NULL DEFAULT 'user',
   created_at INTEGER NOT NULL
 );
 
@@ -450,7 +451,7 @@ class Store {
   }
 
   listUsers() {
-    return this.db.prepare('SELECT id, username, password, created_at FROM users ORDER BY id').all()
+    return this.db.prepare('SELECT id, username, password, role, created_at FROM users ORDER BY id').all()
   }
 
   findUserByName(username) {
@@ -458,18 +459,22 @@ class Store {
   }
 
   getUserById(userId) {
-    return this.db.prepare('SELECT id, username FROM users WHERE id = ?').get(Number(userId))
+    return this.db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(Number(userId))
   }
 
-  createUser(username, password) {
+  createUser(username, password, role = 'user') {
     const result = this.db
-      .prepare('INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)')
-      .run(String(username), password, Date.now())
-    return { id: Number(result.lastInsertRowid), username }
+      .prepare('INSERT INTO users (username, password, role, created_at) VALUES (?, ?, ?, ?)')
+      .run(String(username), password, String(role), Date.now())
+    return { id: Number(result.lastInsertRowid), username, role }
+  }
+
+  setUserRole(userId, role) {
+    return this.db.prepare('UPDATE users SET role = ? WHERE id = ?').run(String(role), Number(userId)).changes > 0
   }
 
   getUser(userId = currentUserId()) {
-    return this.db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId)
+    return this.db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(userId)
   }
 }
 

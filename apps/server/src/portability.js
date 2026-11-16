@@ -64,6 +64,7 @@ export function registerPortability(app, { store }) {
     const users = store.listUsers().map((user) => ({
       username: user.username,
       hasPassword: Boolean(user.password),
+      role: user.role || 'user',
       createdAt: user.created_at,
       current: false,
     }))
