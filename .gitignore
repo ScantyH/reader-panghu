@@ -5,7 +5,7 @@ apps/web/dist/
 # Runtime data: databases, uploaded books, generated assets
 data/
 storage/
-tmp-test-data/
+tmp-*/
 *.db
 *.db-journal
 
