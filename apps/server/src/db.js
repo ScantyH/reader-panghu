@@ -434,6 +434,25 @@ class Store {
     return config
   }
 
+  listUsers() {
+    return this.db.prepare('SELECT id, username, password, created_at FROM users ORDER BY id').all()
+  }
+
+  findUserByName(username) {
+    return this.db.prepare('SELECT id, username, password FROM users WHERE username = ?').get(String(username))
+  }
+
+  getUserById(userId) {
+    return this.db.prepare('SELECT id, username FROM users WHERE id = ?').get(Number(userId))
+  }
+
+  createUser(username, password) {
+    const result = this.db
+      .prepare('INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)')
+      .run(String(username), password, Date.now())
+    return { id: Number(result.lastInsertRowid), username }
+  }
+
   getUser(userId = DEFAULT_USER_ID) {
     return this.db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId)
   }

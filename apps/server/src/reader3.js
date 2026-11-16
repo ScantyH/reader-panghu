@@ -407,13 +407,6 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
 
   /* ------------------------------------------------------------ user config */
 
-  app.get('/reader3/getUserInfo', async () => {
-    const user = store.getUser()
-    return ok({ username: user?.username ?? 'reader', secure: false, isSecure: false })
-  })
-
-  app.post('/reader3/login', async () => ok({ username: 'reader', token: '' }))
-  app.post('/reader3/logout', async () => ok(null))
   app.post('/reader3/changePassword', async () => fail('当前部署未启用密码登录'))
 
   app.get('/reader3/getUserConfig', async () => ok(store.getUserConfig()))
