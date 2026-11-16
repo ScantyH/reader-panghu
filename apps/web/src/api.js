@@ -70,6 +70,9 @@ export const api = {
   },
 
   // bookmarks
+  getUserConfig: () => request('/getUserConfig'),
+  saveUserConfig: (config) => request('/saveUserConfig', { method: 'POST', body: config }),
+
   bookmarks: () => request('/getBookmarks'),
   saveBookmark: (bookmark) => request('/saveBookmark', { method: 'POST', body: bookmark }),
   deleteBookmark: (bookmark) => request('/deleteBookmark', { method: 'POST', body: bookmark }),

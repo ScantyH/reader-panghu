@@ -14,6 +14,35 @@ const loading = ref(false)
 const showCatalog = ref(false)
 const showBookmarks = ref(false)
 const bookmarks = ref([])
+const showSettings = ref(false)
+const prefs = ref({ fontSize: 17, lineHeight: 1.95, theme: 'dark' })
+const THEMES = {
+  dark: { bg: '#14161a', text: '#d7dae1' },
+  sepia: { bg: '#f4ecd8', text: '#3b3226' },
+  light: { bg: '#ffffff', text: '#22252b' },
+}
+
+let saveTimer = 0
+function persistPrefs() {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(async () => {
+    try {
+      const config = await api.getUserConfig()
+      await api.saveUserConfig({ ...config, reading: { ...prefs.value } })
+    } catch {
+      /* 偏好保存失败不阻塞阅读 */
+    }
+  }, 400)
+}
+
+async function loadPrefs() {
+  try {
+    const config = await api.getUserConfig()
+    if (config?.reading) prefs.value = { ...prefs.value, ...config.reading }
+  } catch {
+    /* 用默认值 */
+  }
+}
 const readingEl = ref(null)
 
 const title = computed(() => book.value?.name || '加载中')
@@ -56,6 +85,7 @@ async function addBookmark() {
   if (!chapter) return
   try {
     await api.saveBookmark({ bookUrl: props.bookUrl, chapterIndex: current.value, chapterTitle: chapter.title })
+    await loadPrefs()
     await loadBookmarks()
     window.__toast?.('已加入书签')
   } catch (error) {
@@ -101,6 +131,7 @@ onMounted(async () => {
       <button class="ghost" @click="showCatalog = !showCatalog">目录</button>
       <button class="ghost" @click="showBookmarks = !showBookmarks">书签</button>
       <button class="ghost" @click="addBookmark">加书签</button>
+      <button class="ghost" @click="showSettings = !showSettings">设置</button>
       <div class="reader-title">
         {{ title }}<span v-if="chapterTitle" class="muted"> · {{ chapterTitle }}</span>
       </div>
@@ -131,10 +162,29 @@ onMounted(async () => {
         </div>
       </aside>
 
-      <div ref="readingEl" class="reading">
+      <aside v-if="showSettings" class="catalog">
+        <div class="muted" style="padding: 6px 10px; font-size: 12px">阅读设置</div>
+        <div class="field" style="padding: 0 10px">
+          <label>字号 {{ prefs.fontSize }}px</label>
+          <input v-model.number="prefs.fontSize" type="range" min="14" max="26" step="1" @input="persistPrefs" />
+        </div>
+        <div class="field" style="padding: 0 10px">
+          <label>行距 {{ prefs.lineHeight }}</label>
+          <input v-model.number="prefs.lineHeight" type="range" min="1.4" max="2.6" step="0.05" @input="persistPrefs" />
+        </div>
+        <div class="field" style="padding: 0 10px">
+          <label>背景</label>
+          <div class="row" style="gap: 6px">
+            <button v-for="(value, name) in THEMES" :key="name" :class="{ primary: prefs.theme === name }" class="ghost"
+              @click="prefs.theme = name; persistPrefs()">{{ name }}</button>
+          </div>
+        </div>
+      </aside>
+
+      <div ref="readingEl" class="reading" :style="{ background: THEMES[prefs.theme]?.bg, color: THEMES[prefs.theme]?.text }">
         <h2 v-if="chapterTitle">{{ chapterTitle }}</h2>
         <div v-if="loading" class="muted">加载中…</div>
-        <div v-else class="text">{{ content || '（本章暂无正文）' }}</div>
+        <div v-else class="text" :style="{ fontSize: prefs.fontSize + 'px', lineHeight: prefs.lineHeight, color: THEMES[prefs.theme]?.text }">{{ content || '（本章暂无正文）' }}</div>
         <div class="reader-foot">
           <button :disabled="!hasPrev" @click="loadChapter(current - 1)">上一章</button>
           <button :disabled="!hasNext" @click="loadChapter(current + 1)">下一章</button>
