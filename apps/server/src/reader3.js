@@ -255,7 +255,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
 
   /** Pre-cache the first N chapters so the book can be read offline. */
   app.post('/reader3/cacheBook', async (req) => {
-    const { bookUrl, count = 20, refresh } = req.body || {}
+    const { bookUrl, count = 20, refresh, start = 0 } = req.body || {}
     const book = store.getBook(String(bookUrl ?? ''))
     if (!book) return fail('书籍不存在')
     let chapters = store.getChapters(book.bookUrl, book.origin) || []
@@ -270,9 +270,11 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
       if (!chapters.length) return fail('取不到目录')
       store.saveChapters(book.bookUrl, book.origin, chapters)
     }
-    const limit = Math.min(Number(count) || 20, chapters.length)
+    const from = Math.max(0, Math.min(Number(start) || 0, Math.max(0, chapters.length - 1)))
+    const limit = Math.max(1, Number(count) || 20)
+    const to = Math.min(from + limit, chapters.length)
     let cached = 0
-    for (let index = 0; index < limit; index += 1) {
+    for (let index = from; index < to; index += 1) {
       const chapter = chapters[index]
       if (!chapter?.url) continue
       if (!refresh && store.getChapterText(cacheKey(book), chapter.url)) continue

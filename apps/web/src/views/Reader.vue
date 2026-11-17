@@ -299,6 +299,18 @@ function toggleTts() {
 }
 
 /* ---------------- 其它 ---------------- */
+/** 预缓存：始终保证当前章之后 20 章已在服务端缓存 */
+const CACHE_AHEAD = 20
+let cacheTimer = 0
+
+function prefetchAhead() {
+  if (!book.value) return
+  clearTimeout(cacheTimer)
+  cacheTimer = window.setTimeout(() => {
+    api.cacheBook(book.value.bookUrl, CACHE_AHEAD, false, current.value + 1).catch(() => {})
+  }, 1200)
+}
+
 function cycleTheme() {
   const order = ['paper', 'light', 'green', 'dark']
   prefs.value.theme = order[(order.indexOf(prefs.value.theme) + 1) % order.length]
