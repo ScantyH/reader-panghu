@@ -1,23 +1,123 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api.js'
 
 const props = defineProps({ bookUrl: { type: String, required: true } })
 const router = useRouter()
 
+const PAPER = {
+  white: { name: '白纸', bg: '#ffffff', text: '#242424' },
+  warm: { name: '暖黄', bg: '#f6ecd8', text: '#3b2f24' },
+  green: { name: '浅绿', bg: '#e6f0e2', text: '#2c3a2a' },
+  gray: { name: '灰调', bg: '#ececec', text: '#2b2b2b' },
+}
+const DARK = { name: '夜间', bg: '#121212', text: '#c9c4bb' }
+const APPEARANCE = [
+  { value: 'system', label: '跟随系统' },
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' },
+]
+const FONT_OPTIONS = [
+  { value: '', label: '系统默认' },
+  { value: 'serif', label: '宋体' },
+  { value: 'kai', label: '楷体' },
+  { value: 'sans', label: '黑体' },
+]
+const FONT_STACKS = {
+  '': '',
+  serif: '"Songti SC", "SimSun", "Noto Serif CJK SC", serif',
+  kai: '"Kaiti SC", "KaiTi", "STKaiti", serif',
+  sans: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
+}
+const ALIGNS = [
+  { value: 'justify', label: '两端对齐' },
+  { value: 'left', label: '左对齐' },
+]
+const ANIMATIONS = [
+  { value: 'none', label: '无动画' },
+  { value: 'fade', label: '淡入' },
+  { value: 'slide', label: '滑动' },
+]
+const TAPS = [
+  { value: 'prev', label: '上一页/章' },
+  { value: 'next', label: '下一页/章' },
+  { value: 'none', label: '无' },
+]
+
+const DEFAULT_PREFS = {
+  fontSize: 19,
+  lineHeight: 2.05,
+  paragraphSpacing: 0.8,
+  textIndent: 2,
+  letterSpacing: 0,
+  fontFamily: '',
+  textAlign: 'justify',
+  pageWidth: 760,
+  pagePadding: 24,
+  pageTop: 0,
+  pageBottom: 0,
+  appearance: 'system',
+  paper: 'warm',
+  brightness: 100,
+  pageMode: 'scroll',
+  animation: 'slide',
+  tapLeft: 'prev',
+  tapRight: 'next',
+  autoHide: true,
+  showHeaderBook: true,
+  showHeaderChapter: true,
+  showHeaderClock: false,
+  showFooterProgress: true,
+  showFooterPage: true,
+  showFooterClock: true,
+  showFooterBattery: true,
+  showChapterTitle: true,
+  convert: '',
+  ttsRate: 1,
+  ttsPitch: 1,
+  ttsVolume: 1,
+  ttsVoice: '',
+}
+
+function loadPrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('readerPrefs') || 'null')
+    if (saved && typeof saved === 'object') return { ...DEFAULT_PREFS, ...saved }
+  } catch {
+    /* ignore */
+  }
+  // 迁移旧版本单独存的键
+  return {
+    ...DEFAULT_PREFS,
+    fontSize: Number(localStorage.getItem('readerFontSize') || DEFAULT_PREFS.fontSize),
+    lineHeight: Number(localStorage.getItem('readerLineHeight') || DEFAULT_PREFS.lineHeight),
+    paper: localStorage.getItem('readerTheme') || DEFAULT_PREFS.paper,
+    fontFamily: localStorage.getItem('readerFont') || DEFAULT_PREFS.fontFamily,
+    convert: localStorage.getItem('readerConvert') || '',
+    pageMode: localStorage.getItem('readerPageMode') || DEFAULT_PREFS.pageMode,
+  }
+}
+
+const prefs = ref(loadPrefs())
+watch(prefs, (value) => localStorage.setItem('readerPrefs', JSON.stringify(value)), { deep: true })
+
 const book = ref(null)
 const chapters = ref([])
 const current = ref(0)
 const content = ref('')
 const loading = ref(false)
+const readingEl = ref(null)
 
 const showCatalog = ref(false)
 const showSettings = ref(false)
+const showTools = ref(false)
 const showSearch = ref(false)
 const showNotes = ref(false)
+const showBookmarks = ref(false)
 const showSource = ref(false)
 const showDp = ref(false)
+const showSummary = ref(false)
 
 const catalogFilter = ref('')
 const searchText = ref('')
@@ -26,6 +126,7 @@ const searchIndex = ref(0)
 
 const notes = ref([])
 const noteDraft = ref('')
+const bookmarks = ref([])
 
 const sourceCandidates = ref([])
 const sourceLoading = ref(false)
@@ -34,47 +135,200 @@ const dpMarkers = ref([])
 const dpCards = ref([])
 const dpLoading = ref(false)
 
-const ttsOn = ref(false)
+const summary = ref('')
+const summaryLoading = ref(false)
+
+const chromeVisible = ref(true)
 const turnDirection = ref('')
-const readingEl = ref(null)
 const caching = ref(false)
+const systemDark = ref(false)
+const clock = ref(new Date())
+const battery = ref(null)
+const isFullscreen = ref(false)
+const wakeLockOn = ref(false)
 
-const THEMES = {
-  paper: { bg: '#f3e9d2', text: '#3b2f24', name: '米黄' },
-  light: { bg: '#faf9f7', text: '#2b2b2b', name: '月白' },
-  green: { bg: '#e3eddf', text: '#2f3a2c', name: '豆绿' },
-  dark: { bg: '#141414', text: '#c9c4bb', name: '夜间' },
-}
+const scrollState = ref({ y: 0, max: 0, viewport: typeof window !== 'undefined' ? window.innerHeight : 800, pages: 1 })
 
-const prefs = ref({
-  fontSize: Number(localStorage.getItem('readerFontSize') || 19),
-  lineHeight: Number(localStorage.getItem('readerLineHeight') || 2.05),
-  theme: localStorage.getItem('readerTheme') || 'paper',
-  fontFamily: localStorage.getItem('readerFont') || '',
-  convert: localStorage.getItem('readerConvert') || '',
-  pageMode: localStorage.getItem('readerPageMode') || 'scroll',
+const tts = ref({ playing: false, paused: false, index: 0 })
+const voices = ref([])
+const sessionSeconds = ref(0)
+
+let hideTimer = 0
+let clockTimer = 0
+let readTimer = 0
+let readSeconds = 0
+let wakeLock = null
+let mediaQuery = null
+let touchStart = null
+let swipeTurned = false
+
+const anyPanel = computed(
+  () =>
+    showSettings.value ||
+    showCatalog.value ||
+    showTools.value ||
+    showSearch.value ||
+    showNotes.value ||
+    showBookmarks.value ||
+    showSource.value ||
+    showDp.value ||
+    showSummary.value,
+)
+
+const isDark = computed(() => prefs.value.appearance === 'dark' || (prefs.value.appearance === 'system' && systemDark.value))
+const theme = computed(() => (isDark.value ? DARK : PAPER[prefs.value.paper] || PAPER.warm))
+const dimOpacity = computed(() => ((100 - Number(prefs.value.brightness || 100)) / 100) * 0.72)
+const chapter = computed(() => chapters.value[current.value] || null)
+const chapterTitle = computed(() => chapter.value?.title || book.value?.name || '加载中…')
+const paragraphs = computed(() => String(content.value).split(/\n+/).filter((line) => line.trim()))
+const filteredChapters = computed(() => {
+  const query = catalogFilter.value.trim()
+  if (!query) return chapters.value
+  return chapters.value.filter((item) => String(item.title || '').includes(query))
 })
-
-const theme = computed(() => THEMES[prefs.value.theme] || THEMES.paper)
+const pageStyle = computed(() => ({
+  maxWidth: `${prefs.value.pageWidth}px`,
+  paddingLeft: `${prefs.value.pagePadding}px`,
+  paddingRight: `${prefs.value.pagePadding}px`,
+  paddingTop: `${84 + Number(prefs.value.pageTop || 0)}px`,
+  paddingBottom: `${130 + Number(prefs.value.pageBottom || 0)}px`,
+}))
+const bodyStyle = computed(() => ({
+  fontSize: `${prefs.value.fontSize}px`,
+  lineHeight: prefs.value.lineHeight,
+  fontFamily: FONT_STACKS[prefs.value.fontFamily] || undefined,
+  letterSpacing: `${prefs.value.letterSpacing}em`,
+  textAlign: prefs.value.textAlign,
+  '--para-gap': `${prefs.value.paragraphSpacing}em`,
+  '--text-indent': `${prefs.value.textIndent}em`,
+}))
+const chapterRatio = computed(() => (scrollState.value.max ? Math.min(1, scrollState.value.y / scrollState.value.max) : 0))
 const progress = computed(() => {
   const total = chapters.value.length
   if (!total) return 0
-  return Math.min(100, Math.round(((current.value + 1) / total) * 100))
+  return Math.min(100, Math.round(((current.value + chapterRatio.value) / total) * 100))
 })
-const paragraphs = computed(() => String(content.value).split(/\n+/).filter((line) => line.trim()))
-const filteredChapters = computed(() => {
-  const q = catalogFilter.value.trim()
-  if (!q) return chapters.value
-  return chapters.value.filter((item) => String(item.title || '').includes(q))
+const pageInfo = computed(() => {
+  const viewport = Math.max(1, scrollState.value.viewport)
+  const page = Math.min(scrollState.value.pages, Math.floor(scrollState.value.y / viewport) + 1)
+  return { page, pages: scrollState.value.pages }
 })
+const clockText = computed(() =>
+  clock.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+)
+const batteryText = computed(() => {
+  if (!battery.value) return ''
+  return `${Math.round(battery.value.level * 100)}%${battery.value.charging ? '⚡' : ''}`
+})
+const ttsLabel = computed(() => (tts.value.playing ? (tts.value.paused ? '继续' : '暂停') : '朗读'))
+const animationClass = computed(() => (prefs.value.animation === 'none' ? '' : `${prefs.value.animation}-${turnDirection.value}`))
+const ttsSentences = computed(() => splitSentences(content.value))
+
+function splitSentences(text) {
+  return String(text)
+    .split(/(?<=[。！？!?；;])\s*|\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 400)
+}
+
+function updateScroll() {
+  const element = document.scrollingElement || document.documentElement
+  const max = Math.max(0, element.scrollHeight - window.innerHeight)
+  scrollState.value = {
+    y: Math.min(window.scrollY, max),
+    max,
+    viewport: window.innerHeight,
+    pages: Math.max(1, Math.ceil(element.scrollHeight / window.innerHeight)),
+  }
+}
+
+function scheduleHide() {
+  clearTimeout(hideTimer)
+  if (!prefs.value.autoHide) return
+  hideTimer = window.setTimeout(() => {
+    if (!anyPanel.value && !loading.value) chromeVisible.value = false
+  }, 4200)
+}
+
+function toggleChrome() {
+  chromeVisible.value = !chromeVisible.value
+  if (chromeVisible.value) scheduleHide()
+}
+
+function resetChrome() {
+  chromeVisible.value = true
+  scheduleHide()
+}
+
+function onReaderClick(event) {
+  if (swipeTurned) {
+    swipeTurned = false
+    return
+  }
+  if (window.getSelection()?.toString()) return
+  if (event.target.closest?.('button, a, input, select, textarea')) return
+  if (anyPanel.value) return
+  const ratio = event.clientX / Math.max(1, window.innerWidth)
+  if (ratio < 0.3 && prefs.value.tapLeft !== 'none') runTap(prefs.value.tapLeft)
+  else if (ratio > 0.7 && prefs.value.tapRight !== 'none') runTap(prefs.value.tapRight)
+  else toggleChrome()
+}
+
+function onTouchStart(event) {
+  const touch = event.changedTouches?.[0]
+  if (!touch) return
+  touchStart = { x: touch.clientX, y: touch.clientY, at: Date.now() }
+}
+
+function onTouchEnd(event) {
+  const touch = event.changedTouches?.[0]
+  if (!touch || !touchStart) return
+  const dx = touch.clientX - touchStart.x
+  const dy = touch.clientY - touchStart.y
+  const elapsed = Date.now() - touchStart.at
+  touchStart = null
+  if (elapsed > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6) return
+  swipeTurned = true
+  window.setTimeout(() => (swipeTurned = false), 500)
+  if (dx < 0) turnNext()
+  else turnPrev()
+}
+
+function closePanels() {
+  showSettings.value = false
+  showCatalog.value = false
+  showTools.value = false
+  showSearch.value = false
+  showNotes.value = false
+  showBookmarks.value = false
+  showSource.value = false
+  showDp.value = false
+  showSummary.value = false
+}
+
+function onKeydown(event) {
+  if (event.key === 'Escape' && anyPanel.value) {
+    closePanels()
+    return
+  }
+  if (anyPanel.value || event.target.closest?.('input, textarea, select')) return
+  if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
+    event.preventDefault()
+    turnNext()
+  } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+    event.preventDefault()
+    turnPrev()
+  }
+}
+
+function runTap(action) {
+  if (action === 'prev') turnPrev()
+  else if (action === 'next') turnNext()
+}
 
 function savePrefs() {
-  localStorage.setItem('readerFontSize', String(prefs.value.fontSize))
-  localStorage.setItem('readerLineHeight', String(prefs.value.lineHeight))
-  localStorage.setItem('readerTheme', prefs.value.theme)
-  localStorage.setItem('readerFont', prefs.value.fontFamily)
-  localStorage.setItem('readerConvert', prefs.value.convert)
-  localStorage.setItem('readerPageMode', prefs.value.pageMode)
+  localStorage.setItem('readerPrefs', JSON.stringify(prefs.value))
 }
 
 async function loadBook() {
@@ -94,6 +348,7 @@ async function loadBook() {
     current.value = Number(book.value.durChapterIndex || 0)
     await loadChapter(current.value)
     loadNotes()
+    loadBookmarks()
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -101,6 +356,7 @@ async function loadBook() {
 
 async function loadChapter(index) {
   if (!chapters.value.length) return
+  stopTts()
   const target = Math.max(0, Math.min(index, chapters.value.length - 1))
   loading.value = true
   turnDirection.value = target > current.value ? 'next' : target < current.value ? 'prev' : ''
@@ -115,6 +371,8 @@ async function loadChapter(index) {
     api.saveProgress(book.value.bookUrl, target, 0, chapters.value[target]?.title || '').catch(() => {})
     await nextTick()
     window.scrollTo({ top: 0 })
+    updateScroll()
+    resetChrome()
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
@@ -124,10 +382,9 @@ async function loadChapter(index) {
 
 function turnNext() {
   if (prefs.value.pageMode === 'page') {
-    const viewport = window.innerHeight - 80
-    const maxScroll = document.body.scrollHeight - window.innerHeight
-    if (window.scrollY + viewport < maxScroll - 40) {
-      window.scrollBy({ top: viewport, behavior: 'smooth' })
+    const remaining = scrollState.value.max - scrollState.value.y
+    if (remaining > scrollState.value.viewport * 0.35) {
+      window.scrollBy({ top: scrollState.value.viewport - 24, behavior: prefs.value.animation === 'none' ? 'auto' : 'smooth' })
       return
     }
   }
@@ -136,9 +393,8 @@ function turnNext() {
 
 function turnPrev() {
   if (prefs.value.pageMode === 'page') {
-    const viewport = window.innerHeight - 80
-    if (window.scrollY > viewport / 2) {
-      window.scrollBy({ top: -viewport, behavior: 'smooth' })
+    if (scrollState.value.y > scrollState.value.viewport * 0.35) {
+      window.scrollBy({ top: -(scrollState.value.viewport - 24), behavior: prefs.value.animation === 'none' ? 'auto' : 'smooth' })
       return
     }
   }
@@ -148,6 +404,7 @@ function turnPrev() {
 function toTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
+
 function toBottom() {
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
 }
@@ -161,9 +418,29 @@ async function addBookmark() {
       chapterTitle: chapters.value[current.value]?.title || '',
     })
     window.__toast?.('已加入书签')
+    await loadBookmarks()
   } catch (error) {
     window.__toast?.(error.message)
   }
+}
+
+async function loadBookmarks() {
+  if (!book.value) return
+  try {
+    bookmarks.value = (await api.bookmarks()).filter((item) => item.bookUrl === book.value.bookUrl)
+  } catch {
+    bookmarks.value = []
+  }
+}
+
+async function jumpBookmark(bookmark) {
+  showBookmarks.value = false
+  await loadChapter(Number(bookmark.chapterIndex) || 0)
+}
+
+async function removeBookmark(bookmark) {
+  await api.deleteBookmark(bookmark).catch(() => {})
+  await loadBookmarks()
 }
 
 /* ---------------- 正文搜索 ---------------- */
@@ -231,6 +508,7 @@ async function removeNote(note) {
 
 /* ---------------- 换源 ---------------- */
 async function findSources() {
+  showTools.value = false
   showSource.value = true
   sourceLoading.value = true
   sourceCandidates.value = []
@@ -266,11 +544,12 @@ async function switchSource(candidate) {
 }
 
 /* ---------------- 段评 ---------------- */
-async function openDp(withComments = false) {
+async function openDp() {
+  showTools.value = false
   showDp.value = true
   dpLoading.value = true
   try {
-    const result = await api.paragraphComments({ bookUrl: props.bookUrl, index: current.value, withComments })
+    const result = await api.paragraphComments({ bookUrl: props.bookUrl, index: current.value, withComments: false })
     dpMarkers.value = result.markers || []
     dpCards.value = result.cards || []
   } catch (error) {
@@ -280,41 +559,146 @@ async function openDp(withComments = false) {
   }
 }
 
+/* ---------------- AI 总结 ---------------- */
+async function openSummary() {
+  showTools.value = false
+  showSummary.value = true
+  if (summary.value) return
+  summaryLoading.value = true
+  try {
+    const result = await api.chapterSummary(String(content.value).slice(0, 6000))
+    summary.value = result.summary || '（模型没有返回内容）'
+  } catch (error) {
+    summary.value = `生成失败：${error.message}`
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
 /* ---------------- 朗读 ---------------- */
-function toggleTts() {
-  if (!window.speechSynthesis) return window.__toast?.('浏览器不支持朗读')
-  if (ttsOn.value) {
-    window.speechSynthesis.cancel()
-    ttsOn.value = false
+function refreshVoices() {
+  if (!window.speechSynthesis) return
+  const all = window.speechSynthesis.getVoices()
+  const chinese = all.filter((voice) => /zh|chinese|中文/i.test(`${voice.lang} ${voice.name}`))
+  voices.value = chinese.length ? chinese : all
+}
+
+function selectedVoice() {
+  if (!prefs.value.ttsVoice) return null
+  return voices.value.find((voice) => voice.voiceURI === prefs.value.ttsVoice) || null
+}
+
+function speakAt(index) {
+  if (!tts.value.playing) return
+  const sentences = ttsSentences.value
+  if (index >= sentences.length) {
+    stopTts()
     return
   }
-  const text = String(content.value).trim()
-  if (!text) return
-  const utterance = new SpeechSynthesisUtterance(text.slice(0, 20000))
+  tts.value.index = index
+  const utterance = new SpeechSynthesisUtterance(sentences[index])
   utterance.lang = 'zh-CN'
-  utterance.onend = () => (ttsOn.value = false)
-  window.speechSynthesis.cancel()
+  utterance.rate = Number(prefs.value.ttsRate) || 1
+  utterance.pitch = Number(prefs.value.ttsPitch) || 1
+  utterance.volume = Number(prefs.value.ttsVolume) || 1
+  const voice = selectedVoice()
+  if (voice) utterance.voice = voice
+  utterance.onend = () => {
+    if (tts.value.playing && !tts.value.paused) speakAt(index + 1)
+  }
+  utterance.onerror = () => {
+    tts.value.playing = false
+    window.__toast?.('朗读中断')
+  }
   window.speechSynthesis.speak(utterance)
-  ttsOn.value = true
 }
 
-/* ---------------- 其它 ---------------- */
-/** 预缓存：始终保证当前章之后 20 章已在服务端缓存 */
-const CACHE_AHEAD = 20
-let cacheTimer = 0
+function startTts() {
+  if (!window.speechSynthesis) return window.__toast?.('浏览器不支持朗读')
+  if (!ttsSentences.value.length) return
+  window.speechSynthesis.cancel()
+  tts.value = { playing: true, paused: false, index: 0 }
+  speakAt(0)
+}
 
-function prefetchAhead() {
+function toggleTtsPause() {
+  if (!tts.value.playing) return startTts()
+  if (tts.value.paused) {
+    window.speechSynthesis.resume()
+    tts.value.paused = false
+  } else {
+    window.speechSynthesis.pause()
+    tts.value.paused = true
+  }
+}
+
+function stopTts() {
+  if (window.speechSynthesis) window.speechSynthesis.cancel()
+  tts.value = { playing: false, paused: false, index: 0 }
+}
+
+function ttsPrev() {
+  if (!tts.value.playing || tts.value.index <= 0) return
+  window.speechSynthesis.cancel()
+  tts.value.paused = false
+  speakAt(tts.value.index - 1)
+}
+
+function ttsNext() {
+  if (!tts.value.playing || tts.value.index >= ttsSentences.value.length - 1) return
+  window.speechSynthesis.cancel()
+  tts.value.paused = false
+  speakAt(tts.value.index + 1)
+}
+
+async function refreshCatalog() {
   if (!book.value) return
-  clearTimeout(cacheTimer)
-  cacheTimer = window.setTimeout(() => {
-    api.cacheBook(book.value.bookUrl, CACHE_AHEAD, false, current.value + 1).catch(() => {})
-  }, 1200)
+  try {
+    chapters.value = await api.chapterList({
+      bookUrl: book.value.bookUrl,
+      tocUrl: book.value.tocUrl,
+      bookSourceUrl: book.value.origin,
+      refresh: true,
+    })
+    if (current.value >= chapters.value.length) current.value = Math.max(0, chapters.value.length - 1)
+    window.__toast?.('目录已刷新')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
 }
 
-function cycleTheme() {
-  const order = ['paper', 'light', 'green', 'dark']
-  prefs.value.theme = order[(order.indexOf(prefs.value.theme) + 1) % order.length]
-  savePrefs()
+/* ---------------- 阅读时长 ---------------- */
+function flushReading() {
+  if (!book.value || readSeconds <= 0) return
+  const seconds = readSeconds
+  readSeconds = 0
+  api.saveReadingTime({ bookUrl: book.value.bookUrl, seconds, chapters: 0 }).catch(() => {})
+}
+
+/* ---------------- 显示工具 ---------------- */
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen?.()
+  else document.documentElement.requestFullscreen?.().catch(() => window.__toast?.('当前浏览器不允许全屏'))
+}
+
+async function toggleWakeLock() {
+  try {
+    if (wakeLock) {
+      await wakeLock.release()
+      wakeLock = null
+      wakeLockOn.value = false
+      return
+    }
+    if (!navigator.wakeLock) return window.__toast?.('当前浏览器不支持常亮')
+    wakeLock = await navigator.wakeLock.request('screen')
+    wakeLockOn.value = true
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null
+      wakeLockOn.value = false
+    })
+  } catch (error) {
+    window.__toast?.(`常亮失败：${error.message}`)
+  }
 }
 
 async function cacheChapter() {
@@ -331,136 +715,435 @@ async function cacheChapter() {
 
 async function setConvert(mode) {
   prefs.value.convert = mode
-  savePrefs()
   await loadChapter(current.value)
 }
 
-onMounted(loadBook)
+function selectPaper(key) {
+  prefs.value.paper = key
+  if (isDark.value) prefs.value.appearance = 'light'
+}
+
+function onVisibility() {
+  if (document.visibilityState === 'visible') {
+    updateScroll()
+    scheduleHide()
+  }
+}
+
+onMounted(() => {
+  mediaQuery = window.matchMedia?.('(prefers-color-scheme: dark)')
+  systemDark.value = Boolean(mediaQuery?.matches)
+  mediaQuery?.addEventListener?.('change', (event) => (systemDark.value = event.matches))
+
+  window.addEventListener('scroll', updateScroll, { passive: true })
+  window.addEventListener('resize', updateScroll)
+  window.addEventListener('keydown', onKeydown)
+  document.addEventListener('visibilitychange', onVisibility)
+  document.addEventListener('fullscreenchange', () => (isFullscreen.value = Boolean(document.fullscreenElement)))
+
+  refreshVoices()
+  window.speechSynthesis?.addEventListener?.('voiceschanged', refreshVoices)
+
+  if (navigator.getBattery) {
+    navigator.getBattery().then((manager) => {
+      const sync = () => (battery.value = { level: manager.level, charging: manager.charging })
+      sync()
+      manager.addEventListener?.('levelchange', sync)
+      manager.addEventListener?.('chargingchange', sync)
+    }).catch(() => {})
+  }
+
+  clockTimer = window.setInterval(() => (clock.value = new Date()), 30000)
+  readTimer = window.setInterval(() => {
+    if (document.visibilityState !== 'visible') return
+    readSeconds += 15
+    sessionSeconds.value += 15
+    if (readSeconds >= 60) flushReading()
+  }, 15000)
+
+  updateScroll()
+  loadBook()
+  scheduleHide()
+})
+
 onBeforeUnmount(() => {
-  if (ttsOn.value) window.speechSynthesis?.cancel()
+  stopTts()
+  flushReading()
+  clearTimeout(hideTimer)
+  clearInterval(clockTimer)
+  clearInterval(readTimer)
+  window.removeEventListener('scroll', updateScroll)
+  window.removeEventListener('resize', updateScroll)
+  window.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('visibilitychange', onVisibility)
+  mediaQuery?.removeEventListener?.('change', () => {})
+  window.speechSynthesis?.removeEventListener?.('voiceschanged', refreshVoices)
+  wakeLock?.release?.().catch(() => {})
+})
+
+watch(anyPanel, (open) => {
+  if (open) {
+    chromeVisible.value = true
+    clearTimeout(hideTimer)
+  } else {
+    resetChrome()
+  }
+})
+
+watch(
+  () => prefs.value.pageMode,
+  () => nextTick(updateScroll),
+)
+
+watch(chapterTitle, () => {
+  summary.value = ''
+  dpMarkers.value = []
+  dpCards.value = []
 })
 </script>
 
 <template>
   <div class="reader-shell" :style="{ background: theme.bg, color: theme.text }">
-    <aside class="rail rail-left">
-      <button class="rail-btn" title="首页" @click="router.push('/bookshelf')"><span>⌂</span><i>首页</i></button>
-      <button class="rail-btn" title="书架" @click="router.push('/bookshelf')"><span>▤</span><i>书架</i></button>
-      <button class="rail-btn" title="书源" @click="router.push('/sources')"><span>⌘</span><i>书源</i></button>
-      <button class="rail-btn" title="目录" @click="showCatalog = true"><span>☰</span><i>目录</i></button>
-      <button class="rail-btn" title="设置" @click="showSettings = true"><span>⚙</span><i>设置</i></button>
-      <button class="rail-btn" title="顶部" @click="toTop"><span>︿</span><i>顶部</i></button>
-      <button class="rail-btn" title="底部" @click="toBottom"><span>﹀</span><i>底部</i></button>
-    </aside>
+    <div class="reader-dim" :style="{ opacity: dimOpacity }" />
 
-    <main class="reader-main">
-      <div ref="readingEl" class="reader-page" :class="turnDirection">
-        <h1 class="chapter-title">{{ chapters[current]?.title || book?.name || '加载中…' }}</h1>
-        <div v-if="loading" class="reader-loading">加载中…</div>
-        <div
-          v-else
-          class="chapter-body"
-          :style="{ fontSize: prefs.fontSize + 'px', lineHeight: prefs.lineHeight, fontFamily: prefs.fontFamily || undefined }"
-        >
-          <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph.trim() }}</p>
-        </div>
+    <header class="reader-top" :class="{ visible: chromeVisible }" :style="{ background: theme.bg }">
+      <button class="chrome-btn" title="返回书架" @click="router.push('/bookshelf')">←</button>
+      <div class="top-title">
+        <strong v-if="prefs.showHeaderBook">{{ book?.name || '' }}</strong>
+        <span v-if="prefs.showHeaderChapter">{{ chapterTitle }}</span>
+      </div>
+      <span v-if="prefs.showHeaderClock" class="top-clock">{{ clockText }}</span>
+      <div class="top-actions">
+        <button class="chrome-btn" title="书签" @click="addBookmark">🔖</button>
+        <button class="chrome-btn" title="AI 总结" @click="openSummary">✨</button>
+        <button class="chrome-btn" title="更多" @click="showTools = true">⋯</button>
+      </div>
+    </header>
+
+    <main
+      ref="readingEl"
+      class="reader-main"
+      :class="animationClass"
+      :style="pageStyle"
+      @click="onReaderClick"
+      @touchstart.passive="onTouchStart"
+      @touchend.passive="onTouchEnd"
+    >
+      <h1 v-if="prefs.showChapterTitle" class="chapter-title" :style="{ fontSize: prefs.fontSize * 1.28 + 'px' }">
+        {{ chapterTitle }}
+      </h1>
+      <div v-if="loading" class="reader-loading">加载中…</div>
+      <div v-else class="chapter-body" :style="bodyStyle">
+        <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph.trim() }}</p>
+      </div>
+      <div class="chapter-end">
+        <button class="chapter-end-btn" @click.stop="turnNext">下一章 →</button>
       </div>
     </main>
 
-    <aside class="rail rail-right">
-      <button class="rail-btn round" title="书签" @click="addBookmark">⌘</button>
-      <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">⌕</button>
-      <button class="rail-btn round" title="换源" @click="findSources">⇄</button>
-      <button class="rail-btn round" title="笔记" @click="showNotes = true; loadNotes()">✎</button>
-      <button class="rail-btn round" title="段评" @click="openDp(false)">💬</button>
-      <button class="rail-btn round" :title="caching ? '缓存中' : '缓存 50 章'" @click="cacheChapter">⤓</button>
-      <button class="rail-btn round" title="刷新" @click="loadChapter(current)">↻</button>
-      <button class="rail-btn round" title="简繁" @click="setConvert(prefs.convert === 'tw' ? 'cn' : 'tw')">文</button>
-      <button class="rail-btn round" :title="ttsOn ? '停止' : '朗读'" @click="toggleTts">{{ ttsOn ? '⏹' : '🎧' }}</button>
-      <button class="rail-btn round" title="主题" @click="cycleTheme">☾</button>
-      <div class="rail-progress">{{ progress }}%</div>
-      <button class="rail-btn round" title="上一章" @click="turnPrev">‹</button>
-      <button class="rail-btn round" title="下一章" @click="turnNext">›</button>
-    </aside>
+    <footer class="reader-bottom" :class="{ visible: chromeVisible }" :style="{ background: theme.bg }">
+      <button class="bottom-btn" @click="showCatalog = true">目录</button>
+      <button class="bottom-btn" :disabled="current <= 0" @click="turnPrev">上一章</button>
+      <div class="bottom-progress">
+        <div class="progress-line"><i :style="{ width: progress + '%' }" /></div>
+        <div class="progress-meta">
+          <span>{{ current + 1 }}/{{ chapters.length }} 章</span>
+          <span v-if="prefs.showFooterPage">第 {{ pageInfo.page }}/{{ pageInfo.pages }} 页</span>
+          <span v-if="prefs.showFooterProgress">{{ progress }}%</span>
+          <span v-if="prefs.showFooterClock">{{ clockText }}</span>
+          <span v-if="prefs.showFooterBattery && batteryText">{{ batteryText }}</span>
+        </div>
+      </div>
+      <button class="bottom-btn" :disabled="current >= chapters.length - 1" @click="turnNext">下一章</button>
+      <button class="bottom-btn" @click="showSettings = true">设置</button>
+    </footer>
 
-    <!-- 搜索条 -->
+    <!-- 正文搜索条 -->
     <div v-if="showSearch" class="search-bar">
       <input v-model="searchText" placeholder="本章查找" @keyup.enter="runSearch" />
       <span class="search-count">{{ searchHits.length ? `${searchIndex + 1}/${searchHits.length}` : '—' }}</span>
-      <button class="rail-btn round" @click="jumpHit(-1)">‹</button>
-      <button class="rail-btn round" @click="jumpHit(1)">›</button>
-      <button class="rail-btn round" @click="showSearch = false">×</button>
+      <button class="chrome-btn" @click="jumpHit(-1)">‹</button>
+      <button class="chrome-btn" @click="jumpHit(1)">›</button>
+      <button class="chrome-btn" @click="showSearch = false">×</button>
     </div>
+
+    <!-- 设置抽屉 -->
+    <div v-if="showSettings" class="panel-backdrop" @click.self="showSettings = false" />
+    <aside class="reader-panel" :class="{ open: showSettings }" :style="{ background: theme.bg, color: theme.text }">
+      <header class="panel-head">
+        <h2>阅读设置</h2>
+        <button class="chrome-btn" @click="showSettings = false">×</button>
+      </header>
+      <div class="panel-body">
+        <section class="panel-section">
+          <h3>主题</h3>
+          <div class="segmented">
+            <button
+              v-for="item in APPEARANCE"
+              :key="item.value"
+              :class="{ active: prefs.appearance === item.value }"
+              @click="prefs.appearance = item.value"
+            >{{ item.label }}</button>
+          </div>
+          <div class="swatches">
+            <button
+              v-for="(paper, key) in PAPER"
+              :key="key"
+              class="theme-swatch"
+              :class="{ active: prefs.paper === key && !isDark }"
+              :style="{ background: paper.bg, color: paper.text }"
+              @click="selectPaper(key)"
+            >{{ paper.name }}</button>
+          </div>
+          <label class="panel-row">
+            <span>亮度</span>
+            <input v-model.number="prefs.brightness" type="range" min="20" max="100" step="1" />
+            <b>{{ prefs.brightness }}%</b>
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h3>排版</h3>
+          <label class="panel-row">
+            <span>字体</span>
+            <select v-model="prefs.fontFamily">
+              <option v-for="item in FONT_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+            </select>
+          </label>
+          <div class="panel-row">
+            <span>字号</span>
+            <button class="step-btn" @click="prefs.fontSize = Math.max(12, prefs.fontSize - 1)">A−</button>
+            <b>{{ prefs.fontSize }}px</b>
+            <button class="step-btn" @click="prefs.fontSize = Math.min(32, prefs.fontSize + 1)">A＋</button>
+          </div>
+          <label class="panel-row">
+            <span>行距</span>
+            <input v-model.number="prefs.lineHeight" type="range" min="1.4" max="2.8" step="0.05" />
+            <b>{{ prefs.lineHeight.toFixed(2) }}</b>
+          </label>
+          <label class="panel-row">
+            <span>段距</span>
+            <input v-model.number="prefs.paragraphSpacing" type="range" min="0" max="2" step="0.1" />
+            <b>{{ prefs.paragraphSpacing.toFixed(1) }}em</b>
+          </label>
+          <label class="panel-row">
+            <span>首行缩进</span>
+            <input v-model.number="prefs.textIndent" type="range" min="0" max="3" step="0.5" />
+            <b>{{ prefs.textIndent }}em</b>
+          </label>
+          <label class="panel-row">
+            <span>字距</span>
+            <input v-model.number="prefs.letterSpacing" type="range" min="0" max="0.2" step="0.01" />
+            <b>{{ prefs.letterSpacing.toFixed(2) }}em</b>
+          </label>
+          <label class="panel-row">
+            <span>页宽</span>
+            <input v-model.number="prefs.pageWidth" type="range" min="520" max="1000" step="20" />
+            <b>{{ prefs.pageWidth }}px</b>
+          </label>
+          <label class="panel-row">
+            <span>页边距</span>
+            <input v-model.number="prefs.pagePadding" type="range" min="8" max="64" step="4" />
+            <b>{{ prefs.pagePadding }}px</b>
+          </label>
+          <label class="panel-row">
+            <span>上留白</span>
+            <input v-model.number="prefs.pageTop" type="range" min="0" max="160" step="8" />
+            <b>{{ prefs.pageTop }}px</b>
+          </label>
+          <label class="panel-row">
+            <span>下留白</span>
+            <input v-model.number="prefs.pageBottom" type="range" min="0" max="160" step="8" />
+            <b>{{ prefs.pageBottom }}px</b>
+          </label>
+          <div class="panel-row">
+            <span>对齐</span>
+            <div class="segmented small">
+              <button
+                v-for="item in ALIGNS"
+                :key="item.value"
+                :class="{ active: prefs.textAlign === item.value }"
+                @click="prefs.textAlign = item.value"
+              >{{ item.label }}</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h3>翻页</h3>
+          <div class="segmented">
+            <button :class="{ active: prefs.pageMode === 'scroll' }" @click="prefs.pageMode = 'scroll'">上下滚动</button>
+            <button :class="{ active: prefs.pageMode === 'page' }" @click="prefs.pageMode = 'page'">整屏翻页</button>
+          </div>
+          <label class="panel-row">
+            <span>动画</span>
+            <select v-model="prefs.animation">
+              <option v-for="item in ANIMATIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+            </select>
+          </label>
+          <label class="panel-row">
+            <span>左侧点击</span>
+            <select v-model="prefs.tapLeft">
+              <option v-for="item in TAPS" :key="item.value" :value="item.value">{{ item.label }}</option>
+            </select>
+          </label>
+          <label class="panel-row">
+            <span>右侧点击</span>
+            <select v-model="prefs.tapRight">
+              <option v-for="item in TAPS" :key="item.value" :value="item.value">{{ item.label }}</option>
+            </select>
+          </label>
+          <label class="panel-row">
+            <span>自动隐藏工具栏</span>
+            <input v-model="prefs.autoHide" type="checkbox" />
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h3>页眉页脚</h3>
+          <label class="panel-row"><span>顶部书名</span><input v-model="prefs.showHeaderBook" type="checkbox" /></label>
+          <label class="panel-row"><span>顶部章节名</span><input v-model="prefs.showHeaderChapter" type="checkbox" /></label>
+          <label class="panel-row"><span>顶部时间</span><input v-model="prefs.showHeaderClock" type="checkbox" /></label>
+          <label class="panel-row"><span>底部进度</span><input v-model="prefs.showFooterProgress" type="checkbox" /></label>
+          <label class="panel-row"><span>底部页码</span><input v-model="prefs.showFooterPage" type="checkbox" /></label>
+          <label class="panel-row"><span>底部时间</span><input v-model="prefs.showFooterClock" type="checkbox" /></label>
+          <label class="panel-row"><span>底部电量</span><input v-model="prefs.showFooterBattery" type="checkbox" /></label>
+          <label class="panel-row"><span>章节标题</span><input v-model="prefs.showChapterTitle" type="checkbox" /></label>
+        </section>
+
+        <section class="panel-section">
+          <h3>朗读</h3>
+          <label class="panel-row">
+            <span>声音</span>
+            <select v-model="prefs.ttsVoice">
+              <option value="">默认</option>
+              <option v-for="voice in voices" :key="voice.voiceURI" :value="voice.voiceURI">{{ voice.name }}</option>
+            </select>
+          </label>
+          <label class="panel-row">
+            <span>语速</span>
+            <input v-model.number="prefs.ttsRate" type="range" min="0.5" max="2" step="0.1" />
+            <b>{{ prefs.ttsRate.toFixed(1) }}x</b>
+          </label>
+          <label class="panel-row">
+            <span>音调</span>
+            <input v-model.number="prefs.ttsPitch" type="range" min="0.5" max="2" step="0.1" />
+            <b>{{ prefs.ttsPitch.toFixed(1) }}</b>
+          </label>
+          <label class="panel-row">
+            <span>音量</span>
+            <input v-model.number="prefs.ttsVolume" type="range" min="0" max="1" step="0.05" />
+            <b>{{ Math.round(prefs.ttsVolume * 100) }}%</b>
+          </label>
+          <div class="row tts-actions">
+            <button class="primary" @click="startTts">从头朗读</button>
+            <button class="ghost" @click="ttsPrev">上一句</button>
+            <button class="ghost" @click="toggleTtsPause">{{ ttsLabel }}</button>
+            <button class="ghost" @click="ttsNext">下一句</button>
+            <button class="ghost" :disabled="!tts.playing" @click="stopTts">停止</button>
+            <span class="muted" style="font-size: 12px">{{ tts.playing ? `第 ${tts.index + 1}/${ttsSentences.length} 句` : '' }}</span>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h3>其它</h3>
+          <div class="panel-row">
+            <span>本次阅读</span>
+            <b>{{ Math.round(sessionSeconds / 60) }} 分钟</b>
+          </div>
+          <label class="panel-row">
+            <span>简繁转换</span>
+            <select :value="prefs.convert" @change="setConvert($event.target.value)">
+              <option value="">原文</option>
+              <option value="tw">繁体</option>
+              <option value="cn">简体</option>
+            </select>
+          </label>
+          <div class="panel-actions">
+            <button class="ghost" @click="showCatalog = true; showSettings = false">目录</button>
+            <button class="ghost" @click="showBookmarks = true; loadBookmarks()">书签</button>
+            <button class="ghost" @click="showNotes = true; loadNotes()">笔记</button>
+            <button class="ghost" @click="openDp">段评</button>
+            <button class="ghost" @click="findSources">换源</button>
+            <button class="ghost" :disabled="caching" @click="cacheChapter">{{ caching ? '缓存中…' : '缓存 50 章' }}</button>
+            <button class="ghost" @click="showSearch = true; showSettings = false">正文查找</button>
+            <button class="ghost" @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</button>
+            <button class="ghost" @click="toggleWakeLock">{{ wakeLockOn ? '取消常亮' : '保持常亮' }}</button>
+            <button class="ghost" @click="toTop">回顶部</button>
+            <button class="ghost" @click="toBottom">到底部</button>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <!-- 工具面板 -->
+    <div v-if="showTools" class="panel-backdrop" @click.self="showTools = false" />
+    <aside class="reader-panel tools-panel" :class="{ open: showTools }" :style="{ background: theme.bg, color: theme.text }">
+      <header class="panel-head">
+        <h2>阅读工具</h2>
+        <button class="chrome-btn" @click="showTools = false">×</button>
+      </header>
+      <div class="panel-body">
+        <div class="tool-grid">
+          <button @click="showCatalog = true; showTools = false">目录</button>
+          <button @click="showBookmarks = true; showTools = false; loadBookmarks()">书签</button>
+          <button @click="showNotes = true; showTools = false; loadNotes()">笔记</button>
+          <button @click="openDp">段评</button>
+          <button @click="findSources">换源</button>
+          <button @click="showSearch = true; showTools = false">查找</button>
+          <button @click="openSummary">AI 总结</button>
+          <button @click="toggleTtsPause">{{ ttsLabel }}</button>
+          <button @click="stopTts" :disabled="!tts.playing">停止朗读</button>
+          <button @click="cacheChapter" :disabled="caching">缓存 50 章</button>
+          <button @click="addBookmark">加书签</button>
+          <button @click="showSettings = true; showTools = false">阅读设置</button>
+        </div>
+      </div>
+    </aside>
 
     <!-- 目录 -->
     <div v-if="showCatalog" class="sheet-backdrop" @click.self="showCatalog = false">
-      <div class="sheet">
+      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
         <div class="sheet-handle" />
-        <h2>目录 · {{ chapters.length }} 章</h2>
-        <input v-model="catalogFilter" placeholder="搜索章节名" style="margin-bottom: 10px" />
+        <div class="row" style="align-items: center; gap: 8px">
+          <h2 style="margin: 0">目录 · {{ chapters.length }} 章</h2>
+          <div class="spacer" />
+          <button class="ghost" @click="refreshCatalog">刷新目录</button>
+        </div>
+        <input v-model="catalogFilter" placeholder="搜索章节名" style="margin: 10px 0" />
         <div class="list" style="max-height: 60vh; overflow: auto">
           <div
-            v-for="(chapter, index) in filteredChapters"
+            v-for="(item, index) in filteredChapters"
             :key="index"
             class="list-item"
-            :style="chapters.indexOf(chapter) === current ? 'color: var(--color-primary)' : ''"
-            @click="showCatalog = false; loadChapter(chapters.indexOf(chapter))"
+            :style="chapters.indexOf(item) === current ? 'color: var(--color-primary)' : ''"
+            @click="showCatalog = false; loadChapter(chapters.indexOf(item))"
           >
-            <span style="flex: 1; font-size: 14px">{{ chapter.title }}</span>
+            <span style="flex: 1; font-size: 14px">{{ item.title }}</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 设置 -->
-    <div v-if="showSettings" class="sheet-backdrop" @click.self="showSettings = false">
-      <div class="sheet">
+    <!-- 书签 -->
+    <div v-if="showBookmarks" class="sheet-backdrop" @click.self="showBookmarks = false">
+      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
         <div class="sheet-handle" />
-        <h2>阅读设置</h2>
-        <div class="setting-row"><span>字号</span><input v-model.number="prefs.fontSize" type="range" min="14" max="28" @change="savePrefs" /><b>{{ prefs.fontSize }}</b></div>
-        <div class="setting-row"><span>行距</span><input v-model.number="prefs.lineHeight" type="range" min="1.5" max="2.6" step="0.05" @change="savePrefs" /><b>{{ prefs.lineHeight.toFixed(2) }}</b></div>
-        <div class="setting-row">
-          <span>背景</span>
-          <div style="display: flex; gap: 8px">
-            <button
-              v-for="(value, key) in THEMES"
-              :key="key"
-              class="theme-dot"
-              :title="value.name"
-              :style="{ background: value.bg, borderColor: prefs.theme === key ? 'var(--color-primary)' : '#d8d2c4' }"
-              @click="prefs.theme = key; savePrefs()"
-            />
+        <h2>书签</h2>
+        <div v-if="!bookmarks.length" class="muted" style="font-size: 13px">这本书还没有书签。</div>
+        <div v-else class="list">
+          <div v-for="item in bookmarks" :key="item.id" class="list-item">
+            <span style="flex: 1; font-size: 13px">第 {{ Number(item.chapterIndex) + 1 }} 章 · {{ item.chapterTitle || '未命名' }}</span>
+            <button class="ghost" @click="jumpBookmark(item)">跳转</button>
+            <button class="ghost" @click="removeBookmark(item)">删除</button>
           </div>
-        </div>
-        <div class="setting-row">
-          <span>字体</span>
-          <select :value="prefs.fontFamily" @change="prefs.fontFamily = $event.target.value; savePrefs()">
-            <option value="">默认</option>
-            <option value="var(--font-serif)">宋体</option>
-            <option value="var(--font-kai)">楷体</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <span>简繁</span>
-          <select :value="prefs.convert" @change="setConvert($event.target.value)">
-            <option value="">原文</option>
-            <option value="tw">繁体</option>
-            <option value="cn">简体</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <span>翻页</span>
-          <select :value="prefs.pageMode" @change="prefs.pageMode = $event.target.value; savePrefs()">
-            <option value="scroll">上下滚动</option>
-            <option value="page">整屏翻页</option>
-          </select>
         </div>
       </div>
     </div>
 
     <!-- 笔记 -->
     <div v-if="showNotes" class="sheet-backdrop" @click.self="showNotes = false">
-      <div class="sheet">
+      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
         <div class="sheet-handle" />
         <h2>笔记</h2>
         <textarea v-model="noteDraft" rows="3" placeholder="记一段原文或想法" style="width: 100%; margin-bottom: 10px" />
@@ -480,7 +1163,7 @@ onBeforeUnmount(() => {
 
     <!-- 换源 -->
     <div v-if="showSource" class="sheet-backdrop" @click.self="showSource = false">
-      <div class="sheet">
+      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
         <div class="sheet-handle" />
         <h2>换源 · {{ book?.name }}</h2>
         <div v-if="sourceLoading" class="muted">正在其它书源里搜索…</div>
@@ -499,7 +1182,7 @@ onBeforeUnmount(() => {
 
     <!-- 段评 -->
     <div v-if="showDp" class="sheet-backdrop" @click.self="showDp = false">
-      <div class="sheet">
+      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
         <div class="sheet-handle" />
         <h2>段评 · 本章说</h2>
         <div v-if="dpLoading" class="muted">读取中…</div>
@@ -521,101 +1204,566 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </div>
+
+    <!-- AI 总结 -->
+    <div v-if="showSummary" class="sheet-backdrop" @click.self="showSummary = false">
+      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
+        <div class="sheet-handle" />
+        <h2>AI 总结 · 本章</h2>
+        <div v-if="summaryLoading" class="muted">正在总结…</div>
+        <p v-else class="summary-text">{{ summary || '（没有内容）' }}</p>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .reader-shell {
   min-height: 100vh;
-  display: flex;
-  padding: 0 96px;
-  gap: 24px;
+  position: relative;
+  transition: background 180ms ease, color 180ms ease;
+  overflow-x: hidden;
 }
-.rail {
-  position: sticky;
+
+.reader-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: #000;
+  pointer-events: none;
+}
+
+.reader-top,
+.reader-bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 220ms ease, opacity 220ms ease;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+.reader-top {
   top: 0;
-  align-self: flex-start;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 22px 0;
-  height: 100vh;
-  width: 64px;
-  flex: none;
+  height: 54px;
+  padding: 0 10px;
+  transform: translateY(-105%);
+  opacity: 0;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.16);
 }
-.rail-left { margin-right: auto; }
-.rail-right { margin-left: auto; }
-.rail-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  border: none;
-  background: transparent;
+
+.reader-top.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.reader-bottom {
+  bottom: 0;
+  min-height: 62px;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  gap: 8px;
+  transform: translateY(105%);
+  opacity: 0;
+  border-top: 1px solid rgba(127, 127, 127, 0.16);
+}
+
+.reader-bottom.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.chrome-btn {
+  border: 1px solid rgba(127, 127, 127, 0.24);
+  background: rgba(127, 127, 127, 0.08);
   color: inherit;
-  opacity: 0.72;
-  font-size: 17px;
-  cursor: pointer;
-  padding: 4px 6px;
-}
-.rail-btn i { font-size: 11px; font-style: normal; }
-.rail-btn:hover { opacity: 1; }
-.rail-btn.round {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.55);
-  font-size: 15px;
-  box-shadow: 0 1px 2px rgba(80, 60, 30, 0.12);
+  font-size: 16px;
+  cursor: pointer;
+  flex: none;
 }
-.rail-progress { font-size: 12px; opacity: 0.6; margin-top: 4px; }
-.reader-main { flex: 1; max-width: 760px; margin: 0 auto; padding: 44px 0 90px; }
-.reader-page.next { animation: pn 240ms ease; }
-.reader-page.prev { animation: pp 240ms ease; }
-@keyframes pn { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
-@keyframes pp { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
-.chapter-title { font-size: 22px; font-weight: 600; text-align: center; margin: 0 0 30px; }
-.chapter-body p { text-indent: 2em; margin: 0 0 0.75em; text-align: justify; word-break: break-word; }
-.reader-loading { text-align: center; opacity: 0.5; padding: 60px 0; }
+
+.chrome-btn:disabled {
+  opacity: 0.4;
+}
+
+.top-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12.5px;
+  opacity: 0.86;
+}
+
+.top-title strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.top-clock {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reader-main {
+  margin: 0 auto;
+  padding-top: 84px;
+  padding-bottom: 130px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  transition: max-width 180ms ease;
+}
+
+.chapter-title {
+  font-weight: 600;
+  text-align: center;
+  margin: 4px 0 30px;
+  line-height: 1.45;
+}
+
+.chapter-body p {
+  margin: 0 0 var(--para-gap, 0.8em);
+  text-indent: var(--text-indent, 2em);
+  text-align: inherit;
+  word-break: break-word;
+  line-height: inherit;
+}
+
+.reader-loading {
+  text-align: center;
+  opacity: 0.5;
+  padding: 80px 0;
+}
+
+.chapter-end {
+  margin-top: 46px;
+  text-align: center;
+}
+
+.chapter-end-btn {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 8px 22px;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.bottom-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  padding: 6px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bottom-btn:disabled {
+  opacity: 0.35;
+}
+
+.bottom-progress {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.progress-line {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.25);
+  overflow: hidden;
+}
+
+.progress-line i {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 160ms ease;
+}
+
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.reader-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  max-width: 92vw;
+  z-index: 70;
+  transform: translateX(105%);
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  border-left: 1px solid rgba(127, 127, 127, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.reader-panel.open {
+  transform: translateX(0);
+}
+
+.tools-panel {
+  width: 360px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.16);
+  flex: none;
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.panel-body {
+  overflow-y: auto;
+  padding: 0 18px 40px;
+  flex: 1;
+}
+
+.panel-section {
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.14);
+}
+
+.panel-section h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  opacity: 0.7;
+  font-weight: 600;
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 13px;
+}
+
+.panel-row > span:first-child {
+  flex: none;
+  width: 72px;
+  opacity: 0.75;
+}
+
+.panel-row input[type='range'] {
+  flex: 1;
+  accent-color: var(--color-primary);
+}
+
+.panel-row b {
+  width: 48px;
+  text-align: right;
+  font-weight: 500;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.panel-row input[type='checkbox'] {
+  width: auto;
+  accent-color: var(--color-primary);
+}
+
+.panel-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-btn {
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+
+.segmented button {
+  flex: 1;
+  padding: 7px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 127, 127, 0.24);
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.segmented.small button {
+  padding: 5px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.reader-panel select,
+.reader-panel input:not([type='range']):not([type='checkbox']) {
+  background: rgba(127, 127, 127, 0.12);
+  color: inherit;
+  border: 1px solid rgba(127, 127, 127, 0.24);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  outline: none;
+}
+
+.swatches {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.theme-swatch {
+  flex: 1;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.theme-swatch.active {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.panel-actions button,
+.tts-actions button {
+  border: 1px solid rgba(127, 127, 127, 0.28);
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.panel-actions button:disabled {
+  opacity: 0.45;
+}
+
+.tts-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 16px;
+}
+
+.tool-grid button {
+  border: 1px solid rgba(127, 127, 127, 0.24);
+  background: transparent;
+  color: inherit;
+  border-radius: 10px;
+  padding: 14px 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: rgba(0, 0, 0, 0.25);
+}
+
 .search-bar {
   position: fixed;
-  top: 16px;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
+  color: #333;
   padding: 8px 12px;
   border-radius: 999px;
   box-shadow: 0 6px 20px rgba(60, 40, 20, 0.18);
-  z-index: 30;
+  z-index: 80;
 }
-.search-bar input { border: none; outline: none; background: transparent; font-size: 14px; min-width: 180px; }
-.search-count { font-size: 12px; opacity: 0.6; }
-.setting-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; font-size: 14px; }
-.setting-row span { width: 44px; }
-.setting-row input[type='range'] { flex: 1; }
-.theme-dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #d8d2c4; cursor: pointer; }
-@media (max-width: 900px) {
-  .reader-shell { padding: 0 12px; gap: 0; }
-  .rail {
-    position: fixed;
-    bottom: 12px;
-    top: auto;
-    height: auto;
-    flex-direction: row;
-    width: auto;
-    padding: 8px 12px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 6px 18px rgba(60, 40, 20, 0.18);
-    z-index: 20;
+
+.search-bar input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  min-width: 180px;
+  color: #333;
+}
+
+.search-count {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.reader-sheet .list-item {
+  background: rgba(127, 127, 127, 0.07);
+  border-color: rgba(127, 127, 127, 0.16);
+}
+
+.chapter-body {
+  transition: font-size 140ms ease, line-height 140ms ease;
+}
+
+.fade-next,
+.fade-prev {
+  animation: reader-fade 220ms ease;
+}
+
+.slide-next {
+  animation: reader-slide-next 260ms ease;
+}
+
+.slide-prev {
+  animation: reader-slide-prev 260ms ease;
+}
+
+@keyframes reader-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes reader-slide-next {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes reader-slide-prev {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: none; }
+}
+
+.summary-text {
+  line-height: 1.9;
+  font-size: 14px;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .reader-top {
+    height: 50px;
   }
-  .rail-left { left: 12px; }
-  .rail-right { right: 12px; flex-wrap: wrap; max-width: 46vw; }
-  .rail-left .rail-btn i { display: none; }
-  .reader-main { padding: 24px 4px 150px; }
+
+  .reader-main {
+    padding-top: 66px;
+    padding-bottom: 110px;
+  }
+
+  .reader-bottom {
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    gap: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .bottom-btn {
+    font-size: 11.5px;
+  }
+
+  .progress-meta span:nth-child(2),
+  .progress-meta span:nth-child(5) {
+    display: none;
+  }
+
+  .reader-panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100vw;
+    max-height: 84vh;
+    border-left: none;
+    border-top: 1px solid rgba(127, 127, 127, 0.2);
+    border-radius: 18px 18px 0 0;
+    transform: translateY(105%);
+  }
+
+  .reader-panel.open {
+    transform: translateY(0);
+  }
+
+  .reader-panel .panel-body {
+    padding-bottom: 60px;
+  }
+
+  .tool-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .chapter-title {
+    margin-bottom: 22px;
+  }
 }
 </style>

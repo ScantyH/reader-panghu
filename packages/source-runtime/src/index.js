@@ -19,6 +19,7 @@
 
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
 import { JSDOM, VirtualConsole } from 'jsdom'
 
 const require = createRequire(import.meta.url)
@@ -224,7 +225,11 @@ export class WebviewSourceRuntime {
     this.window.eval(JQUERY_SOURCE)
 
     if (this.key) {
+      // 新版起点类书源从 qdAuthToken + qdAuthKey 读取密钥（pyqdKey 是旧版缓存键），
+      // 这里同时写入，服务端无弹窗也能直接使用书源密钥。
       this.cache.set('pyqdKey', this.key)
+      this.cache.set('qdAuthKey', this.key)
+      this.cache.set('qdAuthToken', createHash('md5').update(`${this.key}|${Date.now()}`).digest('hex'))
       this.cache.set('LoginInfo', JSON.stringify({ 书源密钥: this.key, key: this.key }))
     }
 
