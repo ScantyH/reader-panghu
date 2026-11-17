@@ -48,6 +48,49 @@ const bundles = computed(() => {
   return [...map.values()].sort((a, b) => b.count - a.count)
 })
 
+/** 给批次改名（备注） */
+async function renameBundle(bundle) {
+  const next = prompt('这一批书源的名称', bundle.name)
+  if (!next || !next.trim() || next.trim() === bundle.name) return
+  try {
+    const result = await api.renameBundle(bundle.name, next.trim())
+    expanded.value = result.renamed ? next.trim() : expanded.value
+    await load()
+    window.__toast?.('已重命名为「' + next.trim() + '」')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+/** 勾选批次用于合并 */
+const picked = ref([])
+
+function togglePicked(name) {
+  picked.value = picked.value.includes(name)
+    ? picked.value.filter((item) => item !== name)
+    : [...picked.value, name]
+}
+
+/** 合并选中批次 */
+async function mergePicked() {
+  if (picked.value.length < 2) {
+    window.__toast?.('至少选择两个批次')
+    return
+  }
+  const target = prompt('合并到哪个名称（留空则用第一个选中的）', picked.value[0])
+  if (target === null) return
+  const into = (target || picked.value[0]).trim()
+  if (!confirm(`把 ${picked.value.length} 个批次合并为「${into}」？`)) return
+  try {
+    const result = await api.mergeBundles(picked.value, into)
+    picked.value = []
+    await load()
+    window.__toast?.( `已合并 ${result.merged} 个书源` )
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 /** 整批启用 / 停用 */
 async function toggleBundle(bundle, enabled) {
   try {
@@ -275,8 +318,16 @@ onMounted(load)
     <!-- 管理 -->
     <section v-if="tab === 'manage'">
       <!-- 导入汇总：按批次展示，iOS 风格开关 -->
+      <div v-if="picked.length" class="row merge-bar">
+        <span class="badge">已选 {{ picked.length }} 个批次</span>
+        <div class="spacer" />
+        <button class="ghost" @click="picked = []">取消</button>
+        <button class="primary" @click="mergePicked">合并选中批次</button>
+      </div>
+
       <div class="bundle-list">
         <div v-for="bundle in bundles" :key="bundle.name" class="bundle-card" :class="{ active: expanded === bundle.name }">
+          <input class="bundle-pick" type="checkbox" :checked="picked.includes(bundle.name)" title="选中用于合并" @click.stop="togglePicked(bundle.name)" />
           <div class="bundle-info" @click="expanded = expanded === bundle.name ? '' : bundle.name">
             <div class="bundle-name">{{ bundle.name }}</div>
             <div class="bundle-sub">{{ bundle.count }} 个书源 · 已启用 {{ bundle.enabledCount }}</div>
@@ -289,6 +340,7 @@ onMounted(load)
             />
             <span class="switch-track"><span class="switch-thumb" /></span>
           </label>
+          <button class="ghost" title="重命名" @click="renameBundle(bundle)">备注</button>
           <button class="ghost bundle-toggle" @click="expanded = expanded === bundle.name ? '' : bundle.name">
             {{ expanded === bundle.name ? '收起' : '详情' }}
           </button>

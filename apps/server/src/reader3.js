@@ -370,6 +370,34 @@ async function primeBook(book) {
     return ok({ saved: true })
   })
 
+  /** 给某个批次改名（备注） */
+  app.post('/reader3/renameBundle', async (req) => {
+    const from = String(req.body?.from || '')
+    const to = String(req.body?.to || '').trim()
+    if (!from || !to) return fail('缺少原名称或新名称')
+    if (from === to) return ok({ renamed: 0 })
+    const targets = store.listSources().filter((source) => String(source._bundle || '未归类') === from)
+    for (const source of targets) store.saveSource({ ...source, _bundle: to })
+    return ok({ renamed: targets.length, from, to })
+  })
+
+  /** 把若干批次合并到一个目标批次 */
+  app.post('/reader3/mergeBundles', async (req) => {
+    const into = String(req.body?.into || '').trim()
+    const names = Array.isArray(req.body?.names) ? req.body.names.map((name) => String(name)) : []
+    if (!into) return fail('缺少目标批次')
+    const from = names.filter((name) => name && name !== into)
+    if (!from.length) return fail('请至少选择两个批次')
+    let merged = 0
+    for (const source of store.listSources()) {
+      if (from.includes(String(source._bundle || '未归类'))) {
+        store.saveSource({ ...source, _bundle: into })
+        merged += 1
+      }
+    }
+    return ok({ merged, into, from })
+  })
+
   /** 按导入批次（bundle）批量启用/停用 */
   app.post('/reader3/setBundleEnabled', async (req) => {
     const bundle = String(req.body?.bundle || '')

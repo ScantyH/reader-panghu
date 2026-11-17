@@ -791,3 +791,20 @@
 
 .switch input:checked + .switch-track { background: #34c759; }
 .switch input:checked + .switch-track .switch-thumb { transform: translateX(20px); }
+/* 批次勾选与合并条 */
+.bundle-pick {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.merge-bar {
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-bg, #fdf3e6);
+  border: 1px solid var(--color-primary);
+}

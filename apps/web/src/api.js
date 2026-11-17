@@ -94,6 +94,8 @@ export const api = {
   // sources
   sources: () => request('/getBookSources'),
   saveSources: (sources, bundle) => request('/saveBookSources', { method: 'POST', body: bundle ? { sources, bundle } : sources }),
+  renameBundle: (from, to) => request('/renameBundle', { method: 'POST', body: { from, to } }),
+  mergeBundles: (names, into) => request('/mergeBundles', { method: 'POST', body: { names, into } }),
   setBundleEnabled: (bundle, enabled) => request('/setBundleEnabled', { method: 'POST', body: { bundle, enabled } }),
   deleteSource: (bookSourceUrl) => request('/deleteBookSource', { method: 'POST', body: { bookSourceUrl } }),
   testSources: (bookSourceUrls, options = {}) =>
