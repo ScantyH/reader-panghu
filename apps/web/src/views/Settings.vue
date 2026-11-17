@@ -87,8 +87,8 @@ onMounted(load)
     <h3 class="section-title">账号</h3>
     <div class="list" style="margin-bottom: 22px">
       <div class="row" style="flex-wrap: wrap; padding: 12px">
-        <input v-model="oldPassword" type="password" placeholder="原密码" style="max-width: 180px" />
-        <input v-model="newPassword" type="password" placeholder="新密码（≥6 位）" style="max-width: 180px" />
+        <input v-model="oldPassword" type="password" name="rp-old-pass" autocomplete="new-password" placeholder="原密码" style="max-width: 180px" />
+        <input v-model="newPassword" type="password" name="rp-new-pass" autocomplete="new-password" placeholder="新密码（≥6 位）" style="max-width: 180px" />
         <button class="primary" @click="changePassword">修改密码</button>
       </div>
     </div>

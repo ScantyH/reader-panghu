@@ -6,6 +6,7 @@ const route = useRoute()
 const router = useRouter()
 const toast = ref('')
 const headerQuery = ref('')
+const searchReadonly = ref(true)
 let timer = 0
 
 /** 任何视图都可以用 window.__toast('...') 弹一条短提示。 */
@@ -73,6 +74,9 @@ onMounted(loadAuth)
           name="reader-search"
           type="search"
           autocomplete="off"
+          :readonly="searchReadonly"
+          @focus="searchReadonly = false"
+          @blur="searchReadonly = true"
           autocorrect="off"
           autocapitalize="off"
           spellcheck="false"
