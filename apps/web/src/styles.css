@@ -1,3 +1,12 @@
+/* 固定滚动条槽位：各页面高度不同时滚动条出现/消失会让居中元素左右抖动 */
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  overflow-y: scroll; /* 老浏览器兜底，始终保留滚动条占位 */
+}
+
 /* reader-next 的视觉语言：暖白底、品牌橙、悬浮底栏、柔和阴影 */
 :root {
   --color-primary: #d4812a;
