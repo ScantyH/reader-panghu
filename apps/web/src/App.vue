@@ -68,12 +68,24 @@ onMounted(loadAuth)
       </div>
       <div v-if="showHeaderSearch()" class="header-search">
         <span class="muted" style="font-size: 13px">🔍</span>
-        <input v-model="headerQuery" placeholder="搜索书名 / 作者" @keyup.enter="submitSearch" />
+        <input
+          v-model="headerQuery"
+          name="reader-search"
+          type="search"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="搜索书名 / 作者"
+          @keyup.enter="submitSearch"
+        />
       </div>
       <div v-else class="spacer" />
       <router-link class="badge" to="/recent">最近阅读</router-link>
-      <span v-if="authUser" class="badge">{{ authUser }}</span>
-      <button v-if="authUser" class="ghost" style="padding: 3px 10px; font-size: 12px" @click="logout">退出</button>
+      <div v-if="authUser" class="header-user">
+        <span class="header-user-name">{{ authUser }}</span>
+        <button class="header-user-logout" @click="logout">退出</button>
+      </div>
     </header>
 
     <main class="app-main">
