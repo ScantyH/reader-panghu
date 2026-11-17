@@ -234,6 +234,33 @@ async function remove(book) {
   }
 }
 
+/** X 天前更新 */
+function updatedAgo(book) {
+  const stamp = Number(book.lastCheckTime || 0) || Number(book.durChapterTime || 0)
+  if (!stamp) return '暂无更新记录'
+  const days = Math.floor((Date.now() - stamp) / 86400000)
+  if (days <= 0) return '今天更新'
+  if (days === 1) return '昨天更新'
+  if (days < 30) return days + ' 天前更新'
+  return Math.floor(days / 30) + ' 个月前更新'
+}
+
+/** 分组名 */
+function groupName(book) {
+  const group = tabs.value.find((item) => item.groupId === Number(book.group || 0))
+  return group?.groupName || '未分组'
+}
+
+/** 未读章节数，超过 99 显示 99+ */
+function unreadCount(book) {
+  const total = Number(book.totalChapterNum || 0)
+  const read = Number(book.durChapterIndex || 0)
+  if (!total) return ''
+  const left = Math.max(0, total - read - 1)
+  if (!left) return ''
+  return left > 99 ? '99+' : String(left)
+}
+
 onMounted(load)
 </script>
 
