@@ -305,6 +305,20 @@ async function changeGroup(book, groupId) {
   }
 }
 
+/** 详情里点「继续阅读」：先记住书，再关弹层，否则会拿到 null */
+function continueReading(book) {
+  const target = book
+  infoBook.value = null
+  open(target)
+}
+
+/** 详情里点「更多」 */
+function openMore(book) {
+  const target = book
+  infoBook.value = null
+  actionBook.value = target
+}
+
 onMounted(load)
 </script>
 
@@ -437,8 +451,8 @@ onMounted(load)
         <h3 class="info-subtitle">简介</h3>
         <p class="info-intro">{{ infoBook.intro || '（没有简介）' }}</p>
         <div class="row" style="gap: 8px; margin-top: 16px">
-          <button class="primary" style="flex: 1" @click="infoBook = null; open(infoBook)">继续阅读</button>
-          <button class="ghost" @click="actionBook = infoBook; infoBook = null">更多</button>
+          <button class="primary" style="flex: 1" @click="continueReading(infoBook)">继续阅读</button>
+          <button class="ghost" @click="openMore(infoBook)">更多</button>
         </div>
       </div>
     </div>
