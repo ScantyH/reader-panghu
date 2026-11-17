@@ -73,8 +73,8 @@ export const api = {
   deleteBookCache: (bookUrl) => request('/deleteBookCache', { method: 'POST', body: { bookUrl } }),
   saveBook: (book) => request('/saveBook', { method: 'POST', body: book }),
   deleteBooks: (books) => request('/deleteBooks', { method: 'POST', body: books }),
-  saveProgress: (bookUrl, index, position = 0) =>
-    request('/saveBookProgress', { method: 'POST', body: { bookUrl, index, position } }),
+  saveProgress: (bookUrl, index, position = 0, chapterTitle = '') =>
+    request('/saveBookProgress', { method: 'POST', body: { bookUrl, index, position, chapterTitle } }),
   cacheBook: (bookUrl, count = 20, refresh = false, start = 0) =>
     request('/cacheBook', { method: 'POST', body: { bookUrl, count, refresh, start } }),
   checkChapterUpdates: () => request('/checkChapterUpdates', { method: 'POST', body: { limit: 30 } }),

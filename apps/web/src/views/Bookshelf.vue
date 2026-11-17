@@ -190,11 +190,12 @@ function updatedAgo(book) {
   return Math.floor(days / 365) + ' 年前'
 }
 
-/** 第三行：已读章节数；没读过返回空串，但模板会保留这一行的高度 */
+/** 第三行：已读章节名称；没读过返回空串，但模板会保留这一行的高度 */
 function readText(book) {
   const read = Number(book.durChapterIndex) || 0
   if (!(Number(book.durChapterTime) > 0 || read > 0)) return ''
-  return `已读：${read + 1} 章`
+  const title = String(book.durChapterTitle || '').trim()
+  return `已读：${title || `第 ${read + 1} 章`}`
 }
 
 /** 分组名 */

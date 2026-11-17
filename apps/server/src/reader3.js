@@ -115,10 +115,18 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
 
   /* ------------------------------------------------------------------ shelf */
 
-  app.get('/reader3/getBookshelf', async () => ok(store.listBooks()))
+  /** 老书没存过已读章节名时，从缓存的目录里补一次，保证书架能显示章节名称 */
+  const withReadTitle = (book) => {
+    if (String(book.durChapterTitle || '').trim()) return book
+    const chapters = store.getChapters(book.bookUrl, book.origin)
+    const title = Array.isArray(chapters) ? chapters[Math.max(0, Number(book.durChapterIndex) || 0)]?.title : ''
+    return title ? { ...book, durChapterTitle: title } : book
+  }
+
+  app.get('/reader3/getBookshelf', async () => ok(store.listBooks().map(withReadTitle)))
 
   app.get('/reader3/getShelfBookWithCacheInfo', async () => {
-    const books = store.listBooks().map((book) => ({
+    const books = store.listBooks().map(withReadTitle).map((book) => ({
       ...book,
       cachedChapterCount: store.countChapters(book.bookUrl, book.origin),
       browserCachedChapterCount: 0,
@@ -216,8 +224,8 @@ async function primeBook(book) {
 
   /** Server-authoritative progress: the stored row always keeps the newest write. */
   app.post('/reader3/saveBookProgress', async (req) => {
-    const { bookUrl, index, position, clientUpdatedAt } = req.body || {}
-    const updated = store.saveProgress({ bookUrl: String(bookUrl ?? ''), index, position, clientUpdatedAt })
+    const { bookUrl, index, position, clientUpdatedAt, chapterTitle } = req.body || {}
+    const updated = store.saveProgress({ bookUrl: String(bookUrl ?? ''), index, position, clientUpdatedAt, chapterTitle })
     if (!updated) return fail('书籍不存在')
     // The client adopts this timestamp; a rejected stale write still returns the
     // server's authoritative one, which is what "backend latest wins" means here.

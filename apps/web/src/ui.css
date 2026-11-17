@@ -1415,20 +1415,20 @@
   overflow: hidden;
 }
 
-/* 桌面：封面 6 列、网格 5 列、横向 4 列 */
+/* 桌面：封面 6 列、网格 6 列（同尺寸）、横向 3 列（更大的卡片） */
 .mode-cover {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 20px 16px;
 }
 
 .mode-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 20px 14px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 20px 16px;
 }
 
 .mode-list {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .mode-cover .shelf-title,
@@ -1448,17 +1448,30 @@
 
 .mode-list .shelf-card {
   align-items: flex-start;
-  padding: 10px;
-  gap: 12px;
+  padding: 12px;
+  gap: 14px;
 }
 
 .mode-list .shelf-cover {
-  width: 76px;
+  width: 96px;
   aspect-ratio: 3 / 4;
 }
 
 .mode-list .shelf-info {
   padding: 0;
+}
+
+.mode-list .shelf-title {
+  font-size: 15px;
+  -webkit-line-clamp: 2;
+}
+
+.mode-list .shelf-line {
+  font-size: 12.5px;
+}
+
+.mode-list .shelf-intro {
+  -webkit-line-clamp: 3;
 }
 
 @media (max-width: 1100px) {
@@ -1471,7 +1484,7 @@
   }
 
   .mode-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

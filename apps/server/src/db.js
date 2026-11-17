@@ -274,7 +274,7 @@ class Store {
    * rejected so a stale web/APP client cannot roll back newer progress. The
    * returned book always holds the value the client should adopt.
    */
-  saveProgress({ bookUrl, index, position, clientUpdatedAt }, userId = currentUserId()) {
+  saveProgress({ bookUrl, index, position, clientUpdatedAt, chapterTitle }, userId = currentUserId()) {
     const book = this.getBook(bookUrl, userId)
     if (!book) return null
     const storedAt = Number(book.durChapterTime || 0)
@@ -286,6 +286,7 @@ class Store {
       durChapterIndex: Number(index) || 0,
       durChapterPos: Number(position) || 0,
       durChapterTime: Date.now(),
+      durChapterTitle: String(chapterTitle || '').trim() || book.durChapterTitle || '',
     }
     this.saveBook(updated, userId)
     return { ...updated, progressAccepted: true }

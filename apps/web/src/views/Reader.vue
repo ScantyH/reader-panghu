@@ -112,7 +112,7 @@ async function loadChapter(index) {
     })
     current.value = target
     searchHits.value = []
-    api.saveProgress(book.value.bookUrl, target).catch(() => {})
+    api.saveProgress(book.value.bookUrl, target, 0, chapters.value[target]?.title || '').catch(() => {})
     await nextTick()
     window.scrollTo({ top: 0 })
   } catch (error) {
