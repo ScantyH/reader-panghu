@@ -467,3 +467,39 @@
   margin: 0 0 10px;
   letter-spacing: 0.02em;
 }
+
+/* ─── 封面右上角「更多」按钮 ─── */
+.card .cover {
+  position: relative;
+}
+
+.card-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(20, 16, 12, 0.55);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  padding-bottom: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  backdrop-filter: blur(2px);
+}
+
+.card:hover .card-more,
+.card:focus-within .card-more {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 触摸设备没有 hover，直接常显 */
+@media (hover: none) {
+  .card-more { opacity: 1; transform: none; }
+}

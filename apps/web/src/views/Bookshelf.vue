@@ -303,14 +303,10 @@ onMounted(load)
           <div v-else class="placeholder">{{ book.name }}</div>
           <div v-if="progressOf(book)" class="progress"><i :style="{ width: progressOf(book) + '%' }" /></div>
           <div class="continue-badge">{{ book.durChapterTitle ? '继续阅读' : '开始阅读' }}</div>
+          <button class="card-more" title="更多操作" @click.stop="actionBook = book">⋯</button>
         </div>
         <h3>{{ book.name }}</h3>
         <p>{{ book.durChapterTitle || book.author || '未开始' }}</p>
-        <div class="row" style="margin-top: 6px; gap: 6px" @click.stop>
-          <button class="ghost" style="padding: 3px 9px; font-size: 12px" @click="editing = { ...book }">编辑</button>
-          <button class="ghost" style="padding: 3px 9px; font-size: 12px" @click="cache(book)">缓存</button>
-          <button class="ghost" style="padding: 3px 9px; font-size: 12px" @click="remove(book)">删除</button>
-        </div>
       </div>
     </div>
 
