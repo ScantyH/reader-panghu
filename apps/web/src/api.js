@@ -5,6 +5,30 @@
  * views deal in plain values and catch real error messages.
  */
 
+const TOKEN_KEY = 'rp_token'
+export const getToken = () => {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+export const setToken = (token) => {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 反向代理会剥掉 Cookie 与 Authorization，用查询参数兜底 */
+const withToken = (path) => {
+  const token = getToken()
+  if (!token) return path
+  return path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token)
+}
+
 const BASE = '/reader3'
 
 async function request(path, { method = 'GET', body, form } = {}) {
@@ -15,7 +39,10 @@ async function request(path, { method = 'GET', body, form } = {}) {
     init.headers = { 'content-type': 'application/json' }
     init.body = JSON.stringify(body)
   }
-  const response = await fetch(`${BASE}${path}`, { ...init, credentials: 'same-origin' })
+  const token = getToken()
+  const headers = { ...(init.headers || {}) }
+  if (token) headers['x-auth-token'] = token
+  const response = await fetch(`${BASE}${withToken(path)}`, { ...init, headers, credentials: 'same-origin' })
   const text = await response.text()
   let payload
   try {
@@ -85,6 +112,8 @@ export const api = {
   exportBookSources: () => fetch('/reader3/exportBookSources').then((r) => r.blob()),
   exportBackup: () => fetch('/reader3/exportBackup').then((r) => r.blob()),
   userList: () => request('/getUserList'),
+  setUserRole: (payload) => request('/setUserRole', { method: 'POST', body: payload }),
+  deleteUser: (payload) => request('/deleteUser', { method: 'POST', body: payload }),
   changePassword: (payload) => request('/changePassword', { method: 'POST', body: payload }),
   chapterNotes: (bookUrl) => request('/getChapterNotes?bookUrl=' + encodeURIComponent(bookUrl)),
   paragraphComments: (payload) => request('/getParagraphComments', { method: 'POST', body: payload }),
@@ -148,7 +177,7 @@ export function searchStream({ key, bookSourceUrl, bookSourceGroup }, onBooks) {
   const query = new URLSearchParams({ key })
   if (bookSourceUrl) query.set('bookSourceUrl', bookSourceUrl)
   if (bookSourceGroup) query.set('bookSourceGroup', bookSourceGroup)
-  const source = new EventSource(`${BASE}/searchBookMultiSSE?${query}`)
+  const source = new EventSource(`${BASE}${withToken(`/searchBookMultiSSE?${query}`)}`)
   return new Promise((resolve, reject) => {
     source.onmessage = (event) => {
       try {

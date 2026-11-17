@@ -30,6 +30,7 @@ const SUITES = [
   'test-reading-extras',
   'test-legado-client',
   'test-auth',
+  'test-auth-persist',
   'test-isolation',
 ]
 

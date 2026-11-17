@@ -165,7 +165,8 @@ function parseRewrites(raw) {
 
 /* --------------------------------------------------------------------- app */
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL || 'info' } })
+const app = Fastify({
+  bodyLimit: 64 * 1024 * 1024, logger: { level: process.env.LOG_LEVEL || 'info' } })
 await app.register(cors, { origin: true })
 await app.register(multipart, { limits: { fileSize: 200 * 1024 * 1024 } })
 

@@ -623,9 +623,9 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
             : stage === 'toc'
               ? { chapters: (await runtime.chapter(String(req.body?.url || ''))).slice(0, 10) }
               : { content: String(await runtime.content(String(req.body?.url || ''))).slice(0, 500) }
-      return ok({ stage, ok: true, request: String(req.body?.url || ''), raw: '', parsed, elapsedMs: 0, error: '' })
+      return ok({ stage, ok: true, request: String(req.body?.url || ''), raw: '', parsed, elapsedMs: 0, error: '', logs: Array.isArray(runtime.logs) ? runtime.logs.slice(-25) : [] })
     } catch (error) {
-      return ok({ stage, ok: false, request: String(req.body?.url || ''), raw: '', parsed: null, elapsedMs: 0, error: error.message })
+      return ok({ stage, ok: false, request: String(req.body?.url || ''), raw: '', parsed: null, elapsedMs: 0, error: error.message, logs: Array.isArray(runtime.logs) ? runtime.logs.slice(-25) : [] })
     } finally {
       runtime.dispose()
     }

@@ -5,10 +5,10 @@
 ## 一条命令复现全部结论
 
 ```bash
-pnpm verify     # 28 项静态校验 + 11 个测试套件，退出码即结论
+pnpm verify     # 28 项静态校验 + 20 个测试套件，退出码即结论
 ```
 
-最近一次运行结果：`28/28 static checks passed`、`11/11 套件通过`。
+最近一次运行结果：`28/28 static checks passed`、`20/20 套件通过`。
 
 ## 已实测通过
 
@@ -25,6 +25,7 @@ pnpm verify     # 28 项静态校验 + 11 个测试套件，退出码即结论
 | 分组：创建/改名/归书/删除 | `test-groups` |
 | 连载新章节检查（目录对比、幂等） | `test-updates` |
 | Legado 客户端链路（订阅→搜索→详情→目录→正文） | `test-legado-client` |
+| 登录会话重启后仍有效（SQLite 持久化） | `test-auth-persist` |
 | Docker 构建输入自洽 | `check-docker`（28 项） |
 | 真实起点自建源端到端 | `probe-source.js`（手工，需真实书源） |
 

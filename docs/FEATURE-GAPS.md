@@ -53,7 +53,7 @@
 
 ## 第三批：多用户与剩余审计
 
-已完成：多用户认证（scrypt + cookie/Bearer）、按用户隔离（AsyncLocalStorage）、登录注册页与 NEED_LOGIN 跳转、阅读统计页、WebDAV 浏览页、换源、翻页动画、定时章节检查、AI 摘要（需 key）。
+已完成：多用户认证（scrypt + cookie/Bearer，会话持久化在 SQLite，重启不掉登录）、按用户隔离（AsyncLocalStorage）、登录注册页与 NEED_LOGIN 跳转、阅读统计页、WebDAV 浏览页、换源、翻页动画、定时章节检查、AI 摘要（需 key）。
 
 ### 明确不做
 

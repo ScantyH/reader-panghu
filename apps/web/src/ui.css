@@ -459,3 +459,11 @@
 .app-title-text {
   font-weight: var(--weight-bold, 700);
 }
+/* ─── 设置页小节标题 ─── */
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0 0 10px;
+  letter-spacing: 0.02em;
+}

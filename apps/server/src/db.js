@@ -115,8 +115,16 @@ CREATE TABLE IF NOT EXISTS user_config (
   json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  username TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_books_user ON books (user_id);
 CREATE INDEX IF NOT EXISTS idx_sources_user ON book_sources (user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_created ON sessions (created_at);
 `
 
 export function openDatabase(file) {
@@ -125,6 +133,12 @@ export function openDatabase(file) {
   db.exec('PRAGMA journal_mode = WAL;')
   db.exec('PRAGMA foreign_keys = ON;')
   db.exec(SCHEMA)
+  // 老库补 role 列（多用户之前建的库没有这一列）
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+  } catch {
+    /* 已存在 */
+  }
   db.prepare('INSERT OR IGNORE INTO users (id, username, password, created_at) VALUES (?, ?, ?, ?)').run(
     DEFAULT_USER_ID,
     'reader',
@@ -475,6 +489,39 @@ class Store {
 
   getUser(userId = currentUserId()) {
     return this.db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(userId)
+  }
+
+  /* ---------------------------------------------------------------- sessions */
+
+  /** 会话是全局的（token 唯一），不按用户隔离；放在库里才能在重启后继续有效。 */
+  createSession(token, { userId, username, createdAt }) {
+    const value = String(token || '')
+    if (!value) throw new Error('token is required')
+    const owner = Number(userId) || DEFAULT_USER_ID
+    const at = createdAt === undefined ? Date.now() : Number(createdAt)
+    this.db
+      .prepare('INSERT INTO sessions (token, user_id, username, created_at) VALUES (?, ?, ?, ?)')
+      .run(value, owner, String(username || ''), at)
+  }
+
+  getSession(token) {
+    const row = this.db
+      .prepare('SELECT token, user_id, username, created_at FROM sessions WHERE token = ?')
+      .get(String(token || ''))
+    if (!row) return null
+    return { token: row.token, userId: row.user_id, username: row.username, createdAt: row.created_at }
+  }
+
+  deleteSession(token) {
+    return this.db.prepare('DELETE FROM sessions WHERE token = ?').run(String(token || '')).changes > 0
+  }
+
+  deleteExpiredSessions(beforeTs) {
+    return this.db.prepare('DELETE FROM sessions WHERE created_at < ?').run(Number(beforeTs)).changes
+  }
+
+  countSessions() {
+    return this.db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n
   }
 }
 

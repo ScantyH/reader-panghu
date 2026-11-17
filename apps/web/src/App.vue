@@ -33,6 +33,7 @@ async function loadAuth() {
 
 async function logout() {
   await api.logout().catch(() => {})
+  setToken('')
   authUser.value = ''
   location.href = '/login'
 }
@@ -50,6 +51,7 @@ const NAV = [
   { to: '/sources', label: '书源', icon: '🔗' },
   { to: '/rss', label: 'RSS', icon: '📰' },
   { to: '/backup', label: '备份', icon: '💾' },
+  { to: '/settings', label: '设置', icon: '⚙️' },
 ]
 onMounted(loadAuth)
 </script>

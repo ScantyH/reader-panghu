@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '../api.js'
+import { api, setToken } from '../api.js'
 
 const router = useRouter()
 const mode = ref('login')
@@ -18,8 +18,8 @@ async function submit() {
   }
   busy.value = true
   try {
-    if (mode.value === 'login') await api.login(name, password.value)
-    else await api.register(name, password.value)
+    const result = mode.value === 'login' ? await api.login(name, password.value) : await api.register(name, password.value)
+    setToken(result?.token || '')
     window.__toast?.(mode.value === 'login' ? '登录成功' : '注册成功')
     router.replace('/bookshelf')
   } catch (error) {

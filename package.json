@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node apps/server/src/index.js",
     "dev": "node --watch apps/server/src/index.js",
-    "test": "node --test packages/*/test/*.test.js",
+    "test": "node --test packages/*/test/*.test.js apps/server/test/*.test.js",
     "probe": "node scripts/probe-source.js",
     "verify": "node scripts/check-docker.mjs && node scripts/run-all-tests.mjs",
     "verify:tests": "node scripts/run-all-tests.mjs"

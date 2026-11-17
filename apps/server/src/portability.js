@@ -98,4 +98,35 @@ export function registerPortability(app, { store }) {
     store.updateUsername(userId, name)
     return ok({ username: name })
   })
+
+  /* -------------------------------------------------------- 管理员操作 */
+
+  const requireAdmin = (req) => {
+    const current = req.userId ? store.getUserById(req.userId) : null
+    return current?.role === 'admin'
+  }
+
+  /** 调整某个账号的角色（admin / user） */
+  app.post('/reader3/setUserRole', async (req) => {
+    if (!requireAdmin(req)) return fail('需要管理员权限')
+    const username = String(req.body?.username || '').trim()
+    const role = req.body?.role === 'admin' ? 'admin' : 'user'
+    const user = store.findUserByName(username)
+    if (!user) return fail('用户不存在')
+    if (user.id === 1) return fail('默认账号不可改角色')
+    store.setUserRole(user.id, role)
+    return ok({ username, role })
+  })
+
+  /** 删除账号（连带清掉它的会话） */
+  app.post('/reader3/deleteUser', async (req) => {
+    if (!requireAdmin(req)) return fail('需要管理员权限')
+    const username = String(req.body?.username || '').trim()
+    const user = store.findUserByName(username)
+    if (!user) return fail('用户不存在')
+    if (user.id === (req.userId ?? 0)) return fail('不能删除自己')
+    if (user.id === 1) return fail('默认账号不可删除')
+    store.deleteUser(user.id)
+    return ok({ deleted: username })
+  })
 }
