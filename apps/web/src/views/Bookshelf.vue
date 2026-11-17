@@ -101,6 +101,11 @@ const visible = computed(() => {
   return [...list].sort((a, b) => Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0))
 })
 
+const groupOptions = computed(() => {
+  const rest = groups.value.filter((group) => Number(group.groupId) !== 0)
+  return [{ groupId: 0, groupName: '未分组' }, ...rest]
+})
+
 const tabs = computed(() => groups.value.filter((group) => group.groupId !== 0 || groups.value.length === 1))
 
 const unread = (book) => {
@@ -262,6 +267,25 @@ function unreadCount(book) {
 }
 
 /** 最新章节名：优先书架记录的，其次当前进度章节 */
+/** 打开详情：最新章节缺失时抓一次目录补上 */
+async function openInfo(book) {
+  infoBook.value = book
+  if (String(book.latestChapterTitle || '').trim()) return
+  try {
+    const chapters = await api.chapterList({
+      bookUrl: book.bookUrl,
+      tocUrl: book.tocUrl,
+      bookSourceUrl: book.origin,
+    })
+    const last = Array.isArray(chapters) && chapters.length ? chapters[chapters.length - 1] : null
+    if (!last?.title) return
+    book.latestChapterTitle = last.title
+    api.saveBook({ ...book, latestChapterTitle: last.title }).catch(() => {})
+  } catch {
+    /* 抓不到就保持 — */
+  }
+}
+
 function latestName(book) {
   const name = String(book?.latestChapterTitle || '').trim()
   if (name) return name
@@ -339,7 +363,7 @@ onMounted(load)
       <span class="badge">已选 {{ selected.length }} 本</span>
       <div class="spacer" />
       <select v-model="moveTarget" style="max-width: 160px">
-        <option v-for="group in groups" :key="group.groupId" :value="group.groupId">{{ group.groupName }}</option>
+        <option v-for="group in groupOptions" :key="group.groupId" :value="Number(group.groupId)">{{ group.groupName }}</option>
       </select>
       <button :disabled="!selected.length" @click="batchMove">移动到分组</button>
       <button :disabled="!selected.length" @click="batchDelete">删除选中</button>
@@ -351,7 +375,7 @@ onMounted(load)
         :key="book.bookUrl"
         class="shelf-card"
         :class="{ selected: selected.includes(book.bookUrl), 'is-select': selectMode }"
-        @click="selectMode ? toggleSelect(book.bookUrl) : layout === 'cover' ? (infoBook = book) : open(book)"
+        @click="selectMode ? toggleSelect(book.bookUrl) : layout === 'cover' ? openInfo(book) : open(book)"
         @contextmenu.prevent="actionBook = book"
       >
         <div class="shelf-cover">
