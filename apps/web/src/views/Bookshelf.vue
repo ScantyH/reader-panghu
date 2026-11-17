@@ -179,15 +179,22 @@ async function remove(book) {
   }
 }
 
-/** X 天前更新 */
+/** X 天前：卡片第四行用，信息弹层也共用 */
 function updatedAgo(book) {
   const stamp = Number(book.lastCheckTime || 0) || Number(book.durChapterTime || 0)
-  if (!stamp) return '暂无更新记录'
+  if (!stamp) return '暂无记录'
   const days = Math.floor((Date.now() - stamp) / 86400000)
-  if (days <= 0) return '今天更新'
-  if (days === 1) return '昨天更新'
-  if (days < 30) return days + ' 天前更新'
-  return Math.floor(days / 30) + ' 个月前更新'
+  if (days <= 0) return '今天'
+  if (days === 1) return '昨天'
+  if (days < 365) return days + ' 天前'
+  return Math.floor(days / 365) + ' 年前'
+}
+
+/** 第三行：已读章节数；没读过返回空串，但模板会保留这一行的高度 */
+function readText(book) {
+  const read = Number(book.durChapterIndex) || 0
+  if (!(Number(book.durChapterTime) > 0 || read > 0)) return ''
+  return `已读：${read + 1} 章`
 }
 
 /** 分组名 */
@@ -331,20 +338,12 @@ onMounted(load)
           </button>
         </div>
 
-        <div v-if="layout !== 'cover'" class="shelf-info">
+        <div class="shelf-info">
           <h3 class="shelf-title">{{ book.name }}</h3>
-          <p class="shelf-author">{{ book.author || '未知作者' }}</p>
-          <p class="shelf-meta">
-            <span>{{ book.totalChapterNum || 0 }} 章</span>
-            <span class="dot">·</span>
-            <span>{{ updatedAgo(book) }}</span>
-          </p>
-          <p class="shelf-latest">{{ book.latestChapterTitle || book.durChapterTitle || '还没有章节信息' }}</p>
-          <p v-if="layout === 'list' && book.intro" class="shelf-intro">{{ book.intro }}</p>
-          <p v-if="layout === 'list'" class="shelf-tags">
-            <span class="chip">{{ groupName(book) }}</span>
-            <span v-if="book.kind" class="chip">{{ book.kind }}</span>
-          </p>
+          <p class="shelf-line">{{ book.author || '未知作者' }} · 共 {{ book.totalChapterNum || 0 }} 章</p>
+          <p class="shelf-line shelf-read">{{ readText(book) }}</p>
+          <p class="shelf-line">{{ updatedAgo(book) }}：{{ latestName(book) }}</p>
+          <p class="shelf-line shelf-intro">{{ book.intro || '' }}</p>
         </div>
       </article>
     </div>
