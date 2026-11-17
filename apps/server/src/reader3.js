@@ -386,7 +386,7 @@ async function primeBook(book) {
     // Cached text is served as-is: caching exists so a book stays readable offline.
     if (!req.body?.refresh && book) {
       const cached = store.getChapterText(cacheKey(book), target)
-      if (cached) return ok(applyReplaceRules(cached, store.listReplaceRules()))
+      if (cached) return ok(applyReplaceRules(cleanText(cached), store.listReplaceRules()))
     }
     const content = await withRuntime(origin, (runtime) => runtime.content(target))
     const text = applyReplaceRules(cleanText(content), store.listReplaceRules())
