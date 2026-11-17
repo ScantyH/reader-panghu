@@ -108,6 +108,7 @@ export const api = {
   exploreBook: (bookSourceUrl, url, page = 1) =>
     request('/exploreBook', { method: 'POST', body: { bookSourceUrl, url, page } }),
   debugSource: (payload) => request('/debugSource', { method: 'POST', body: payload }),
+  setBookSource: (payload) => request('/setBookSource', { method: 'POST', body: payload }),
   availableSources: (payload) => request('/getAvailableBookSource', { method: 'POST', body: payload }),
   saveReadingTime: (payload) => request('/saveReadingTime', { method: 'POST', body: payload }),
   readingStats: () => request('/getReadingStats'),
@@ -123,6 +124,7 @@ export const api = {
   paragraphComments: (payload) => request('/getParagraphComments', { method: 'POST', body: payload }),
   saveChapterNote: (payload) => request('/saveChapterNote', { method: 'POST', body: payload }),
   deleteChapterNote: (payload) => request('/deleteChapterNote', { method: 'POST', body: payload }),
+  readRemoteSourceFile: (url) => request('/readSourceFile?url=' + encodeURIComponent(url)),
   importSourceFile: (file) => {
     const form = new FormData()
     form.append('file', file)
