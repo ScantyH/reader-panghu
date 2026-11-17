@@ -1,12 +1,14 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { api, setToken } from './api.js'
 
 const route = useRoute()
 const router = useRouter()
 const toast = ref('')
 const headerQuery = ref('')
 const searchReadonly = ref(true)
+const appVersion = __APP_VERSION__
 let timer = 0
 
 /** 任何视图都可以用 window.__toast('...') 弹一条短提示。 */
@@ -85,7 +87,7 @@ onMounted(loadAuth)
         />
       </div>
       <div v-else class="spacer" />
-      <router-link class="badge" to="/recent">最近阅读</router-link>
+      <span class="badge version-badge" :title="'系统版本 ' + appVersion">{{ appVersion }}</span>
       <div v-if="authUser" class="header-user">
         <span class="header-user-name">{{ authUser }}</span>
         <button class="header-user-logout" @click="logout">退出</button>

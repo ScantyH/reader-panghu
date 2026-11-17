@@ -34,7 +34,7 @@ export default createRouter({
     { path: '/webdav', name: 'webdav', component: Webdav },
     { path: '/login', name: 'login', component: Login },
     { path: '/users', name: 'users', component: Users },
-    { path: '/settings', name: 'settings', component: Settings },
+    { path: '/settings/:section?', name: 'settings', component: Settings },
     { path: '/book/:id', name: 'book-detail', component: BookDetailPage },
     { path: '/read', name: 'reader', component: Reader, props: (route) => ({ bookUrl: String(route.query.book || '') }) },
   ],

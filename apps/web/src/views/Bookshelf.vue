@@ -1,28 +1,40 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf } from '../api.js'
 
 const props = defineProps({ recentOnly: { type: Boolean, default: false } })
 
+const route = useRoute()
 const router = useRouter()
 const books = ref([])
 const groups = ref([])
 const activeGroup = ref(0)
 const loading = ref(false)
 const editing = ref(null)
-const showGroups = ref(false)
-const newGroupName = ref('')
-const fileInput = ref(null)
 const actionBook = ref(null)
 const pressing = ref('')
 const layout = ref(localStorage.getItem('shelfLayout') || 'cover')
 const infoBook = ref(null)
-const selectMode = ref(false)
+const selectMode = ref(route.query.manage === '1')
 const selected = ref([])
 const moveTarget = ref('0')
 let pressTimer = 0
+
+// 从设置里的「批量管理」进来时带 ?manage=1；点底栏「书架」回到普通模式
+watch(
+  () => route.query.manage,
+  (value) => {
+    selectMode.value = value === '1'
+    if (!selectMode.value) selected.value = []
+  },
+)
+
+function exitSelect() {
+  selectMode.value = false
+  selected.value = []
+}
 
 function setLayout(next) {
   layout.value = next
@@ -61,15 +73,6 @@ async function batchMove() {
   }
 }
 
-async function refreshCache() {
-  const targets = visible.value.slice(0, 5)
-  if (!targets.length) return
-  window.__toast?.(`正在刷新前 ${targets.length} 本的缓存…`)
-  for (const book of targets) await api.cacheBook(book.bookUrl, 20, true).catch(() => {})
-  await load()
-  window.__toast?.('缓存已刷新')
-}
-
 /** 长按卡片弹出操作菜单（移动端 500ms，桌面端同样可用）。 */
 function startPress(book) {
   pressing.value = book.bookUrl
@@ -98,7 +101,15 @@ const visible = computed(() => {
   let list = books.value
   if (props.recentOnly) list = list.filter((book) => Number(book.durChapterTime) > 0)
   else if (activeGroup.value) list = list.filter((book) => Number(book.group || 0) === activeGroup.value)
-  return [...list].sort((a, b) => Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0))
+  // 最近阅读优先；没读过的用最近检查时间、书名兜底，保证同一屏内顺序稳定。
+  // 渲染顺序即 DOM 顺序，封面/网格模式按从左到右、从上到下排列。
+  return [...list].sort((a, b) => {
+    const byRead = Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0)
+    if (byRead) return byRead
+    const byCheck = Number(b.lastCheckTime || 0) - Number(a.lastCheckTime || 0)
+    if (byCheck) return byCheck
+    return String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN')
+  })
 })
 
 const groupOptions = computed(() => {
@@ -135,77 +146,6 @@ async function load() {
 }
 
 const open = (book) => router.push({ path: '/read', query: { book: book.bookUrl } })
-
-async function addGroup() {
-  const name = newGroupName.value.trim()
-  if (!name) return
-  try {
-    await api.saveBookGroup({ groupId: Date.now() % 100000, groupName: name })
-    newGroupName.value = ''
-    showGroups.value = false
-    await load()
-    window.__toast?.('分组已创建')
-  } catch (error) {
-    window.__toast?.(error.message)
-  }
-}
-
-async function renameGroup(group) {
-  const name = prompt('新的分组名', group.groupName)
-  if (!name || name === group.groupName) return
-  try {
-    await api.saveBookGroup({ groupId: group.groupId, groupName: name, orderNo: group.orderNo || 0 })
-    await load()
-  } catch (error) {
-    window.__toast?.(error.message)
-  }
-}
-
-async function removeGroup(group) {
-  if (!confirm('删除分组「' + group.groupName + '」？组内书籍会回到"全部"，不会被删除')) return
-  try {
-    await api.deleteBookGroup(group.groupId)
-    await load()
-  } catch (error) {
-    window.__toast?.(error.message)
-  }
-}
-
-async function checkUpdates() {
-  try {
-    const started = await api.checkChapterUpdates()
-    if (!started.started) {
-      window.__toast?.(started.reason === 'already-running' ? '已有检查在进行中' : '书架里还没有连载书')
-      return
-    }
-    window.__toast?.(`正在检查 ${started.total} 本…`)
-    for (let round = 0; round < 160; round += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      const status = await api.chapterUpdateStatus()
-      if (status.running) continue
-      await load()
-      const count = status.updatedBooks?.length || 0
-      window.__toast?.(count ? `${count} 本有新章节` : '暂无更新')
-      return
-    }
-  } catch (error) {
-    window.__toast?.(error.message)
-  }
-}
-
-async function importBook(event) {
-  const file = event.target.files?.[0]
-  if (!file) return
-  try {
-    const book = await api.uploadLocal(file)
-    window.__toast?.(`已加入《${book.name}》`)
-    await load()
-  } catch (error) {
-    window.__toast?.(error.message)
-  } finally {
-    event.target.value = ''
-  }
-}
 
 async function cache(book) {
   try {
@@ -339,20 +279,7 @@ onMounted(load)
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="5" height="14" rx="1.6" /><rect x="12" y="6.5" width="8" height="2.2" rx="1.1" /><rect x="12" y="11" width="8" height="2.2" rx="1.1" /><rect x="12" y="15.5" width="5" height="2.2" rx="1.1" /></svg>
         </button>
       </div>
-    </div>
-
-    <div class="row shelf-toolbar">
-      <input ref="fileInput" type="file" accept=".txt,.epub,.docx,.mobi,.azw3,.azw,.pdf" hidden @change="importBook" />
-      <button class="ghost" @click="selectMode = !selectMode; selected = []">{{ selectMode ? '取消选择' : '管理' }}</button>
-      <router-link class="ghost" to="/warehouse" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">书仓</router-link>
-      <router-link class="ghost" to="/bookmarks" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">书签</router-link>
-      <router-link class="ghost" to="/replace" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">替换规则</router-link>
-      <router-link class="ghost" to="/cache" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">缓存</router-link>
-      <router-link class="ghost" to="/users" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">账号</router-link>
-      <router-link class="ghost" to="/stats" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">统计</router-link>
-      <button class="ghost" @click="checkUpdates">检查更新</button>
-      <button class="ghost" @click="refreshCache">刷新缓存</button>
-      <button class="primary" @click="fileInput.click()">导入</button>
+      <button class="ghost" @click="router.push('/settings/shelf')">设置</button>
     </div>
 
     <div v-if="!recentOnly" class="group-tabs">
@@ -366,11 +293,10 @@ onMounted(load)
       >
         {{ group.groupName }}
       </button>
-      <button class="group-tab" @click="showGroups = true">管理</button>
     </div>
 
     <div v-if="!visible.length" class="empty">
-      书架还是空的。去「搜索」找书，或点右上角「导入」加一本本地书。
+      书架还是空的。去「设置 → 书架 → 导入本地书」加一本，或去「搜索」找书。
     </div>
 
     <div v-if="selectMode" class="row" style="margin-bottom: 12px; flex-wrap: wrap">
@@ -381,6 +307,7 @@ onMounted(load)
       </select>
       <button :disabled="!selected.length" @click="batchMove">移动到分组</button>
       <button :disabled="!selected.length" @click="batchDelete">删除选中</button>
+      <button class="ghost" @click="exitSelect">退出管理</button>
     </div>
 
     <div class="shelf" :class="'mode-' + layout">
@@ -470,26 +397,6 @@ onMounted(load)
         <button class="action-sheet-item" @click="runAction('edit')">✏️ 编辑信息与封面</button>
         <button class="action-sheet-item" @click="runAction('cache')">⬇️ 缓存前 20 章</button>
         <button class="action-sheet-item danger" @click="runAction('delete')">🗑️ 从书架删除</button>
-      </div>
-    </div>
-
-    <div v-if="showGroups" class="sheet-backdrop" @click.self="showGroups = false">
-      <div class="sheet">
-        <div class="sheet-handle" />
-        <h2>分组管理</h2>
-        <div class="row" style="margin-bottom: 16px">
-          <input v-model="newGroupName" placeholder="新分组名称" @keyup.enter="addGroup" />
-          <button class="primary" @click="addGroup">新建</button>
-        </div>
-        <div class="list">
-          <div v-for="group in tabs.filter((item) => item.groupId !== 0)" :key="group.groupId" class="list-item">
-            <span style="flex: 1">{{ group.groupName }}</span>
-            <span class="badge">{{ books.filter((book) => Number(book.group || 0) === group.groupId).length }} 本</span>
-            <button class="ghost" @click="renameGroup(group)">改名</button>
-            <button class="ghost" @click="removeGroup(group)">删除</button>
-          </div>
-          <div v-if="!tabs.filter((item) => item.groupId !== 0).length" class="muted" style="font-size: 13px">还没有分组</div>
-        </div>
       </div>
     </div>
   </div>
