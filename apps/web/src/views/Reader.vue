@@ -127,10 +127,11 @@ const sourceLoading = ref(false)
 const dpMarkers = ref([])
 const dpCards = ref([])
 const dpLoading = ref(false)
-const dpPanelHtml = ref('')
 const dpPanelError = ref('')
 const dpPanelLoading = ref(false)
 const dpPanelTitle = ref('')
+const dpComments = ref([])
+const dpPanelTotal = ref(0)
 
 const turnDirection = ref('')
 const caching = ref(false)
@@ -545,7 +546,8 @@ async function openDpComment(marker) {
   showDpPanel.value = true
   dpPanelLoading.value = true
   dpPanelError.value = ''
-  dpPanelHtml.value = ''
+  dpComments.value = []
+  dpPanelTotal.value = 0
   dpPanelTitle.value =
     Number(marker.paragraph) === -1
       ? `章节名 · ${marker.count} 条段评`
@@ -556,13 +558,22 @@ async function openDpComment(marker) {
       index: current.value,
       paragraph: marker.paragraph,
     })
-    dpPanelHtml.value = result.html || ''
-    if (!dpPanelHtml.value) dpPanelError.value = '没有取到段评内容'
+    dpComments.value = result.comments || []
+    dpPanelTotal.value = Number(result.total || dpComments.value.length)
+    if (!dpComments.value.length) dpPanelError.value = '没有取到段评内容'
   } catch (error) {
     dpPanelError.value = error.message
   } finally {
     dpPanelLoading.value = false
   }
+}
+
+function formatCommentTime(value) {
+  const stamp = Number(value || 0)
+  if (!stamp) return ''
+  const date = new Date(stamp)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 /* ---------------- 朗读 ---------------- */
@@ -1148,8 +1159,21 @@ watch(chapterTitle, () => {
           <button class="ghost" @click="showDpPanel = false">关闭</button>
         </div>
         <div v-if="dpPanelLoading" class="muted" style="padding: 24px 0">正在加载段评…</div>
-        <div v-else-if="dpPanelError" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
-        <iframe v-else class="dp-panel-frame" :srcdoc="dpPanelHtml" sandbox referrerpolicy="no-referrer" />
+        <div v-else-if="dpPanelError && !dpComments.length" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
+        <template v-else>
+          <div class="dp-comment-summary">共 {{ dpPanelTotal }} 条 · 显示前 {{ dpComments.length }} 条</div>
+          <div class="dp-comment-list">
+            <div v-for="(comment, index) in dpComments" :key="comment.id || index" class="dp-comment-item">
+              <div class="dp-comment-meta">
+                <strong>{{ comment.user }}</strong>
+                <span>{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
+              </div>
+              <div v-if="comment.quote" class="dp-comment-quote">{{ comment.quote }}</div>
+              <p class="dp-comment-content">{{ comment.content }}</p>
+              <div class="dp-comment-like">👍 {{ comment.agree }}</div>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -1407,13 +1431,58 @@ watch(chapterTitle, () => {
   max-height: 88vh;
 }
 
-.dp-panel-frame {
-  display: block;
-  width: 100%;
-  height: 68vh;
-  border: 0;
-  border-radius: 12px;
-  background: #f3e9d2;
+.dp-comment-summary {
+  font-size: 12px;
+  opacity: 0.55;
+  padding: 8px 0;
+}
+
+.dp-comment-list {
+  max-height: 64vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dp-comment-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.07);
+  border: 1px solid rgba(127, 127, 127, 0.14);
+}
+
+.dp-comment-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.dp-comment-meta span {
+  opacity: 0.55;
+}
+
+.dp-comment-quote {
+  font-size: 12px;
+  opacity: 0.6;
+  border-left: 2px solid rgba(120, 90, 50, 0.3);
+  padding-left: 8px;
+  margin: 4px 0;
+}
+
+.dp-comment-content {
+  margin: 4px 0;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.dp-comment-like {
+  font-size: 11px;
+  opacity: 0.55;
+  text-align: right;
 }
 
 .chapter-end-btn {

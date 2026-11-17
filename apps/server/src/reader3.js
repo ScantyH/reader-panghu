@@ -17,7 +17,7 @@ import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
 import { convertText } from './text-convert.js'
 import { extractContentImages, sourceTextToPlain } from './source-text.js'
-import { extractCards, extractDpMarkers } from './comment-markers.js'
+import { extractDpMarkers } from './comment-markers.js'
 import { cleanIntro, cleanText } from './text.js'
 import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
 
@@ -297,8 +297,7 @@ async function primeBook(book) {
       const parsed = extractDpMarkers(raw)
       cacheDpMarkers(book.bookUrl, target, parsed)
       const markers = parsed.map(({ paragraph, count }) => ({ paragraph, count }))
-      const cards = extractCards(raw).map(({ paragraph, src, alt }) => ({ paragraph, src, alt }))
-      return ok({ markers, cards })
+      return ok({ markers, cards: [] })
     } catch (error) {
       return fail(error.message)
     }
@@ -312,6 +311,7 @@ async function primeBook(book) {
     const chapters = store.getChapters(book.bookUrl, book.origin)
     const target = String(req.body?.chapterUrl || chapters[Number(req.body?.index) || 0]?.url || '')
     if (!target) return fail('缺少章节地址')
+    let markerHost = ''
     try {
       const paragraph = Number(req.body?.paragraph)
       let markerUrl = dpMarkerCache.get(dpCacheKey(book.bookUrl, target, paragraph))?.url || ''
@@ -322,23 +322,43 @@ async function primeBook(book) {
         markerUrl = parsed.find((item) => Number(item.paragraph) === paragraph)?.url || ''
       }
       if (!markerUrl) return fail('这一段没有段评')
-      const response = await fetch(markerUrl, {
+      try {
+        markerHost = new URL(markerUrl).host
+      } catch {
+        /* ignore */
+      }
+      const apiUrl = new URL(markerUrl)
+      apiUrl.pathname = apiUrl.pathname.replace(/\/qddp\/?$/, '/qddp/api')
+      apiUrl.searchParams.set('tab', 'all')
+      apiUrl.searchParams.set('pg', '1')
+      apiUrl.searchParams.set('pz', '50')
+      apiUrl.searchParams.set('offset', '0')
+      const response = await fetch(apiUrl, {
         headers: {
           'user-agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
           referer: `${origin}/`,
-          accept: 'text/html,application/xhtml+xml',
+          accept: 'application/json, text/plain, */*',
         },
         signal: AbortSignal.timeout(20000),
       })
-      if (!response.ok) return fail(`段评接口返回 HTTP ${response.status}`)
-      // iframe 已禁用脚本；这里再剥一层，避免把评论里的脚本带回页面
-      const html = (await response.text())
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, '')
-      return ok({ html })
+      if (!response.ok) return fail(`段评接口返回 HTTP ${response.status}（${markerHost}）`)
+      const payload = await response.json()
+      const data = payload?.Data || payload?.data || {}
+      const list = data.DataList || data.data || data.list || []
+      const total = Number(data.TotalCount || data.total || list.length)
+      const comments = list.slice(0, 50).map((item) => ({
+        id: String(item.Id || item.id || ''),
+        user: String(item.UserName || item.userName || '书友'),
+        content: String(item.Content || item.content || ''),
+        quote: String(item.RefferContent || item.quote || ''),
+        agree: Number(item.AgreeAmount || item.agree || 0),
+        ip: String(item.IpLocation || ''),
+        time: Number(item.CreateTime || 0),
+      }))
+      return ok({ comments, total })
     } catch (error) {
-      return fail(error.message)
+      return fail(`段评接口请求失败：${error.message}${error.cause?.code ? `（${error.cause.code}）` : ''}${markerHost ? ` ${markerHost}` : ''}`)
     }
   })
 

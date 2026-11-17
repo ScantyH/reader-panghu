@@ -12,6 +12,10 @@ import { extractContentImages } from './source-text.js'
 
 export function cleanText(value) {
   return String(value ?? '')
+    // 有的书源把卡片图转义成文本，连同带 key 的地址一起丢掉
+    .replace(/&lt;img[\s\S]*?&gt;/gi, '')
+    .replace(/&lt;\/?(div|p|br|span|a|font|h[1-6]|li|ul|table|tr|td)[^&]*?&gt;/gi, '\n')
+    .replace(/&nbsp;/gi, ' ')
     .replace(DP_IMG, '')
     // 保留非段评图片的占位，其余 <img> 去掉
     .replace(/<img[^>]*>/gi, '\n[图片]\n')
