@@ -298,7 +298,7 @@ onMounted(load)
       <button :disabled="!selected.length" @click="batchDelete">删除选中</button>
     </div>
 
-    <div class="shelf" :class="'shelf-' + layout">
+    <div class="shelf" :class="'mode-' + layout">
       <article
         v-for="book in visible"
         :key="book.bookUrl"
