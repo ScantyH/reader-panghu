@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api.js'
+import Rss from './Rss.vue'
 
-const TAB = { manage: '管理', explore: '探索', check: '检测', debug: '调试' }
+const TAB = { manage: '管理', explore: '探索', rss: 'RSS', check: '检测', debug: '调试' }
 const tab = ref('manage')
 const sources = ref([])
 const loading = ref(false)
@@ -414,6 +415,11 @@ onMounted(load)
         </div>
       </div>
       <div v-else-if="!exploreLoading" class="empty">选一个书源和分类，这里会显示书籍。</div>
+    </section>
+
+    <!-- RSS 订阅（并入书源功能区） -->
+    <section v-if="tab === 'rss'">
+      <Rss embedded />
     </section>
 
     <!-- 检测 -->

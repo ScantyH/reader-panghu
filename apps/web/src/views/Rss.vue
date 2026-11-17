@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../api.js'
 
+defineProps({ embedded: { type: Boolean, default: false } })
+
 const sources = ref([])
 const activeSource = ref('')
 const articles = ref([])
@@ -77,9 +79,12 @@ onMounted(loadSources)
 
 <template>
   <div>
-    <div class="page-head">
-      <h1>RSS 订阅</h1>
-      <span class="badge">{{ sources.length }} 个源</span>
+    <div class="page-head" :style="embedded ? 'margin-bottom: 12px' : ''">
+      <template v-if="!embedded">
+        <h1>RSS 订阅</h1>
+        <span class="badge">{{ sources.length }} 个源</span>
+      </template>
+      <span v-else class="muted" style="font-size: 13px">订阅 RSS / Atom，和书源放在一起管理</span>
       <div class="spacer" />
       <input v-model="newUrl" placeholder="订阅地址（RSS / Atom）" style="min-width: 240px" @keyup.enter="addSource" />
       <input v-model="newName" placeholder="名称（可选）" style="max-width: 160px" />

@@ -53,7 +53,7 @@ const NAV = [
   { to: '/bookshelf', label: '书架', icon: '📚' },
   { to: '/search', label: '搜索', icon: '🔍' },
   { to: '/sources', label: '书源', icon: '🔗' },
-  { to: '/rss', label: 'RSS', icon: '📰' },
+  { to: '/stats', label: '统计', icon: '📊' },
   { to: '/backup', label: '备份', icon: '💾' },
   { to: '/settings', label: '设置', icon: '⚙️' },
 ]
