@@ -132,6 +132,36 @@ class CookieJar {
   }
 }
 
+/** 书源变量存储：按书源地址分文件，放在 DATA_DIR/vars 下 */
+function varsFile(scope) {
+  const fs = require('node:fs')
+  const crypto = require('node:crypto')
+  const dir = (process.env.DATA_DIR || 'data') + '/vars'
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+  } catch {
+    /* 忽略 */
+  }
+  const hash = crypto.createHash('sha1').update(String(scope || 'default')).digest('hex').slice(0, 16)
+  return dir + '/' + hash + '.json'
+}
+
+function readVars(scope) {
+  try {
+    return JSON.parse(require('node:fs').readFileSync(varsFile(scope), 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function writeVars(scope, data) {
+  try {
+    require('node:fs').writeFileSync(varsFile(scope), JSON.stringify(data, null, 2), 'utf8')
+  } catch {
+    /* 忽略 */
+  }
+}
+
 export class WebviewSourceRuntime {
   /**
    * @param {object} options
@@ -246,6 +276,19 @@ export class WebviewSourceRuntime {
       console.error(`[bridge] ${name} ${JSON.stringify(head)}`)
     }
     switch (name) {
+      case 'getVariable': {
+        const key = String(args[0] ?? '')
+        const vars = readVars(this.baseUrl)
+        return vars[key] === undefined ? null : vars[key]
+      }
+      case 'setVariable': {
+        const key = String(args[0] ?? '')
+        const value = String(args[1] ?? '')
+        const vars = readVars(this.baseUrl)
+        vars[key] = value
+        writeVars(this.baseUrl, vars)
+        return value
+      }
       case 'log':
         this.#log(args[0])
         return true
@@ -300,6 +343,68 @@ export class WebviewSourceRuntime {
       case 'addbook':
         this.#log(`[addbook] ${args[0]}`)
         return ''
+      /* ── 轻悦 / 时光 规则说明里要求的桥接接口 ── */
+      case 'htmlToText': {
+        const html = String(args[0] ?? '')
+        return html
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .trim()
+      }
+      case 'getWidth':
+        return 412
+      case 'getHeight':
+        return 892
+      case 'getsourceurl':
+        return this.baseUrl
+      case 'getReadBook':
+        return typeof args[0] === 'string' ? args[0] : ''
+      case 'getdurChapterIndex':
+        return Number(args[0] ?? 0) || 0
+      case 'getsearch':
+        return String(args[0] ?? '')
+      case 'getDirectoryList':
+        return ''
+      case 'getLoginUser':
+        return readVars(this.baseUrl).loginUser || ''
+      case 'setHtml':
+        return ''
+      case 'openurl':
+      case 'startBrowser':
+      case 'startBrowserDp':
+      case 'startBrowserDpwithHtml':
+      case 'startBrowserDpWithShouldOverrideUrlLoading':
+      case 'startBrowserWithShouldOverrideUrlLoading':
+        return ''
+      case 'back':
+        return ''
+      case 'refreshContent':
+      case 'refreshExplore':
+        return ''
+      case 'getVerificationCode':
+        return ''
+      case 'showsvg':
+      case 'getsvg':
+      case 'addsvg':
+        return ''
+      case 'voice':
+      case 'putLyric':
+      case 'showvideoplay':
+        return ''
+      case 'webview':
+      case 'webviewajax':
+        return ''
+      case 'searchbook':
+        return ''
+      case 'showLongToast':
+        return this.#log(`[toast] ${String(args[0] ?? '')}`)
+      case 'utf8ToGbkUrlEncoded':
+        return encodeURIComponent(String(args[0] ?? ''))
       default:
         if (INTERACTIVE_CALLS.has(name)) {
           this.unsupported.push(name)

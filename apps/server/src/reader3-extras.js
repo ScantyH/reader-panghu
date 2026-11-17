@@ -145,6 +145,50 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   })
 
   /** 失效书源：检测时标记为 invalid 的源 */
+  /** 设置书源变量（如起点系书源的「密钥」），与运行时共用同一份存储 */
+  app.post('/reader3/setSourceVariable', async (req) => {
+    const bookSourceUrl = String(req.body?.bookSourceUrl || '')
+    const name = String(req.body?.name || '').trim()
+    const value = String(req.body?.value || '')
+    if (!bookSourceUrl || !name) return fail('缺少书源地址或变量名')
+    const crypto = await import('node:crypto')
+    const fsMod = await import('node:fs')
+    const dir = join(dataDir, 'vars')
+    fsMod.mkdirSync(dir, { recursive: true })
+    const hash = crypto.createHash('sha1').update(bookSourceUrl).digest('hex').slice(0, 16)
+    const file = join(dir, hash + '.json')
+    let vars = {}
+    try {
+      vars = JSON.parse(fsMod.readFileSync(file, 'utf8'))
+    } catch {
+      vars = {}
+    }
+    vars[name] = value
+    fsMod.writeFileSync(file, JSON.stringify(vars, null, 2), 'utf8')
+    return ok({ saved: true, name, length: value.length })
+  })
+
+  app.get('/reader3/getSourceVariables', async (req) => {
+    const bookSourceUrl = String(req.query?.bookSourceUrl || '')
+    if (!bookSourceUrl) return fail('缺少书源地址')
+    const crypto = await import('node:crypto')
+    const fsMod = await import('node:fs')
+    const hash = crypto.createHash('sha1').update(bookSourceUrl).digest('hex').slice(0, 16)
+    try {
+      return ok(JSON.parse(fsMod.readFileSync(join(dataDir, 'vars', hash + '.json'), 'utf8')))
+    } catch {
+      return ok({})
+    }
+  })
+
+  /** 一键禁用没有搜索能力的书源（既没有 html 也没有 searchUrl） */
+  app.post('/reader3/disableUnsearchableSources', async () => {
+    const all = store.listSources()
+    const useless = all.filter((source) => !source.html && !String(source.searchUrl || '').trim())
+    for (const source of useless) store.saveSource({ ...source, enabled: false })
+    return ok({ total: all.length, disabled: useless.length })
+  })
+
   app.post('/reader3/getInvalidBookSources', async () => ok(store.listSources().filter((source) => source.invalid === true)))
 
   app.post('/reader3/deleteInvalidBookSources', async () => {

@@ -8,9 +8,14 @@
 
 const DP_IMG = /<img[^>]*src="\s*dp:[^"]*"[^>]*>/gi
 
+import { extractContentImages } from './source-text.js'
+
 export function cleanText(value) {
   return String(value ?? '')
     .replace(DP_IMG, '')
+    // 保留非段评图片的占位，其余 <img> 去掉
+    .replace(/<img[^>]*>/gi, '\n[图片]\n')
+    .replace(/<\/?(div|p|br|span|a|font|h[1-6]|li|ul|table|tr|td)[^>]*>/gi, '\n')
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')

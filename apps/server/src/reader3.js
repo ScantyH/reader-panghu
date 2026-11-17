@@ -16,6 +16,7 @@ import { extname, join } from 'node:path'
 import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
 import { convertText } from './text-convert.js'
+import { extractContentImages, sourceTextToPlain } from './source-text.js'
 import { extractCards, extractDpMarkers, fetchComments } from './comment-markers.js'
 import { cleanIntro, cleanText } from './text.js'
 
@@ -79,7 +80,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     originName: String(source.bookSourceName ?? ''),
     originGroup: String(source.bookSourceGroup ?? ''),
     coverUrl: String(book?.coverUrl ?? ''),
-    intro: String(book?.intro ?? ''),
+    intro: sourceTextToPlain(book?.intro),
     kind: String(book?.kind ?? ''),
     lastChapter: String(book?.latestChapterTitle ?? ''),
     updateTime: String(book?.updateTime ?? ''),
@@ -94,7 +95,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     originName: String(source?.bookSourceName ?? existing?.originName ?? ''),
     coverUrl: String(book?.coverUrl ?? existing?.coverUrl ?? ''),
     tocUrl: String(book?.tocUrl ?? existing?.tocUrl ?? ''),
-    intro: cleanIntro(book?.intro ?? existing?.intro ?? ''),
+    intro: sourceTextToPlain(cleanIntro(book?.intro ?? existing?.intro ?? '')),
     kind: String(book?.kind ?? existing?.kind ?? ''),
     latestChapterTitle: String(book?.latestChapterTitle ?? existing?.latestChapterTitle ?? ''),
     wordCount: String(book?.wordCount ?? existing?.wordCount ?? ''),
@@ -368,17 +369,72 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
       if (group) return source.bookSourceGroup === group
       return true
     })
+    if (!sources.length) return []
+
+    // 默认只搜前 N 个源：1694 个源全量跑会让接口超时，也没有实际价值
+    const maxSources = Math.max(1, Number(process.env.SEARCH_MAX_SOURCES || 200))
+
+    // 串行跑 2000+ 个源要一小时，这里改成有限并发；NAS 是弱机器，默认 6 路
+    const SEARCH_CONCURRENCY = Math.max(1, Number(process.env.SEARCH_CONCURRENCY || 6))
+    const SEARCH_TIMEOUT_MS = Math.max(2000, Number(process.env.SEARCH_TIMEOUT_MS || 8000))
+    // 按历史成功率排序：成功的排前面，从未成功的排后面
+    const sourceScore = (source) => {
+      const stats = source._stats || {}
+      const ok = Number(stats.ok || 0)
+      const fail = Number(stats.fail || 0)
+      const total = ok + fail
+      const rate = total ? ok / total : 0.5
+      return rate * 1000 + Math.min(ok, 200) + (stats.lastOk ? 1 : 0)
+    }
+    const ranked = [...sources].sort((a, b) => sourceScore(b) - sourceScore(a))
+    const targets = ranked.slice(0, maxSources)
     const results = []
-    for (const source of sources) {
+    let cursor = 0
+    let aborted = false
+
+    const runOne = async (source) => {
+      if (aborted) return
       try {
-        const books = await withRuntime(source.bookSourceUrl, (runtime) => runtime.search(keyword, 1))
+        const books = await Promise.race([
+          withRuntime(source.bookSourceUrl, (runtime) => runtime.search(keyword, 1)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('搜索超时')), SEARCH_TIMEOUT_MS)),
+        ])
         const mapped = (Array.isArray(books) ? books : []).map((book) => toSearchBook(book, source))
-        results.push(...mapped)
+        if (mapped.length) results.push(...mapped)
       } catch (error) {
         app.log.warn(`[search] ${source.bookSourceName}: ${error.message}`)
       }
-      if (limit && results.length >= limit) break
     }
+
+    const worker = async () => {
+      while (!aborted) {
+        const index = cursor++
+        if (index >= targets.length) return
+        await runOne(targets[index])
+        if (limit && results.length >= limit) aborted = true
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(SEARCH_CONCURRENCY, targets.length) }, worker))
+
+    // 落库搜索统计，供下次排序使用
+    try {
+      for (const source of targets) {
+        const stats = source._stats || {}
+        const hit = results.some((book) => book.origin === source.bookSourceUrl)
+        const next = {
+          ok: Number(stats.ok || 0) + (hit ? 1 : 0),
+          fail: Number(stats.fail || 0) + (hit ? 0 : 1),
+          lastOk: hit ? Date.now() : stats.lastOk || 0,
+        }
+        if (next.ok !== Number(stats.ok || 0) || next.fail !== Number(stats.fail || 0)) {
+          store.saveSource({ ...source, _stats: next })
+        }
+      }
+    } catch (error) {
+      app.log.warn(`[search] 统计写入失败: ${error.message}`)
+    }
+
     return results
   }
 
