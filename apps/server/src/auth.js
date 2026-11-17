@@ -11,6 +11,7 @@
 
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { runWithUser } from './db.js'
+import { permissionOf } from './user-perms.js'
 
 export const DEFAULT_USER_ID = 1
 const SESSION_COOKIE = 'rp_session'
@@ -167,11 +168,25 @@ export function registerAuth(app, { store }) {
   app.get('/reader3/getUserInfo', async (req) => {
     if (!authEnabled()) {
       const user = store.getUser()
-      return ok({ username: user?.username ?? 'reader', role: user?.role ?? 'admin', secure: false, authEnabled: false })
+      const perms = permissionOf(user)
+      return ok({
+        username: user?.username ?? 'reader',
+        role: user?.role ?? 'admin',
+        secure: false,
+        authEnabled: false,
+        ...perms,
+      })
     }
     if (!req.userId) return fail('NEED_LOGIN')
     const user = store.getUserById(req.userId)
-    return ok({ username: user?.username ?? '', role: user?.role ?? 'user', secure: true, authEnabled: true })
+    const perms = permissionOf(user)
+    return ok({
+      username: user?.username ?? '',
+      role: user?.role ?? 'user',
+      secure: true,
+      authEnabled: true,
+      ...perms,
+    })
   })
 
   // 用环境变量种一个管理员账号（已存在则只补角色）

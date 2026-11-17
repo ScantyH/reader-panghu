@@ -60,13 +60,22 @@ export function registerPortability(app, { store }) {
 
   /* ------------------------------------------------------------ 用户管理 */
 
-  app.get('/reader3/getUserList', async () => {
+  app.get('/reader3/getUserList', async (req) => {
+    // 单用户模式（没有任何密码账号）允许看列表；多用户下只有管理员能看
+    const loginEnabled = store.listUsers().some((user) => Boolean(user.password))
+    if (loginEnabled && !requireAdmin(req)) return fail('需要管理员权限')
     const users = store.listUsers().map((user) => ({
       username: user.username,
       hasPassword: Boolean(user.password),
       role: user.role || 'user',
       createdAt: user.created_at,
-      current: false,
+      current: user.id === req.userId,
+      bookLimit: Number(user.bookLimit) || 0,
+      sourceLimit: Number(user.sourceLimit) || 0,
+      allowWebdav: Boolean(user.allowWebdav),
+      allowWarehouse: Boolean(user.allowWarehouse),
+      allowEditSources: Boolean(user.allowEditSources),
+      allowEditRss: Boolean(user.allowEditRss),
     }))
     return ok(users)
   })
@@ -116,6 +125,50 @@ export function registerPortability(app, { store }) {
     if (user.id === 1) return fail('默认账号不可改角色')
     store.setUserRole(user.id, role)
     return ok({ username, role })
+  })
+
+  /** 给子账号分配书籍/书源上限与功能开关（管理员专用） */
+  app.post('/reader3/setUserSettings', async (req) => {
+    if (!requireAdmin(req)) return fail('需要管理员权限')
+    const username = String(req.body?.username || '').trim()
+    const user = store.findUserByName(username)
+    if (!user) return fail('用户不存在')
+    if (user.id === (req.userId ?? 0)) return fail('不能给自己的账号设限')
+    if (user.role === 'admin') return fail('管理员账号不受限制，无需分配')
+    const updated = store.updateUserSettings(user.id, req.body || {})
+    return ok({
+      username,
+      bookLimit: Number(updated.bookLimit) || 0,
+      sourceLimit: Number(updated.sourceLimit) || 0,
+      allowWebdav: Boolean(updated.allowWebdav),
+      allowWarehouse: Boolean(updated.allowWarehouse),
+      allowEditSources: Boolean(updated.allowEditSources),
+      allowEditRss: Boolean(updated.allowEditRss),
+    })
+  })
+
+  /**
+   * 把当前管理员的书源与 RSS 订阅复制到某个子账号。
+   * 配合「编辑书源 / 编辑RSS源」关闭使用：子账号只能只读使用管理员分配好的内容。
+   */
+  app.post('/reader3/copyUserLibrary', async (req) => {
+    if (!requireAdmin(req)) return fail('需要管理员权限')
+    const username = String(req.body?.username || '').trim()
+    const target = store.findUserByName(username)
+    if (!target) return fail('用户不存在')
+    if (target.id === (req.userId ?? 0)) return fail('不需要给自己分配')
+    const from = req.userId ?? 1
+    let sources = 0
+    let rss = 0
+    for (const source of store.listSources(from)) {
+      store.saveSource(source, target.id)
+      sources += 1
+    }
+    for (const item of store.listRssSources(from)) {
+      store.saveRssSource(item, target.id)
+      rss += 1
+    }
+    return ok({ username, sources, rss })
   })
 
   /** 删除账号（连带清掉它的会话） */

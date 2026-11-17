@@ -118,6 +118,8 @@ export const api = {
   exportBackup: () => fetch('/reader3/exportBackup').then((r) => r.blob()),
   userList: () => request('/getUserList'),
   setUserRole: (payload) => request('/setUserRole', { method: 'POST', body: payload }),
+  setUserSettings: (payload) => request('/setUserSettings', { method: 'POST', body: payload }),
+  copyUserLibrary: (payload) => request('/copyUserLibrary', { method: 'POST', body: payload }),
   deleteUser: (payload) => request('/deleteUser', { method: 'POST', body: payload }),
   changePassword: (payload) => request('/changePassword', { method: 'POST', body: payload }),
   chapterNotes: (bookUrl) => request('/getChapterNotes?bookUrl=' + encodeURIComponent(bookUrl)),

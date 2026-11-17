@@ -19,6 +19,7 @@ import { convertText } from './text-convert.js'
 import { extractContentImages, sourceTextToPlain } from './source-text.js'
 import { extractCards, extractDpMarkers, fetchComments } from './comment-markers.js'
 import { cleanIntro, cleanText } from './text.js'
+import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
@@ -175,14 +176,29 @@ async function primeBook(book) {
   }
 }
 
+  /** 子账号被管理员关闭「编辑书源」时，所有写书源接口统一拒绝 */
+  const editSourcesBlocked = (req) =>
+    permissionsFor(store, req).allowEditSources ? '' : '当前账号没有编辑书源的权限，请联系管理员'
+
   app.post('/reader3/saveBook', async (req) => {
-    const saved = store.saveBook(req.body || {})
+    const book = req.body || {}
+    const url = String(book.bookUrl || '')
+    if (url && !store.getBook(url)) {
+      const quota = bookQuotaError(store, req, 1)
+      if (quota) return fail(quota)
+    }
+    const saved = store.saveBook(book)
     primeBook(saved).catch(() => {})
     return ok(saved)
   })
 
   app.post('/reader3/saveBooks', async (req) => {
     const list = Array.isArray(req.body) ? req.body : []
+    const newCount = list.filter((book) => book?.bookUrl && !store.getBook(String(book.bookUrl))).length
+    if (newCount) {
+      const quota = bookQuotaError(store, req, newCount)
+      if (quota) return fail(quota)
+    }
     const saved = store.saveBooks(list)
     for (const book of list) primeBook(store.getBook(String(book?.bookUrl ?? '')) || book).catch(() => {})
     return ok(saved)
@@ -366,12 +382,22 @@ async function primeBook(book) {
   })
 
   app.post('/reader3/saveBookSource', async (req) => {
-    store.saveSource(req.body || {})
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
+    const source = req.body || {}
+    const url = String(source.bookSourceUrl || '')
+    if (url && !store.getSource(url)) {
+      const quota = sourceQuotaError(store, req, 1)
+      if (quota) return fail(quota)
+    }
+    store.saveSource(source)
     return ok({ saved: true })
   })
 
   /** 给某个批次改名（备注） */
   app.post('/reader3/renameBundle', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const from = String(req.body?.from || '')
     const to = String(req.body?.to || '').trim()
     if (!from || !to) return fail('缺少原名称或新名称')
@@ -383,6 +409,8 @@ async function primeBook(book) {
 
   /** 把若干批次合并到一个目标批次 */
   app.post('/reader3/mergeBundles', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const into = String(req.body?.into || '').trim()
     const names = Array.isArray(req.body?.names) ? req.body.names.map((name) => String(name)) : []
     if (!into) return fail('缺少目标批次')
@@ -400,6 +428,8 @@ async function primeBook(book) {
 
   /** 按导入批次（bundle）批量启用/停用 */
   app.post('/reader3/setBundleEnabled', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const bundle = String(req.body?.bundle || '')
     const enabled = Boolean(req.body?.enabled)
     if (!bundle) return fail('缺少分组名')
@@ -409,24 +439,39 @@ async function primeBook(book) {
   })
 
   app.post('/reader3/saveBookSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const body = req.body || {}
     const list = Array.isArray(body) ? body : Array.isArray(body.sources) ? body.sources : []
     const bundle = Array.isArray(body) ? '' : String(body.bundle || '').trim()
     const prepared = bundle ? list.map((source) => ({ ...source, _bundle: bundle })) : list
+    const newCount = prepared.filter((source) => source?.bookSourceUrl && !store.getSource(String(source.bookSourceUrl))).length
+    if (newCount) {
+      const quota = sourceQuotaError(store, req, newCount)
+      if (quota) return fail(quota)
+    }
     return ok({ saved: true, count: store.saveSources(prepared), bundle: bundle || null })
   })
 
   app.post('/reader3/deleteBookSource', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     return ok({ deleted: store.deleteSource(String(req.body?.bookSourceUrl ?? '')) })
   })
 
   app.post('/reader3/deleteBookSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const list = Array.isArray(req.body) ? req.body : []
     const deleted = store.deleteSources(list.map((item) => String(item?.bookSourceUrl ?? '')))
     return ok({ deleted: deleted > 0 })
   })
 
-  app.post('/reader3/deleteAllBookSources', async () => ok({ deleted: store.deleteAllSources() > 0 }))
+  app.post('/reader3/deleteAllBookSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
+    return ok({ deleted: store.deleteAllSources() > 0 })
+  })
 
   app.get('/reader3/getDefaultBookSourceOwner', async () => ok({ username: null }))
 

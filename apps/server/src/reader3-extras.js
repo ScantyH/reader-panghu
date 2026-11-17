@@ -20,6 +20,7 @@ import { parseEpub } from './epub.js'
 import { parseFeed } from './rss.js'
 import { parseMobi } from './mobi.js'
 import { extractPdfText } from './pdf.js'
+import { bookQuotaError, permissionsFor } from './user-perms.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
@@ -62,6 +63,14 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   mkdirSync(booksDir, { recursive: true })
   mkdirSync(coversDir, { recursive: true })
   const timeoutMs = Number(options.timeoutMs || 45000)
+
+  const editSourcesBlocked = (req) =>
+    permissionsFor(store, req).allowEditSources ? '' : '当前账号没有编辑书源的权限，请联系管理员'
+  const editRssBlocked = (req) =>
+    permissionsFor(store, req).allowEditRss ? '' : '当前账号没有编辑 RSS 的权限，请联系管理员'
+  const webdavBlocked = (req) =>
+    permissionsFor(store, req).allowWebdav ? '' : '当前账号没有使用 WebDAV 的权限，请联系管理员'
+  const bookQuota = (req) => bookQuotaError(store, req, 1)
 
   const importable = (payload) => {
     const list = Array.isArray(payload) ? payload : Array.isArray(payload?.sources) ? payload.sources : [payload]
@@ -147,6 +156,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   /** 失效书源：检测时标记为 invalid 的源 */
   /** 设置书源变量（如起点系书源的「密钥」），与运行时共用同一份存储 */
   app.post('/reader3/setSourceVariable', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const bookSourceUrl = String(req.body?.bookSourceUrl || '')
     const name = String(req.body?.name || '').trim()
     const value = String(req.body?.value || '')
@@ -182,7 +193,9 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   })
 
   /** 一键禁用没有搜索能力的书源（既没有 html 也没有 searchUrl） */
-  app.post('/reader3/disableUnsearchableSources', async () => {
+  app.post('/reader3/disableUnsearchableSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const all = store.listSources()
     const useless = all.filter((source) => !source.html && !String(source.searchUrl || '').trim())
     for (const source of useless) store.saveSource({ ...source, enabled: false })
@@ -191,7 +204,9 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
 
   app.post('/reader3/getInvalidBookSources', async () => ok(store.listSources().filter((source) => source.invalid === true)))
 
-  app.post('/reader3/deleteInvalidBookSources', async () => {
+  app.post('/reader3/deleteInvalidBookSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const invalid = store.listSources().filter((source) => source.invalid === true)
     let deleted = 0
     for (const source of invalid) if (store.deleteSource(source.bookSourceUrl)) deleted += 1
@@ -273,6 +288,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   /* ------------------------------------------------------------ local books */
 
   app.post('/reader3/uploadTxtBook', async (req) => {
+    const quota = bookQuota(req)
+    if (quota) return fail(quota)
     const part = await req.file?.()
     if (!part) return fail('缺少文件')
     const filename = basename(part.filename || 'local.txt')
@@ -313,6 +330,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   })
 
   app.post('/reader3/uploadEpubBook', async (req) => {
+    const quota = bookQuota(req)
+    if (quota) return fail(quota)
     const part = await req.file?.()
     if (!part) return fail('缺少文件')
     const filename = basename(part.filename || 'local.epub')
@@ -364,6 +383,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   })
 
   app.post('/reader3/uploadDocxBook', async (req) => {
+    const quota = bookQuota(req)
+    if (quota) return fail(quota)
     const part = await req.file?.()
     if (!part) return fail('缺少文件')
     const filename = basename(part.filename || 'local.docx')
@@ -406,6 +427,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   })
 
   app.post('/reader3/uploadMobiBook', async (req) => {
+    const quota = bookQuota(req)
+    if (quota) return fail(quota)
     const part = await req.file?.()
     if (!part) return fail('缺少文件')
     const filename = basename(part.filename || 'local.mobi')
@@ -448,6 +471,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   })
 
   app.post('/reader3/uploadPdfBook', async (req) => {
+    const quota = bookQuota(req)
+    if (quota) return fail(quota)
     const part = await req.file?.()
     if (!part) return fail('缺少文件')
     const filename = basename(part.filename || 'local.pdf')
@@ -497,22 +522,30 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   app.get('/reader3/getRssSources', async () => ok(store.listRssSources()))
 
   app.post('/reader3/saveRssSource', async (req) => {
+    const blocked = editRssBlocked(req)
+    if (blocked) return fail(blocked)
     store.saveRssSource(req.body || {})
     return ok('保存成功')
   })
 
   app.post('/reader3/saveRssSources', async (req) => {
+    const blocked = editRssBlocked(req)
+    if (blocked) return fail(blocked)
     const list = Array.isArray(req.body) ? req.body : []
     for (const source of list) store.saveRssSource(source)
     return ok('保存成功')
   })
 
   app.post('/reader3/deleteRssSource', async (req) => {
+    const blocked = editRssBlocked(req)
+    if (blocked) return fail(blocked)
     store.deleteRssSources([req.body?.sourceUrl])
     return ok('删除成功')
   })
 
   app.post('/reader3/deleteRssSources', async (req) => {
+    const blocked = editRssBlocked(req)
+    if (blocked) return fail(blocked)
     const list = Array.isArray(req.body) ? req.body : []
     return ok({ deleted: store.deleteRssSources(list.map((item) => item?.sourceUrl)) })
   })
@@ -677,6 +710,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
 
   /** 启用 / 禁用书源 */
   app.post('/reader3/setSourceEnabled', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
     const source = store.getSource(String(req.body?.bookSourceUrl ?? ''))
     if (!source) return fail('书源不存在')
     store.saveSource({ ...source, enabled: Boolean(req.body?.enabled) })
@@ -699,6 +734,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
 
   /** 备份到 WebDAV：PUT 一个 JSON 文件。 */
   app.post('/reader3/webdavBackup', async (req) => {
+    const blocked = webdavBlocked(req)
+    if (blocked) return fail(blocked)
     const { url, username, password } = req.body || {}
     if (!url) return fail('缺少 WebDAV 地址')
     const payload = JSON.stringify(buildBackup())
@@ -717,6 +754,8 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
 
   /** 从 WebDAV 恢复：GET 备份文件并写回本地库。 */
   app.post('/reader3/webdavRestore', async (req) => {
+    const blocked = webdavBlocked(req)
+    if (blocked) return fail(blocked)
     const { url, username, password } = req.body || {}
     if (!url) return fail('缺少 WebDAV 地址')
     let backup
@@ -729,14 +768,28 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
     }
     if (backup?.format !== 'reader-panghu-backup') return fail('不是 reader-panghu 的备份文件')
 
-    for (const source of backup.sources || []) store.saveSource(source)
+    const perms = permissionsFor(store, req)
+    if (perms.bookLimit) {
+      const existing = new Set(store.listBooks().map((book) => book.bookUrl))
+      const incoming = (backup.books || []).filter((book) => book.bookUrl && !existing.has(book.bookUrl)).length
+      if (store.countBooks() + incoming > perms.bookLimit) {
+        return fail(`书架最多 ${perms.bookLimit} 本，恢复包会超出上限`)
+      }
+    }
+    let restoredSources = 0
+    if (perms.allowEditSources) {
+      for (const source of backup.sources || []) {
+        store.saveSource(source)
+        restoredSources += 1
+      }
+    }
     for (const book of backup.books || []) store.saveBook(book)
     for (const group of backup.groups || []) store.saveGroup(group)
     if (backup.config) store.saveUserConfig(backup.config)
     return ok({
       restored: {
         books: (backup.books || []).length,
-        sources: (backup.sources || []).length,
+        sources: restoredSources,
         groups: (backup.groups || []).length,
       },
     })

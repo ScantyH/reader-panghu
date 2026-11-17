@@ -31,6 +31,7 @@ const SUITES = [
   'test-legado-client',
   'test-auth',
   'test-auth-persist',
+  'test-permissions',
   'test-isolation',
 ]
 

@@ -20,13 +20,15 @@ const section = computed(() => {
 const current = computed(() => SECTIONS.find((item) => item.id === section.value) || SECTIONS[0])
 const customGroups = computed(() => groups.value.filter((group) => Number(group.groupId) !== 0))
 
-const me = ref({ username: '', role: 'user', authEnabled: false })
+const me = ref({ username: '', role: 'user', authEnabled: false, allowWebdav: true, allowWarehouse: true })
 const users = ref([])
 const health = ref(null)
 const groups = ref([])
 const oldPassword = ref('')
 const newPassword = ref('')
 const newGroupName = ref('')
+const editingUser = ref('')
+const userDraft = ref({})
 const loading = ref(false)
 const importInput = ref(null)
 const importBusy = ref(false)
@@ -96,6 +98,46 @@ async function removeUser(user) {
     await api.deleteUser({ username: user.username })
     await load()
     window.__toast?.('已删除')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+/** 打开子账号的配额与功能开关 */
+function editUser(user) {
+  if (editingUser.value === user.username) {
+    editingUser.value = ''
+    return
+  }
+  editingUser.value = user.username
+  userDraft.value = {
+    bookLimit: Number(user.bookLimit) || 0,
+    sourceLimit: Number(user.sourceLimit) || 0,
+    allowWebdav: Boolean(user.allowWebdav),
+    allowWarehouse: Boolean(user.allowWarehouse),
+    allowEditSources: Boolean(user.allowEditSources),
+    allowEditRss: Boolean(user.allowEditRss),
+  }
+}
+
+async function saveUserSettings(user) {
+  try {
+    await api.setUserSettings({ username: user.username, ...userDraft.value })
+    await load()
+    editingUser.value = ''
+    window.__toast?.('权限已保存')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+/** 把管理员自己的书源/RSS 复制给子账号，供只读使用 */
+async function copyUserLibrary(user) {
+  if (!confirm(`把当前管理员的书源和 RSS 订阅复制给「${user.username}」？`)) return
+  try {
+    const result = await api.copyUserLibrary({ username: user.username })
+    window.__toast?.(`已分配书源 ${result.sources} 个、RSS ${result.rss} 个`)
+    await load()
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -277,17 +319,59 @@ onMounted(load)
 
           <div v-if="isAdmin()" class="settings-card">
             <div class="settings-card-title">用户管理</div>
-            <div v-for="user in users" :key="user.username" class="settings-row">
-              <div class="settings-row-icon">👤</div>
-              <div class="settings-row-main">
-                <div class="settings-row-title">{{ user.username }}</div>
-                <div class="settings-row-desc">
-                  {{ user.role === 'admin' ? '管理员' : '普通用户' }} · {{ user.hasPassword ? '已设密码' : '无密码' }}
+            <template v-for="user in users" :key="user.username">
+              <div class="settings-row">
+                <div class="settings-row-icon">👤</div>
+                <div class="settings-row-main">
+                  <div class="settings-row-title">
+                    {{ user.username }}
+                    <span class="badge" :class="{ accent: user.role === 'admin' }" style="margin-left: 6px">
+                      {{ user.role === 'admin' ? '管理员' : '普通用户' }}
+                    </span>
+                    <span v-if="user.current" class="badge" style="margin-left: 6px">当前</span>
+                  </div>
+                  <div class="settings-row-desc">
+                    <template v-if="user.role === 'admin'">不受配额与功能开关限制</template>
+                    <template v-else>
+                      书籍上限 {{ user.bookLimit || '不限' }} · 书源上限 {{ user.sourceLimit || '不限' }} ·
+                      {{ user.hasPassword ? '已设密码' : '无密码' }}
+                    </template>
+                  </div>
+                </div>
+                <button v-if="user.role !== 'admin'" class="ghost" @click="editUser(user)">
+                  {{ editingUser === user.username ? '收起' : '权限' }}
+                </button>
+                <button class="ghost" @click="toggleRole(user)">{{ user.role === 'admin' ? '降为普通' : '设为管理员' }}</button>
+                <button class="ghost" @click="removeUser(user)">删除</button>
+              </div>
+
+              <div v-if="editingUser === user.username" class="settings-user-editor">
+                <div class="settings-inline-form" style="padding: 12px 0 10px">
+                  <label class="settings-field">
+                    书籍上限
+                    <input v-model.number="userDraft.bookLimit" type="number" min="0" step="1" placeholder="0 = 不限" />
+                  </label>
+                  <label class="settings-field">
+                    书源上限
+                    <input v-model.number="userDraft.sourceLimit" type="number" min="0" step="1" placeholder="0 = 不限" />
+                  </label>
+                </div>
+                <div class="settings-perms">
+                  <label><input v-model="userDraft.allowWebdav" type="checkbox" /> 启用 WebDAV</label>
+                  <label><input v-model="userDraft.allowWarehouse" type="checkbox" /> 启用书仓</label>
+                  <label><input v-model="userDraft.allowEditSources" type="checkbox" /> 编辑书源</label>
+                  <label><input v-model="userDraft.allowEditRss" type="checkbox" /> 编辑 RSS 源</label>
+                </div>
+                <div class="row" style="gap: 8px; flex-wrap: wrap">
+                  <button class="primary" @click="saveUserSettings(user)">保存权限</button>
+                  <button class="ghost" @click="copyUserLibrary(user)">分配我的书源 / RSS</button>
+                  <button class="ghost" @click="editingUser = ''">取消</button>
+                </div>
+                <div class="settings-row-desc" style="margin-top: 8px">
+                  关闭「编辑书源 / 编辑 RSS 源」后，该账号不能自行增删改，只能使用你分配的源；之后改完书源再点一次「分配我的书源 / RSS」同步。
                 </div>
               </div>
-              <button class="ghost" @click="toggleRole(user)">{{ user.role === 'admin' ? '降为普通' : '设为管理员' }}</button>
-              <button class="ghost" @click="removeUser(user)">删除</button>
-            </div>
+            </template>
             <div v-if="!users.length" class="settings-kv"><span>还没有其他账号</span></div>
           </div>
 
@@ -347,7 +431,7 @@ onMounted(load)
 
           <div class="settings-card">
             <div class="settings-card-title">阅读工具</div>
-            <router-link class="settings-row link" to="/warehouse">
+            <router-link v-if="me.allowWarehouse" class="settings-row link" to="/warehouse">
               <div class="settings-row-icon">🗄️</div>
               <div class="settings-row-main">
                 <div class="settings-row-title">书仓</div>
@@ -418,7 +502,7 @@ onMounted(load)
                 <div class="settings-row-desc">导出书架与书源，或从备份恢复</div>
               </div>
             </router-link>
-            <router-link class="settings-row link" to="/webdav">
+            <router-link v-if="me.allowWebdav" class="settings-row link" to="/webdav">
               <div class="settings-row-icon">☁️</div>
               <div class="settings-row-main">
                 <div class="settings-row-title">WebDAV</div>

@@ -4,6 +4,7 @@
 
 import { evaluateRule } from './legado-rule.js'
 import { makeRuntime } from './source-tools.js'
+import { permissionsFor } from './user-perms.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg) => ({ isSuccess: false, errorMsg, data: null })
@@ -176,6 +177,7 @@ export function registerReadingExtras(app, { store, dataDir, options = {} }) {
     username ? { authorization: `Basic ${Buffer.from(`${username}:${password || ''}`).toString('base64')}` } : {}
 
   app.post('/reader3/webdavList', async (req) => {
+    if (!permissionsFor(store, req).allowWebdav) return fail('当前账号没有使用 WebDAV 的权限，请联系管理员')
     const { url, username, password } = req.body || {}
     if (!url) return fail('缺少 WebDAV 地址')
     try {

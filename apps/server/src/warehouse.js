@@ -8,6 +8,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmdirSync, statSync, unlinkSync, writeFileSync, existsSync } from 'node:fs'
 import { basename, join, normalize, relative, resolve } from 'node:path'
 import { parseLocalBook } from './local-book.js'
+import { bookQuotaError, permissionsFor } from './user-perms.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg) => ({ isSuccess: false, errorMsg, data: null })
@@ -17,6 +18,9 @@ const BOOK_EXT = /\.(txt|epub|docx|mobi|azw3?|pdf)$/i
 export function registerWarehouse(app, { store, dataDir }) {
   const root = resolve(process.env.LIBRARY_DIR || join(dataDir, 'library'))
   mkdirSync(root, { recursive: true })
+
+  const warehouseBlocked = (req) =>
+    permissionsFor(store, req).allowWarehouse ? '' : '当前账号没有使用书仓的权限，请联系管理员'
 
   /** 把用户传的相对路径限制在书仓根目录内 */
   const safePath = (input) => {
@@ -81,6 +85,8 @@ export function registerWarehouse(app, { store, dataDir }) {
   }
 
   app.get('/reader3/warehouse', async (req) => {
+    const blocked = warehouseBlocked(req)
+    if (blocked) return fail(blocked)
     try {
       return ok({ ...listDir(String(req.query?.path || '')), root })
     } catch (error) {
@@ -89,6 +95,8 @@ export function registerWarehouse(app, { store, dataDir }) {
   })
 
   app.post('/reader3/warehouse/mkdir', async (req) => {
+    const blocked = warehouseBlocked(req)
+    if (blocked) return fail(blocked)
     const parent = String(req.body?.path || '')
     const name = String(req.body?.name || '').trim()
     if (!name) return fail('分类名不能为空')
@@ -99,6 +107,10 @@ export function registerWarehouse(app, { store, dataDir }) {
   })
 
   app.post('/reader3/warehouse/import', async (req) => {
+    const blocked = warehouseBlocked(req)
+    if (blocked) return fail(blocked)
+    const quota = bookQuotaError(store, req, 1)
+    if (quota) return fail(quota)
     const filePath = String(req.body?.path || '')
     if (!filePath) return fail('缺少文件路径')
     const { target } = safePath(filePath)
@@ -114,6 +126,8 @@ export function registerWarehouse(app, { store, dataDir }) {
   })
 
   app.post('/reader3/warehouse/upload', async (req) => {
+    const blocked = warehouseBlocked(req)
+    if (blocked) return fail(blocked)
     const part = await req.file?.()
     if (!part) return fail('缺少文件')
     const dirPath = String(req.query?.path || '')
@@ -126,6 +140,8 @@ export function registerWarehouse(app, { store, dataDir }) {
   })
 
   app.post('/reader3/warehouse/delete', async (req) => {
+    const blocked = warehouseBlocked(req)
+    if (blocked) return fail(blocked)
     try {
     const filePath = String(req.body?.path || '')
     if (!filePath) return fail('缺少路径')

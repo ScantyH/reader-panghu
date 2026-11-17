@@ -1257,3 +1257,42 @@
     width: 100%;
   }
 }
+
+/* ─── 子账号配额与权限编辑 ─── */
+.settings-user-editor {
+  padding: 4px 16px 14px;
+  background: var(--color-bg-sunken);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.settings-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.settings-field input {
+  width: 104px;
+  margin: 0;
+}
+
+.settings-perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding: 0 0 12px;
+  font-size: 13px;
+}
+
+.settings-perms label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-perms input {
+  width: auto;
+  margin: 0;
+}

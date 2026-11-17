@@ -34,7 +34,13 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL,
   password TEXT,
   role TEXT NOT NULL DEFAULT 'user',
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  book_limit INTEGER NOT NULL DEFAULT 0,
+  source_limit INTEGER NOT NULL DEFAULT 0,
+  allow_webdav INTEGER NOT NULL DEFAULT 1,
+  allow_warehouse INTEGER NOT NULL DEFAULT 1,
+  allow_edit_sources INTEGER NOT NULL DEFAULT 1,
+  allow_edit_rss INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS book_sources (
@@ -138,6 +144,21 @@ export function openDatabase(file) {
     db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
   } catch {
     /* 已存在 */
+  }
+  // 老库补齐子账号配额与权限列；0 表示不限，1 表示允许
+  for (const [column, ddl] of [
+    ['book_limit', 'INTEGER NOT NULL DEFAULT 0'],
+    ['source_limit', 'INTEGER NOT NULL DEFAULT 0'],
+    ['allow_webdav', 'INTEGER NOT NULL DEFAULT 1'],
+    ['allow_warehouse', 'INTEGER NOT NULL DEFAULT 1'],
+    ['allow_edit_sources', 'INTEGER NOT NULL DEFAULT 1'],
+    ['allow_edit_rss', 'INTEGER NOT NULL DEFAULT 1'],
+  ]) {
+    try {
+      db.exec(`ALTER TABLE users ADD COLUMN ${column} ${ddl}`)
+    } catch {
+      /* 已存在 */
+    }
   }
   db.prepare('INSERT OR IGNORE INTO users (id, username, password, created_at) VALUES (?, ?, ?, ?)').run(
     DEFAULT_USER_ID,
@@ -465,7 +486,16 @@ class Store {
   }
 
   listUsers() {
-    return this.db.prepare('SELECT id, username, password, role, created_at FROM users ORDER BY id').all()
+    return this.db
+      .prepare(
+        `SELECT id, username, password, role, created_at,
+                book_limit AS bookLimit, source_limit AS sourceLimit,
+                allow_webdav AS allowWebdav, allow_warehouse AS allowWarehouse,
+                allow_edit_sources AS allowEditSources, allow_edit_rss AS allowEditRss
+           FROM users
+          ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, id`,
+      )
+      .all()
   }
 
   findUserByName(username) {
@@ -473,7 +503,15 @@ class Store {
   }
 
   getUserById(userId) {
-    return this.db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(Number(userId))
+    return this.db
+      .prepare(
+        `SELECT id, username, role, created_at,
+                book_limit AS bookLimit, source_limit AS sourceLimit,
+                allow_webdav AS allowWebdav, allow_warehouse AS allowWarehouse,
+                allow_edit_sources AS allowEditSources, allow_edit_rss AS allowEditRss
+           FROM users WHERE id = ?`,
+      )
+      .get(Number(userId))
   }
 
   createUser(username, password, role = 'user') {
@@ -487,8 +525,48 @@ class Store {
     return this.db.prepare('UPDATE users SET role = ? WHERE id = ?').run(String(role), Number(userId)).changes > 0
   }
 
+  /** 管理员给子账号分配配额与功能开关；0 表示不限，布尔转 0/1。 */
+  updateUserSettings(userId, settings = {}) {
+    const count = (value) => Math.max(0, Math.floor(Number(value) || 0))
+    const flag = (value) => (value ? 1 : 0)
+    this.db
+      .prepare(
+        `UPDATE users
+            SET book_limit = ?, source_limit = ?,
+                allow_webdav = ?, allow_warehouse = ?,
+                allow_edit_sources = ?, allow_edit_rss = ?
+          WHERE id = ?`,
+      )
+      .run(
+        count(settings.bookLimit),
+        count(settings.sourceLimit),
+        flag(settings.allowWebdav),
+        flag(settings.allowWarehouse),
+        flag(settings.allowEditSources),
+        flag(settings.allowEditRss),
+        Number(userId),
+      )
+    return this.getUserById(userId)
+  }
+
   getUser(userId = currentUserId()) {
-    return this.db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(userId)
+    return this.db
+      .prepare(
+        `SELECT id, username, role, created_at,
+                book_limit AS bookLimit, source_limit AS sourceLimit,
+                allow_webdav AS allowWebdav, allow_warehouse AS allowWarehouse,
+                allow_edit_sources AS allowEditSources, allow_edit_rss AS allowEditRss
+           FROM users WHERE id = ?`,
+      )
+      .get(userId)
+  }
+
+  countBooks(userId = currentUserId()) {
+    return this.db.prepare('SELECT COUNT(*) AS n FROM books WHERE user_id = ?').get(userId).n
+  }
+
+  countSources(userId = currentUserId()) {
+    return this.db.prepare('SELECT COUNT(*) AS n FROM book_sources WHERE user_id = ?').get(userId).n
   }
 
   /* ---------------------------------------------------------------- sessions */
