@@ -242,8 +242,14 @@ onMounted(load)
       <h1>{{ recentOnly ? '最近阅读' : '书架' }}</h1>
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
+      <div class="layout-toggle" role="group" aria-label="布局切换">
+        <button :class="{ active: layout === 'grid' }" title="网格视图" aria-label="网格视图" @click="setLayout('grid')">▦</button>
+        <button :class="{ active: layout === 'list' }" title="列表视图" aria-label="列表视图" @click="setLayout('list')">☰</button>
+      </div>
+    </div>
+
+    <div class="row shelf-toolbar">
       <input ref="fileInput" type="file" accept=".txt,.epub,.docx,.mobi,.azw3,.azw,.pdf" hidden @change="importBook" />
-      <button class="ghost" @click="setLayout(layout === 'grid' ? 'list' : 'grid')">{{ layout === 'grid' ? '列表' : '网格' }}</button>
       <button class="ghost" @click="selectMode = !selectMode; selected = []">{{ selectMode ? '取消选择' : '管理' }}</button>
       <router-link class="ghost" to="/warehouse" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">书仓</router-link>
       <router-link class="ghost" to="/bookmarks" style="padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md)">书签</router-link>

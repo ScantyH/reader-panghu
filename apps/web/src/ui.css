@@ -503,3 +503,42 @@
 @media (hover: none) {
   .card-more { opacity: 1; transform: none; }
 }
+/* ─── 书架布局切换（右上角，纯图标） ─── */
+.layout-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-border-light);
+}
+
+.layout-toggle button {
+  width: 32px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.layout-toggle button:hover {
+  color: var(--color-text);
+}
+
+.layout-toggle button.active {
+  background: var(--color-bg-elevated);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.shelf-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
