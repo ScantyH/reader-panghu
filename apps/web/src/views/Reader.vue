@@ -174,15 +174,16 @@ const PARCHMENT_TEXTURE =
   'radial-gradient(circle at 18% 10%, rgba(255,255,255,0.45), transparent 46%), radial-gradient(circle at 82% 90%, rgba(150,110,60,0.12), transparent 52%), repeating-linear-gradient(0deg, rgba(120,90,50,0.03) 0 1px, transparent 1px 4px)'
 const shellStyle = computed(() => {
   const current = theme.value
-  if (!isDark.value && prefs.value.paper === 'parchment') {
-    return {
-      color: current.text,
-      background: current.bg,
-      backgroundImage: PARCHMENT_TEXTURE,
-      '--reader-bg': current.bg,
-    }
+  const base = {
+    color: current.text,
+    background: current.bg,
+    '--reader-bg': current.bg,
+    '--reader-half': `${prefs.value.pageWidth / 2}px`,
   }
-  return { background: current.bg, color: current.text, '--reader-bg': current.bg }
+  if (!isDark.value && prefs.value.paper === 'parchment') {
+    return { ...base, backgroundImage: PARCHMENT_TEXTURE }
+  }
+  return base
 })
 const pageStyle = computed(() => ({
   maxWidth: `${prefs.value.pageWidth}px`,
@@ -1634,6 +1635,47 @@ watch(chapterTitle, () => {
 @keyframes reader-slide-prev {
   from { opacity: 0; transform: translateX(-18px); }
   to { opacity: 1; transform: none; }
+}
+
+/* 两侧功能区固定在正文左右：左栏贴顶、右栏贴底 */
+.reader-shell {
+  display: block;
+  padding: 0;
+}
+
+.rail {
+  position: fixed;
+  top: 16px;
+  left: calc(50% - var(--reader-half, 380px) - 88px);
+  height: auto;
+  width: 62px;
+  padding: 10px 6px;
+  gap: 6px;
+  background: color-mix(in srgb, var(--reader-bg, #f3e9d2) 88%, white);
+  border: 1px solid rgba(120, 90, 50, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(80, 60, 30, 0.1);
+  z-index: 30;
+}
+
+.rail-left {
+  margin: 0;
+}
+
+.rail-right {
+  top: auto;
+  bottom: 16px;
+  left: auto;
+  right: calc(50% - var(--reader-half, 380px) - 88px);
+  margin: 0;
+}
+
+.reader-main {
+  margin: 0 auto;
+}
+
+.rail-btn.round {
+  background: rgba(255, 255, 255, 0.7);
 }
 
 @media (max-width: 900px) {
