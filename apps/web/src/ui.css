@@ -1355,6 +1355,23 @@
   color: var(--color-primary);
 }
 
+/* 书籍信息弹窗的 5 行信息 */
+.info-line {
+  margin: 0 0 3px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.info-read {
+  min-height: 1.6em;
+  color: var(--color-primary);
+}
+
+.info-intro {
+  margin-top: 12px;
+}
+
 /* ─── 书架：三种模式统一 5 行信息区 ─── */
 .shelf-info {
   display: flex;

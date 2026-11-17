@@ -338,7 +338,7 @@ onMounted(load)
           </button>
         </div>
 
-        <div class="shelf-info">
+        <div v-if="layout !== 'cover'" class="shelf-info">
           <h3 class="shelf-title">{{ book.name }}</h3>
           <p class="shelf-line">{{ book.author || '未知作者' }} · 共 {{ book.totalChapterNum || 0 }} 章</p>
           <p class="shelf-line shelf-read">{{ readText(book) }}</p>
@@ -361,21 +361,18 @@ onMounted(load)
           </div>
           <div class="info-meta">
             <h2>{{ infoBook.name }}</h2>
-            <p class="muted">{{ infoBook.author || '未知作者' }}</p>
-            <p class="shelf-meta">
-              <span>{{ updatedAgo(infoBook) }}：{{ infoBook.totalChapterNum || 0 }} 章：{{ latestName(infoBook) }}</span>
-            </p>
-            <p class="muted" style="font-size: 12px">阅读进度：{{ progressOf(infoBook) }}%</p>
+            <p class="info-line">{{ infoBook.author || '未知作者' }} · 共 {{ infoBook.totalChapterNum || 0 }} 章</p>
+            <p class="info-line info-read">{{ readText(infoBook) }}</p>
+            <p class="info-line">{{ updatedAgo(infoBook) }}：{{ latestName(infoBook) }}</p>
           </div>
         </div>
-        <div class="info-group">
+        <p class="info-intro">{{ infoBook.intro || '（没有简介）' }}</p>
+        <div class="info-group" style="margin-top: 14px">
           <span class="muted" style="font-size: 12px">分组</span>
           <select :value="Number(infoBook.group || 0)" @change="changeGroup(infoBook, $event.target.value)">
             <option v-for="group in groups" :key="group.groupId" :value="group.groupId">{{ group.groupName }}</option>
           </select>
         </div>
-        <h3 class="info-subtitle">简介</h3>
-        <p class="info-intro">{{ infoBook.intro || '（没有简介）' }}</p>
         <div class="row" style="gap: 8px; margin-top: 16px">
           <button class="primary" style="flex: 1" @click="continueReading(infoBook)">继续阅读</button>
           <button class="ghost" @click="openMore(infoBook)">更多</button>
