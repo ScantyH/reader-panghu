@@ -7,8 +7,8 @@ const props = defineProps({ bookUrl: { type: String, required: true } })
 const router = useRouter()
 
 const PAPER = {
+  parchment: { name: '羊皮纸', bg: '#f3e9d2', text: '#3b2f24' },
   white: { name: '白纸', bg: '#ffffff', text: '#242424' },
-  warm: { name: '暖黄', bg: '#f6ecd8', text: '#3b2f24' },
   green: { name: '浅绿', bg: '#e6f0e2', text: '#2c3a2a' },
   gray: { name: '灰调', bg: '#ececec', text: '#2b2b2b' },
 }
@@ -57,21 +57,11 @@ const DEFAULT_PREFS = {
   pagePadding: 24,
   pageTop: 0,
   pageBottom: 0,
-  appearance: 'system',
-  paper: 'warm',
+  appearance: 'light',
+  paper: 'parchment',
   brightness: 100,
   pageMode: 'scroll',
   animation: 'slide',
-  tapLeft: 'prev',
-  tapRight: 'next',
-  autoHide: true,
-  showHeaderBook: true,
-  showHeaderChapter: true,
-  showHeaderClock: false,
-  showFooterProgress: true,
-  showFooterPage: true,
-  showFooterClock: true,
-  showFooterBattery: true,
   showChapterTitle: true,
   convert: '',
   ttsRate: 1,
@@ -83,7 +73,11 @@ const DEFAULT_PREFS = {
 function loadPrefs() {
   try {
     const saved = JSON.parse(localStorage.getItem('readerPrefs') || 'null')
-    if (saved && typeof saved === 'object') return { ...DEFAULT_PREFS, ...saved }
+    if (saved && typeof saved === 'object') {
+      if (saved.paper === 'paper' || saved.paper === 'warm') saved.paper = 'parchment'
+      if (saved.appearance === 'system' && !saved.paper) saved.paper = 'parchment'
+      return { ...DEFAULT_PREFS, ...saved }
+    }
   } catch {
     /* ignore */
   }
@@ -92,7 +86,7 @@ function loadPrefs() {
     ...DEFAULT_PREFS,
     fontSize: Number(localStorage.getItem('readerFontSize') || DEFAULT_PREFS.fontSize),
     lineHeight: Number(localStorage.getItem('readerLineHeight') || DEFAULT_PREFS.lineHeight),
-    paper: localStorage.getItem('readerTheme') || DEFAULT_PREFS.paper,
+    paper: 'parchment',
     fontFamily: localStorage.getItem('readerFont') || DEFAULT_PREFS.fontFamily,
     convert: localStorage.getItem('readerConvert') || '',
     pageMode: localStorage.getItem('readerPageMode') || DEFAULT_PREFS.pageMode,
@@ -111,13 +105,11 @@ const readingEl = ref(null)
 
 const showCatalog = ref(false)
 const showSettings = ref(false)
-const showTools = ref(false)
 const showSearch = ref(false)
 const showNotes = ref(false)
 const showBookmarks = ref(false)
 const showSource = ref(false)
 const showDp = ref(false)
-const showSummary = ref(false)
 
 const catalogFilter = ref('')
 const searchText = ref('')
@@ -135,10 +127,6 @@ const dpMarkers = ref([])
 const dpCards = ref([])
 const dpLoading = ref(false)
 
-const summary = ref('')
-const summaryLoading = ref(false)
-
-const chromeVisible = ref(true)
 const turnDirection = ref('')
 const caching = ref(false)
 const systemDark = ref(false)
@@ -153,30 +141,26 @@ const tts = ref({ playing: false, paused: false, index: 0 })
 const voices = ref([])
 const sessionSeconds = ref(0)
 
-let hideTimer = 0
 let clockTimer = 0
 let readTimer = 0
 let readSeconds = 0
 let wakeLock = null
 let mediaQuery = null
 let touchStart = null
-let swipeTurned = false
 
 const anyPanel = computed(
   () =>
     showSettings.value ||
     showCatalog.value ||
-    showTools.value ||
     showSearch.value ||
     showNotes.value ||
     showBookmarks.value ||
     showSource.value ||
-    showDp.value ||
-    showSummary.value,
+    showDp.value,
 )
 
 const isDark = computed(() => prefs.value.appearance === 'dark' || (prefs.value.appearance === 'system' && systemDark.value))
-const theme = computed(() => (isDark.value ? DARK : PAPER[prefs.value.paper] || PAPER.warm))
+const theme = computed(() => (isDark.value ? DARK : PAPER[prefs.value.paper] || PAPER.parchment))
 const dimOpacity = computed(() => ((100 - Number(prefs.value.brightness || 100)) / 100) * 0.72)
 const chapter = computed(() => chapters.value[current.value] || null)
 const chapterTitle = computed(() => chapter.value?.title || book.value?.name || '加载中…')
@@ -186,12 +170,26 @@ const filteredChapters = computed(() => {
   if (!query) return chapters.value
   return chapters.value.filter((item) => String(item.title || '').includes(query))
 })
+const PARCHMENT_TEXTURE =
+  'radial-gradient(circle at 18% 10%, rgba(255,255,255,0.45), transparent 46%), radial-gradient(circle at 82% 90%, rgba(150,110,60,0.12), transparent 52%), repeating-linear-gradient(0deg, rgba(120,90,50,0.03) 0 1px, transparent 1px 4px)'
+const shellStyle = computed(() => {
+  const current = theme.value
+  if (!isDark.value && prefs.value.paper === 'parchment') {
+    return {
+      color: current.text,
+      background: current.bg,
+      backgroundImage: PARCHMENT_TEXTURE,
+      '--reader-bg': current.bg,
+    }
+  }
+  return { background: current.bg, color: current.text, '--reader-bg': current.bg }
+})
 const pageStyle = computed(() => ({
   maxWidth: `${prefs.value.pageWidth}px`,
   paddingLeft: `${prefs.value.pagePadding}px`,
   paddingRight: `${prefs.value.pagePadding}px`,
-  paddingTop: `${84 + Number(prefs.value.pageTop || 0)}px`,
-  paddingBottom: `${130 + Number(prefs.value.pageBottom || 0)}px`,
+  paddingTop: `${44 + Number(prefs.value.pageTop || 0)}px`,
+  paddingBottom: `${90 + Number(prefs.value.pageBottom || 0)}px`,
 }))
 const bodyStyle = computed(() => ({
   fontSize: `${prefs.value.fontSize}px`,
@@ -243,38 +241,6 @@ function updateScroll() {
   }
 }
 
-function scheduleHide() {
-  clearTimeout(hideTimer)
-  if (!prefs.value.autoHide) return
-  hideTimer = window.setTimeout(() => {
-    if (!anyPanel.value && !loading.value) chromeVisible.value = false
-  }, 4200)
-}
-
-function toggleChrome() {
-  chromeVisible.value = !chromeVisible.value
-  if (chromeVisible.value) scheduleHide()
-}
-
-function resetChrome() {
-  chromeVisible.value = true
-  scheduleHide()
-}
-
-function onReaderClick(event) {
-  if (swipeTurned) {
-    swipeTurned = false
-    return
-  }
-  if (window.getSelection()?.toString()) return
-  if (event.target.closest?.('button, a, input, select, textarea')) return
-  if (anyPanel.value) return
-  const ratio = event.clientX / Math.max(1, window.innerWidth)
-  if (ratio < 0.3 && prefs.value.tapLeft !== 'none') runTap(prefs.value.tapLeft)
-  else if (ratio > 0.7 && prefs.value.tapRight !== 'none') runTap(prefs.value.tapRight)
-  else toggleChrome()
-}
-
 function onTouchStart(event) {
   const touch = event.changedTouches?.[0]
   if (!touch) return
@@ -289,8 +255,6 @@ function onTouchEnd(event) {
   const elapsed = Date.now() - touchStart.at
   touchStart = null
   if (elapsed > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6) return
-  swipeTurned = true
-  window.setTimeout(() => (swipeTurned = false), 500)
   if (dx < 0) turnNext()
   else turnPrev()
 }
@@ -298,13 +262,11 @@ function onTouchEnd(event) {
 function closePanels() {
   showSettings.value = false
   showCatalog.value = false
-  showTools.value = false
   showSearch.value = false
   showNotes.value = false
   showBookmarks.value = false
   showSource.value = false
   showDp.value = false
-  showSummary.value = false
 }
 
 function onKeydown(event) {
@@ -320,11 +282,6 @@ function onKeydown(event) {
     event.preventDefault()
     turnPrev()
   }
-}
-
-function runTap(action) {
-  if (action === 'prev') turnPrev()
-  else if (action === 'next') turnNext()
 }
 
 function savePrefs() {
@@ -372,7 +329,6 @@ async function loadChapter(index) {
     await nextTick()
     window.scrollTo({ top: 0 })
     updateScroll()
-    resetChrome()
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
@@ -508,7 +464,6 @@ async function removeNote(note) {
 
 /* ---------------- 换源 ---------------- */
 async function findSources() {
-  showTools.value = false
   showSource.value = true
   sourceLoading.value = true
   sourceCandidates.value = []
@@ -545,7 +500,6 @@ async function switchSource(candidate) {
 
 /* ---------------- 段评 ---------------- */
 async function openDp() {
-  showTools.value = false
   showDp.value = true
   dpLoading.value = true
   try {
@@ -556,22 +510,6 @@ async function openDp() {
     window.__toast?.(error.message)
   } finally {
     dpLoading.value = false
-  }
-}
-
-/* ---------------- AI 总结 ---------------- */
-async function openSummary() {
-  showTools.value = false
-  showSummary.value = true
-  if (summary.value) return
-  summaryLoading.value = true
-  try {
-    const result = await api.chapterSummary(String(content.value).slice(0, 6000))
-    summary.value = result.summary || '（模型没有返回内容）'
-  } catch (error) {
-    summary.value = `生成失败：${error.message}`
-  } finally {
-    summaryLoading.value = false
   }
 }
 
@@ -724,10 +662,7 @@ function selectPaper(key) {
 }
 
 function onVisibility() {
-  if (document.visibilityState === 'visible') {
-    updateScroll()
-    scheduleHide()
-  }
+  if (document.visibilityState === 'visible') updateScroll()
 }
 
 onMounted(() => {
@@ -763,13 +698,11 @@ onMounted(() => {
 
   updateScroll()
   loadBook()
-  scheduleHide()
 })
 
 onBeforeUnmount(() => {
   stopTts()
   flushReading()
-  clearTimeout(hideTimer)
   clearInterval(clockTimer)
   clearInterval(readTimer)
   window.removeEventListener('scroll', updateScroll)
@@ -781,51 +714,35 @@ onBeforeUnmount(() => {
   wakeLock?.release?.().catch(() => {})
 })
 
-watch(anyPanel, (open) => {
-  if (open) {
-    chromeVisible.value = true
-    clearTimeout(hideTimer)
-  } else {
-    resetChrome()
-  }
-})
-
 watch(
   () => prefs.value.pageMode,
   () => nextTick(updateScroll),
 )
 
 watch(chapterTitle, () => {
-  summary.value = ''
   dpMarkers.value = []
   dpCards.value = []
 })
 </script>
 
 <template>
-  <div class="reader-shell" :style="{ background: theme.bg, color: theme.text }">
+  <div class="reader-shell" :style="shellStyle">
     <div class="reader-dim" :style="{ opacity: dimOpacity }" />
 
-    <header class="reader-top" :class="{ visible: chromeVisible }" :style="{ background: theme.bg }">
-      <button class="chrome-btn" title="返回书架" @click="router.push('/bookshelf')">←</button>
-      <div class="top-title">
-        <strong v-if="prefs.showHeaderBook">{{ book?.name || '' }}</strong>
-        <span v-if="prefs.showHeaderChapter">{{ chapterTitle }}</span>
-      </div>
-      <span v-if="prefs.showHeaderClock" class="top-clock">{{ clockText }}</span>
-      <div class="top-actions">
-        <button class="chrome-btn" title="书签" @click="addBookmark">🔖</button>
-        <button class="chrome-btn" title="AI 总结" @click="openSummary">✨</button>
-        <button class="chrome-btn" title="更多" @click="showTools = true">⋯</button>
-      </div>
-    </header>
+    <aside class="rail rail-left">
+      <button class="rail-btn" title="返回书架" @click="router.push('/bookshelf')"><span>⌂</span><i>书架</i></button>
+      <button class="rail-btn" title="书源" @click="router.push('/sources')"><span>⌘</span><i>书源</i></button>
+      <button class="rail-btn" title="目录" @click="showCatalog = true"><span>☰</span><i>目录</i></button>
+      <button class="rail-btn" title="设置" @click="showSettings = true"><span>⚙</span><i>设置</i></button>
+      <button class="rail-btn" title="顶部" @click="toTop"><span>︿</span><i>顶部</i></button>
+      <button class="rail-btn" title="底部" @click="toBottom"><span>﹀</span><i>底部</i></button>
+    </aside>
 
     <main
       ref="readingEl"
       class="reader-main"
       :class="animationClass"
       :style="pageStyle"
-      @click="onReaderClick"
       @touchstart.passive="onTouchStart"
       @touchend.passive="onTouchEnd"
     >
@@ -841,22 +758,21 @@ watch(chapterTitle, () => {
       </div>
     </main>
 
-    <footer class="reader-bottom" :class="{ visible: chromeVisible }" :style="{ background: theme.bg }">
-      <button class="bottom-btn" @click="showCatalog = true">目录</button>
-      <button class="bottom-btn" :disabled="current <= 0" @click="turnPrev">上一章</button>
-      <div class="bottom-progress">
-        <div class="progress-line"><i :style="{ width: progress + '%' }" /></div>
-        <div class="progress-meta">
-          <span>{{ current + 1 }}/{{ chapters.length }} 章</span>
-          <span v-if="prefs.showFooterPage">第 {{ pageInfo.page }}/{{ pageInfo.pages }} 页</span>
-          <span v-if="prefs.showFooterProgress">{{ progress }}%</span>
-          <span v-if="prefs.showFooterClock">{{ clockText }}</span>
-          <span v-if="prefs.showFooterBattery && batteryText">{{ batteryText }}</span>
-        </div>
-      </div>
-      <button class="bottom-btn" :disabled="current >= chapters.length - 1" @click="turnNext">下一章</button>
-      <button class="bottom-btn" @click="showSettings = true">设置</button>
-    </footer>
+    <aside class="rail rail-right">
+      <button class="rail-btn round" title="加书签" @click="addBookmark">🔖</button>
+      <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">⌕</button>
+      <button class="rail-btn round" title="换源" @click="findSources">⇄</button>
+      <button class="rail-btn round" title="笔记" @click="showNotes = true; loadNotes()">✎</button>
+      <button class="rail-btn round" title="段评" @click="openDp">💬</button>
+      <button class="rail-btn round" :title="caching ? '缓存中…' : '缓存 50 章'" @click="cacheChapter">⤓</button>
+      <button class="rail-btn round" title="刷新本章" @click="loadChapter(current)">↻</button>
+      <button class="rail-btn round" title="简繁" @click="setConvert(prefs.convert === 'tw' ? 'cn' : 'tw')">文</button>
+      <button class="rail-btn round" :title="tts.playing ? '停止朗读' : '朗读'" @click="tts.playing ? stopTts() : startTts()">🎧</button>
+      <div class="rail-progress">{{ progress }}%</div>
+      <div class="rail-page">{{ current + 1 }}/{{ chapters.length }}</div>
+      <button class="rail-btn round" title="上一章" @click="turnPrev">‹</button>
+      <button class="rail-btn round" title="下一章" @click="turnNext">›</button>
+    </aside>
 
     <!-- 正文搜索条 -->
     <div v-if="showSearch" class="search-bar">
@@ -967,6 +883,7 @@ watch(chapterTitle, () => {
               >{{ item.label }}</button>
             </div>
           </div>
+          <label class="panel-row"><span>显示章节标题</span><input v-model="prefs.showChapterTitle" type="checkbox" /></label>
         </section>
 
         <section class="panel-section">
@@ -981,34 +898,6 @@ watch(chapterTitle, () => {
               <option v-for="item in ANIMATIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
           </label>
-          <label class="panel-row">
-            <span>左侧点击</span>
-            <select v-model="prefs.tapLeft">
-              <option v-for="item in TAPS" :key="item.value" :value="item.value">{{ item.label }}</option>
-            </select>
-          </label>
-          <label class="panel-row">
-            <span>右侧点击</span>
-            <select v-model="prefs.tapRight">
-              <option v-for="item in TAPS" :key="item.value" :value="item.value">{{ item.label }}</option>
-            </select>
-          </label>
-          <label class="panel-row">
-            <span>自动隐藏工具栏</span>
-            <input v-model="prefs.autoHide" type="checkbox" />
-          </label>
-        </section>
-
-        <section class="panel-section">
-          <h3>页眉页脚</h3>
-          <label class="panel-row"><span>顶部书名</span><input v-model="prefs.showHeaderBook" type="checkbox" /></label>
-          <label class="panel-row"><span>顶部章节名</span><input v-model="prefs.showHeaderChapter" type="checkbox" /></label>
-          <label class="panel-row"><span>顶部时间</span><input v-model="prefs.showHeaderClock" type="checkbox" /></label>
-          <label class="panel-row"><span>底部进度</span><input v-model="prefs.showFooterProgress" type="checkbox" /></label>
-          <label class="panel-row"><span>底部页码</span><input v-model="prefs.showFooterPage" type="checkbox" /></label>
-          <label class="panel-row"><span>底部时间</span><input v-model="prefs.showFooterClock" type="checkbox" /></label>
-          <label class="panel-row"><span>底部电量</span><input v-model="prefs.showFooterBattery" type="checkbox" /></label>
-          <label class="panel-row"><span>章节标题</span><input v-model="prefs.showChapterTitle" type="checkbox" /></label>
         </section>
 
         <section class="panel-section">
@@ -1073,31 +962,6 @@ watch(chapterTitle, () => {
             <button class="ghost" @click="toBottom">到底部</button>
           </div>
         </section>
-      </div>
-    </aside>
-
-    <!-- 工具面板 -->
-    <div v-if="showTools" class="panel-backdrop" @click.self="showTools = false" />
-    <aside class="reader-panel tools-panel" :class="{ open: showTools }" :style="{ background: theme.bg, color: theme.text }">
-      <header class="panel-head">
-        <h2>阅读工具</h2>
-        <button class="chrome-btn" @click="showTools = false">×</button>
-      </header>
-      <div class="panel-body">
-        <div class="tool-grid">
-          <button @click="showCatalog = true; showTools = false">目录</button>
-          <button @click="showBookmarks = true; showTools = false; loadBookmarks()">书签</button>
-          <button @click="showNotes = true; showTools = false; loadNotes()">笔记</button>
-          <button @click="openDp">段评</button>
-          <button @click="findSources">换源</button>
-          <button @click="showSearch = true; showTools = false">查找</button>
-          <button @click="openSummary">AI 总结</button>
-          <button @click="toggleTtsPause">{{ ttsLabel }}</button>
-          <button @click="stopTts" :disabled="!tts.playing">停止朗读</button>
-          <button @click="cacheChapter" :disabled="caching">缓存 50 章</button>
-          <button @click="addBookmark">加书签</button>
-          <button @click="showSettings = true; showTools = false">阅读设置</button>
-        </div>
       </div>
     </aside>
 
@@ -1204,16 +1068,6 @@ watch(chapterTitle, () => {
         </template>
       </div>
     </div>
-
-    <!-- AI 总结 -->
-    <div v-if="showSummary" class="sheet-backdrop" @click.self="showSummary = false">
-      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
-        <div class="sheet-handle" />
-        <h2>AI 总结 · 本章</h2>
-        <div v-if="summaryLoading" class="muted">正在总结…</div>
-        <p v-else class="summary-text">{{ summary || '（没有内容）' }}</p>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -1221,8 +1075,87 @@ watch(chapterTitle, () => {
 .reader-shell {
   min-height: 100vh;
   position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 0 96px;
   transition: background 180ms ease, color 180ms ease;
   overflow-x: hidden;
+}
+
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 0;
+  height: 100vh;
+  width: 64px;
+  flex: none;
+}
+
+.rail-left {
+  margin-right: auto;
+}
+
+.rail-right {
+  margin-left: auto;
+}
+
+.rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.72;
+  font-size: 17px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.rail-btn i {
+  font-size: 11px;
+  font-style: normal;
+}
+
+.rail-btn:hover {
+  opacity: 1;
+}
+
+.rail-btn.round {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 15px;
+  box-shadow: 0 1px 2px rgba(80, 60, 30, 0.12);
+}
+
+.rail-progress {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+.rail-page {
+  font-size: 10.5px;
+  opacity: 0.45;
+}
+
+.reader-main {
+  flex: 1;
+  margin: 0 auto;
+  padding-top: 84px;
+  padding-bottom: 130px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  transition: max-width 180ms ease;
 }
 
 .reader-dim {
@@ -1612,23 +1545,6 @@ watch(chapterTitle, () => {
   padding-top: 6px;
 }
 
-.tool-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  padding-top: 16px;
-}
-
-.tool-grid button {
-  border: 1px solid rgba(127, 127, 127, 0.24);
-  background: transparent;
-  color: inherit;
-  border-radius: 10px;
-  padding: 14px 6px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
 .panel-backdrop {
   position: fixed;
   inset: 0;
@@ -1703,37 +1619,62 @@ watch(chapterTitle, () => {
   to { opacity: 1; transform: none; }
 }
 
-.summary-text {
-  line-height: 1.9;
-  font-size: 14px;
-  white-space: pre-wrap;
-  margin: 0;
-}
+@media (max-width: 900px) {
+  .reader-shell {
+    padding: 0 6px;
+    gap: 0;
+  }
 
-@media (max-width: 760px) {
-  .reader-top {
-    height: 50px;
+  .rail {
+    position: fixed;
+    top: auto;
+    bottom: 12px;
+    height: auto;
+    width: auto;
+    flex-direction: row;
+    padding: 8px 10px;
+    gap: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--reader-bg, #f3e9d2) 92%, transparent);
+    box-shadow: 0 6px 18px rgba(60, 40, 20, 0.18);
+    z-index: 20;
+  }
+
+  .rail-left {
+    left: 12px;
+    margin: 0;
+  }
+
+  .rail-right {
+    right: 12px;
+    margin: 0;
+    max-width: 52vw;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .rail-left .rail-btn i {
+    display: none;
+  }
+
+  .rail-right .rail-btn.round {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+
+  .rail-progress,
+  .rail-page {
+    display: none;
   }
 
   .reader-main {
-    padding-top: 66px;
-    padding-bottom: 110px;
+    padding-top: 30px !important;
+    padding-bottom: 185px !important;
   }
 
-  .reader-bottom {
-    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-    gap: 4px;
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-
-  .bottom-btn {
-    font-size: 11.5px;
-  }
-
-  .progress-meta span:nth-child(2),
-  .progress-meta span:nth-child(5) {
-    display: none;
+  .chapter-title {
+    margin-bottom: 22px;
   }
 
   .reader-panel {
@@ -1756,14 +1697,6 @@ watch(chapterTitle, () => {
 
   .reader-panel .panel-body {
     padding-bottom: 60px;
-  }
-
-  .tool-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .chapter-title {
-    margin-bottom: 22px;
   }
 }
 </style>
