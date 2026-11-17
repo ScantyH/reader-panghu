@@ -110,6 +110,7 @@ const showNotes = ref(false)
 const showBookmarks = ref(false)
 const showSource = ref(false)
 const showDp = ref(false)
+const showDpPanel = ref(false)
 
 const catalogFilter = ref('')
 const searchText = ref('')
@@ -126,6 +127,10 @@ const sourceLoading = ref(false)
 const dpMarkers = ref([])
 const dpCards = ref([])
 const dpLoading = ref(false)
+const dpPanelHtml = ref('')
+const dpPanelError = ref('')
+const dpPanelLoading = ref(false)
+const dpPanelTitle = ref('')
 
 const turnDirection = ref('')
 const caching = ref(false)
@@ -156,7 +161,8 @@ const anyPanel = computed(
     showNotes.value ||
     showBookmarks.value ||
     showSource.value ||
-    showDp.value,
+    showDp.value ||
+    showDpPanel.value,
 )
 
 const isDark = computed(() => prefs.value.appearance === 'dark' || (prefs.value.appearance === 'system' && systemDark.value))
@@ -165,6 +171,15 @@ const dimOpacity = computed(() => ((100 - Number(prefs.value.brightness || 100))
 const chapter = computed(() => chapters.value[current.value] || null)
 const chapterTitle = computed(() => chapter.value?.title || book.value?.name || '加载中…')
 const paragraphs = computed(() => String(content.value).split(/\n+/).filter((line) => line.trim()))
+const dpMarkerMap = computed(() => {
+  const map = new Map()
+  for (const marker of dpMarkers.value) {
+    const paragraph = Number(marker.paragraph)
+    if (Number.isFinite(paragraph) && paragraph >= 0 && !map.has(paragraph)) map.set(paragraph, marker)
+  }
+  return map
+})
+const dpTitleMarker = computed(() => dpMarkers.value.find((marker) => Number(marker.paragraph) === -1) || null)
 const filteredChapters = computed(() => {
   const query = catalogFilter.value.trim()
   if (!query) return chapters.value
@@ -268,6 +283,7 @@ function closePanels() {
   showBookmarks.value = false
   showSource.value = false
   showDp.value = false
+  showDpPanel.value = false
 }
 
 function onKeydown(event) {
@@ -326,6 +342,7 @@ async function loadChapter(index) {
     })
     current.value = target
     searchHits.value = []
+    loadParagraphComments()
     api.saveProgress(book.value.bookUrl, target, 0, chapters.value[target]?.title || '').catch(() => {})
     await nextTick()
     window.scrollTo({ top: 0 })
@@ -500,17 +517,51 @@ async function switchSource(candidate) {
 }
 
 /* ---------------- 段评 ---------------- */
+async function loadParagraphComments() {
+  if (!book.value) return
+  const wanted = current.value
+  try {
+    const result = await api.paragraphComments({ bookUrl: props.bookUrl, index: wanted })
+    if (current.value !== wanted) return
+    dpMarkers.value = result.markers || []
+    dpCards.value = result.cards || []
+  } catch {
+    if (current.value === wanted) {
+      dpMarkers.value = []
+      dpCards.value = []
+    }
+  }
+}
+
 async function openDp() {
   showDp.value = true
   dpLoading.value = true
+  await loadParagraphComments()
+  dpLoading.value = false
+}
+
+async function openDpComment(marker) {
+  if (!marker || dpPanelLoading.value) return
+  showDpPanel.value = true
+  dpPanelLoading.value = true
+  dpPanelError.value = ''
+  dpPanelHtml.value = ''
+  dpPanelTitle.value =
+    Number(marker.paragraph) === -1
+      ? `章节名 · ${marker.count} 条段评`
+      : `第 ${Number(marker.paragraph) + 1} 段 · ${marker.count} 条段评`
   try {
-    const result = await api.paragraphComments({ bookUrl: props.bookUrl, index: current.value, withComments: false })
-    dpMarkers.value = result.markers || []
-    dpCards.value = result.cards || []
+    const result = await api.paragraphCommentPanel({
+      bookUrl: props.bookUrl,
+      index: current.value,
+      paragraph: marker.paragraph,
+    })
+    dpPanelHtml.value = result.html || ''
+    if (!dpPanelHtml.value) dpPanelError.value = '没有取到段评内容'
   } catch (error) {
-    window.__toast?.(error.message)
+    dpPanelError.value = error.message
   } finally {
-    dpLoading.value = false
+    dpPanelLoading.value = false
   }
 }
 
@@ -749,10 +800,23 @@ watch(chapterTitle, () => {
     >
       <h1 v-if="prefs.showChapterTitle" class="chapter-title" :style="{ fontSize: prefs.fontSize * 1.28 + 'px' }">
         {{ chapterTitle }}
+        <button v-if="dpTitleMarker" class="dp-bubble" :title="`${dpTitleMarker.count} 条章节名段评`" @click.stop="openDpComment(dpTitleMarker)">
+          {{ dpTitleMarker.count }}
+        </button>
       </h1>
       <div v-if="loading" class="reader-loading">加载中…</div>
       <div v-else class="chapter-body" :style="bodyStyle">
-        <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph.trim() }}</p>
+        <p v-for="(paragraph, index) in paragraphs" :key="index">
+          {{ paragraph.trim() }}
+          <button
+            v-if="dpMarkerMap.get(index)"
+            class="dp-bubble"
+            :title="`${dpMarkerMap.get(index).count} 条段评`"
+            @click.stop="openDpComment(dpMarkerMap.get(index))"
+          >
+            {{ dpMarkerMap.get(index).count }}
+          </button>
+        </p>
       </div>
       <div class="chapter-end">
         <button class="chapter-end-btn" @click.stop="turnNext">下一章 →</button>
@@ -1059,8 +1123,10 @@ watch(chapterTitle, () => {
         <template v-else>
           <div class="list">
             <div v-for="(marker, index) in dpMarkers" :key="index" class="list-item">
-              <span style="flex: 1">第 {{ marker.paragraph + 1 }} 段 · {{ marker.count }} 条</span>
-              <a v-if="marker.url" class="ghost" :href="marker.url" target="_blank" rel="noopener">打开</a>
+              <span style="flex: 1">
+                {{ Number(marker.paragraph) === -1 ? '章节名' : `第 ${Number(marker.paragraph) + 1} 段` }} · {{ marker.count }} 条
+              </span>
+              <button v-if="marker.count" class="ghost" @click="openDpComment(marker)">查看</button>
             </div>
           </div>
           <div v-if="dpCards.length" class="list" style="margin-top: 12px">
@@ -1069,6 +1135,21 @@ watch(chapterTitle, () => {
             </div>
           </div>
         </template>
+      </div>
+    </div>
+
+    <!-- 段评面板 -->
+    <div v-if="showDpPanel" class="sheet-backdrop" @click.self="showDpPanel = false">
+      <div class="sheet reader-sheet dp-panel-sheet" :style="{ background: theme.bg, color: theme.text }">
+        <div class="sheet-handle" />
+        <div class="row" style="align-items: center; gap: 8px">
+          <h2 style="margin: 0">{{ dpPanelTitle }}</h2>
+          <div class="spacer" />
+          <button class="ghost" @click="showDpPanel = false">关闭</button>
+        </div>
+        <div v-if="dpPanelLoading" class="muted" style="padding: 24px 0">正在加载段评…</div>
+        <div v-else-if="dpPanelError" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
+        <iframe v-else class="dp-panel-frame" :srcdoc="dpPanelHtml" sandbox referrerpolicy="no-referrer" />
       </div>
     </div>
   </div>
@@ -1297,6 +1378,42 @@ watch(chapterTitle, () => {
 .chapter-end {
   margin-top: 46px;
   text-align: center;
+}
+
+.dp-bubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  margin-left: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 90, 50, 0.35);
+  background: rgba(255, 255, 255, 0.55);
+  color: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  vertical-align: 1px;
+  text-indent: 0;
+  cursor: pointer;
+}
+
+.chapter-title .dp-bubble {
+  vertical-align: 6px;
+}
+
+.dp-panel-sheet {
+  max-height: 88vh;
+}
+
+.dp-panel-frame {
+  display: block;
+  width: 100%;
+  height: 68vh;
+  border: 0;
+  border-radius: 12px;
+  background: #f3e9d2;
 }
 
 .chapter-end-btn {

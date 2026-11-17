@@ -17,7 +17,7 @@ import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
 import { convertText } from './text-convert.js'
 import { extractContentImages, sourceTextToPlain } from './source-text.js'
-import { extractCards, extractDpMarkers, fetchComments } from './comment-markers.js'
+import { extractCards, extractDpMarkers } from './comment-markers.js'
 import { cleanIntro, cleanText } from './text.js'
 import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
 
@@ -32,6 +32,21 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   const timeoutMs = Number(options.timeoutMs || process.env.SOURCE_TIMEOUT_MS || 45000)
   const globalRewrites = parseRewrites(process.env.SOURCE_REWRITES)
   const globalKey = process.env.SOURCE_KEY || ''
+  // 段评地址只在服务端短期缓存：前端只拿段落序号/条数，不接触带 key 的地址
+  const dpMarkerCache = new Map()
+  const dpCacheKey = (bookUrl, chapterUrl, paragraph) => `${bookUrl}|${chapterUrl}|${paragraph}`
+  const cacheDpMarkers = (bookUrl, chapterUrl, markers) => {
+    const now = Date.now()
+    for (const marker of markers) {
+      if (!marker.url) continue
+      dpMarkerCache.set(dpCacheKey(bookUrl, chapterUrl, marker.paragraph), { url: marker.url, at: now })
+    }
+    if (dpMarkerCache.size > 800) {
+      for (const [key, value] of dpMarkerCache) {
+        if (now - value.at > 15 * 60 * 1000) dpMarkerCache.delete(key)
+      }
+    }
+  }
 
   /** Build a runtime for one stored source, or throw a readable error. */
   function runtimeFor(bookSourceUrl) {
@@ -269,7 +284,7 @@ async function primeBook(book) {
     return ok(list)
   })
 
-  /** 段评 / 本章说：解析正文里的 dp 标记，可选拉取评论内容 */
+  /** 段评 / 本章说：只返回段落序号和条数，评论地址留在服务端 */
   app.post('/reader3/getParagraphComments', async (req) => {
     const book = store.getBook(String(req.body?.bookUrl ?? ''))
     if (!book) return fail('书籍不存在')
@@ -279,15 +294,49 @@ async function primeBook(book) {
     if (!target) return fail('缺少章节地址')
     try {
       const raw = await withRuntime(origin, (runtime) => runtime.content(target))
-      const markers = extractDpMarkers(raw)
-      const comments = []
-      if (req.body?.withComments) {
-        for (const marker of markers.slice(0, 5)) {
-          if (!marker.url) continue
-          comments.push({ paragraph: marker.paragraph, count: marker.count, ...(await fetchComments(marker.url)) })
-        }
+      const parsed = extractDpMarkers(raw)
+      cacheDpMarkers(book.bookUrl, target, parsed)
+      const markers = parsed.map(({ paragraph, count }) => ({ paragraph, count }))
+      const cards = extractCards(raw).map(({ paragraph, src, alt }) => ({ paragraph, src, alt }))
+      return ok({ markers, cards })
+    } catch (error) {
+      return fail(error.message)
+    }
+  })
+
+  /** 取某一段的段评面板；由服务端代理评论地址，不把带 key 的地址发给前端 */
+  app.post('/reader3/getParagraphCommentPanel', async (req) => {
+    const book = store.getBook(String(req.body?.bookUrl ?? ''))
+    if (!book) return fail('书籍不存在')
+    const origin = String(req.body?.bookSourceUrl || book.origin || '')
+    const chapters = store.getChapters(book.bookUrl, book.origin)
+    const target = String(req.body?.chapterUrl || chapters[Number(req.body?.index) || 0]?.url || '')
+    if (!target) return fail('缺少章节地址')
+    try {
+      const paragraph = Number(req.body?.paragraph)
+      let markerUrl = dpMarkerCache.get(dpCacheKey(book.bookUrl, target, paragraph))?.url || ''
+      if (!markerUrl) {
+        const raw = await withRuntime(origin, (runtime) => runtime.content(target))
+        const parsed = extractDpMarkers(raw)
+        cacheDpMarkers(book.bookUrl, target, parsed)
+        markerUrl = parsed.find((item) => Number(item.paragraph) === paragraph)?.url || ''
       }
-      return ok({ markers, comments, cards: extractCards(raw) })
+      if (!markerUrl) return fail('这一段没有段评')
+      const response = await fetch(markerUrl, {
+        headers: {
+          'user-agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+          referer: `${origin}/`,
+          accept: 'text/html,application/xhtml+xml',
+        },
+        signal: AbortSignal.timeout(20000),
+      })
+      if (!response.ok) return fail(`段评接口返回 HTTP ${response.status}`)
+      // iframe 已禁用脚本；这里再剥一层，避免把评论里的脚本带回页面
+      const html = (await response.text())
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, '')
+      return ok({ html })
     } catch (error) {
       return fail(error.message)
     }
