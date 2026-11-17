@@ -725,3 +725,14 @@
   margin: 0;
   flex: none;
 }
+/* 详情里的分组选择 */
+.info-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.info-group select {
+  flex: 1;
+  max-width: 220px;
+}

@@ -261,6 +261,26 @@ function unreadCount(book) {
   return left > 99 ? '99+' : String(left)
 }
 
+/** 最新章节名：优先书架记录的，其次当前进度章节 */
+function latestName(book) {
+  const name = String(book?.latestChapterTitle || '').trim()
+  if (name) return name
+  const fallback = String(book?.durChapterTitle || '').trim()
+  return fallback || '—'
+}
+
+/** 在详情里直接改分组 */
+async function changeGroup(book, groupId) {
+  try {
+    await api.saveBookGroupId(book.bookUrl, Number(groupId))
+    book.group = Number(groupId)
+    const target = groups.value.find((item) => item.groupId === Number(groupId))
+    window.__toast?.('已移动到「' + (target?.groupName || '未分组') + '」')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -379,13 +399,16 @@ onMounted(load)
             <h2>{{ infoBook.name }}</h2>
             <p class="muted">{{ infoBook.author || '未知作者' }}</p>
             <p class="shelf-meta">
-              <span>{{ infoBook.totalChapterNum || 0 }} 章</span><span class="dot">·</span>
-              <span>{{ updatedAgo(infoBook) }}</span><span class="dot">·</span>
-              <span>{{ groupName(infoBook) }}</span>
+              <span>{{ updatedAgo(infoBook) }}：{{ infoBook.totalChapterNum || 0 }} 章：{{ latestName(infoBook) }}</span>
             </p>
-            <p class="muted" style="font-size: 12px">最新章节：{{ infoBook.latestChapterTitle || '—' }}</p>
             <p class="muted" style="font-size: 12px">阅读进度：{{ progressOf(infoBook) }}%</p>
           </div>
+        </div>
+        <div class="info-group">
+          <span class="muted" style="font-size: 12px">分组</span>
+          <select :value="Number(infoBook.group || 0)" @change="changeGroup(infoBook, $event.target.value)">
+            <option v-for="group in groups" :key="group.groupId" :value="group.groupId">{{ group.groupName }}</option>
+          </select>
         </div>
         <h3 class="info-subtitle">简介</h3>
         <p class="info-intro">{{ infoBook.intro || '（没有简介）' }}</p>
