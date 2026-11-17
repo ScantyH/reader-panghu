@@ -1398,10 +1398,10 @@
   overflow: hidden;
 }
 
-/* 桌面每行 4 本（第三种为横向卡片，同样 4 列） */
+/* 桌面：封面 6 列、网格 5 列、横向 4 列 */
 .mode-cover {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 22px 18px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 20px 16px;
 }
 
 .mode-grid {
@@ -1446,7 +1446,7 @@
 
 @media (max-width: 1100px) {
   .mode-cover {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .mode-grid {
