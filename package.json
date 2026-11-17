@@ -1,6 +1,6 @@
 {
   "name": "reader-panghu",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "private": true,
   "description": "Unified reading server: Legado/闃呰3 book sources, WebView book-source runtime, multi-device progress sync",
   "type": "module",

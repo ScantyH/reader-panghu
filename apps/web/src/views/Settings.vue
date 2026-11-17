@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, setToken } from '../api.js'
+import { useSortable } from '../use-sortable.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,12 +19,14 @@ const section = computed(() => {
   return SECTIONS.some((item) => item.id === wanted) ? wanted : 'account'
 })
 const current = computed(() => SECTIONS.find((item) => item.id === section.value) || SECTIONS[0])
-const customGroups = computed(() => groups.value.filter((group) => Number(group.groupId) !== 0))
+const adminUsers = computed(() => users.value.filter((user) => user.role === 'admin'))
+const orderedUsers = computed(() => [...adminUsers.value, ...subUsers.value])
 
 const me = ref({ username: '', role: 'user', authEnabled: false, allowWebdav: true, allowWarehouse: true })
 const users = ref([])
+const subUsers = ref([])
 const health = ref(null)
-const groups = ref([])
+const groupList = ref([])
 const oldPassword = ref('')
 const newPassword = ref('')
 const newGroupName = ref('')
@@ -35,6 +38,36 @@ const importBusy = ref(false)
 const updateBusy = ref(false)
 const cacheBusy = ref(false)
 const shelfStatus = ref('')
+
+const {
+  start: startUserDrag,
+  cancel: cancelUserDrag,
+  draggingId: userDraggingId,
+} = useSortable({
+  getIds: () => subUsers.value.map((user) => user.username),
+  move: (from, to) => {
+    const list = [...subUsers.value]
+    const [item] = list.splice(from, 1)
+    list.splice(to, 0, item)
+    subUsers.value = list
+  },
+  onCommit: saveUserOrder,
+})
+
+const {
+  start: startGroupDrag,
+  cancel: cancelGroupDrag,
+  draggingId: groupDraggingId,
+} = useSortable({
+  getIds: () => groupList.value.map((group) => String(group.groupId)),
+  move: (from, to) => {
+    const list = [...groupList.value]
+    const [item] = list.splice(from, 1)
+    list.splice(to, 0, item)
+    groupList.value = list
+  },
+  onCommit: saveGroupOrder,
+})
 
 const isAdmin = () => me.value.role === 'admin'
 const appVersion = __APP_VERSION__
@@ -52,8 +85,12 @@ async function load() {
     const info = await api.getUserInfo()
     if (info) me.value = { ...me.value, ...info }
     health.value = await fetch('/api/health').then((response) => response.json()).catch(() => null)
-    groups.value = await api.groups()
-    if (isAdmin()) users.value = await api.userList().catch(() => [])
+    const groupRows = await api.groups()
+    groupList.value = groupRows.filter((group) => Number(group.groupId) !== 0)
+    if (isAdmin()) {
+      users.value = await api.userList().catch(() => [])
+      subUsers.value = users.value.filter((user) => user.role !== 'admin')
+    }
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
@@ -62,7 +99,28 @@ async function load() {
 }
 
 async function loadGroups() {
-  groups.value = await api.groups().catch(() => groups.value)
+  const groupRows = await api.groups().catch(() => null)
+  if (groupRows) groupList.value = groupRows.filter((group) => Number(group.groupId) !== 0)
+}
+
+async function saveUserOrder() {
+  try {
+    await api.reorderUsers(subUsers.value.map((user) => user.username))
+    window.__toast?.('账号顺序已保存')
+  } catch (error) {
+    window.__toast?.(error.message)
+    await load()
+  }
+}
+
+async function saveGroupOrder() {
+  try {
+    await api.reorderBookGroups(groupList.value.map((group) => group.groupId))
+    window.__toast?.('分组顺序已保存')
+  } catch (error) {
+    window.__toast?.(error.message)
+    await loadGroups()
+  }
 }
 
 async function changePassword() {
@@ -111,6 +169,7 @@ function editUser(user) {
   }
   editingUser.value = user.username
   userDraft.value = {
+    note: user.note || '',
     bookLimit: Number(user.bookLimit) || 0,
     sourceLimit: Number(user.sourceLimit) || 0,
     allowWebdav: Boolean(user.allowWebdav),
@@ -319,8 +378,19 @@ onMounted(load)
 
           <div v-if="isAdmin()" class="settings-card">
             <div class="settings-card-title">用户管理</div>
-            <template v-for="user in users" :key="user.username">
-              <div class="settings-row">
+            <template v-for="user in orderedUsers" :key="user.username">
+              <div
+                class="settings-row"
+                :data-sort-id="user.role === 'admin' ? undefined : user.username"
+                :class="{ dragging: user.role !== 'admin' && userDraggingId === user.username }"
+              >
+                <span
+                  v-if="user.role !== 'admin'"
+                  class="sort-handle"
+                  title="长按拖动排序"
+                  @pointerdown.prevent="startUserDrag($event, user.username)"
+                  @pointerup="cancelUserDrag"
+                >≡</span>
                 <div class="settings-row-icon">👤</div>
                 <div class="settings-row-main">
                   <div class="settings-row-title">
@@ -333,6 +403,7 @@ onMounted(load)
                   <div class="settings-row-desc">
                     <template v-if="user.role === 'admin'">不受配额与功能开关限制</template>
                     <template v-else>
+                      <span v-if="user.note" class="settings-user-note">备注：{{ user.note }} · </span>
                       书籍上限 {{ user.bookLimit || '不限' }} · 书源上限 {{ user.sourceLimit || '不限' }} ·
                       {{ user.hasPassword ? '已设密码' : '无密码' }}
                     </template>
@@ -346,7 +417,14 @@ onMounted(load)
               </div>
 
               <div v-if="editingUser === user.username" class="settings-user-editor">
+                <div class="row" style="padding-top: 10px">
+                  <button class="page-back-btn" @click="editingUser = ''"><span aria-hidden="true">←</span> 返回 用户管理</button>
+                </div>
                 <div class="settings-inline-form" style="padding: 12px 0 10px">
+                  <label class="settings-field">
+                    备注
+                    <input v-model="userDraft.note" type="text" maxlength="60" placeholder="例如：家人 / 手机端" style="width: 180px" />
+                  </label>
                   <label class="settings-field">
                     书籍上限
                     <input v-model.number="userDraft.bookLimit" type="number" min="0" step="1" placeholder="0 = 不限" />
@@ -372,7 +450,7 @@ onMounted(load)
                 </div>
               </div>
             </template>
-            <div v-if="!users.length" class="settings-kv"><span>还没有其他账号</span></div>
+            <div v-if="!orderedUsers.length" class="settings-kv"><span>还没有其他账号</span></div>
           </div>
 
           <div v-if="me.authEnabled" class="settings-card">
@@ -419,12 +497,24 @@ onMounted(load)
                   <input v-model="newGroupName" placeholder="新分组名称" @keyup.enter="addGroup" />
                   <button class="primary" @click="addGroup">新建</button>
                 </div>
-                <div v-for="group in customGroups" :key="group.groupId" class="settings-group-row">
+                <div
+                  v-for="group in groupList"
+                  :key="group.groupId"
+                  class="settings-group-row"
+                  :data-sort-id="String(group.groupId)"
+                  :class="{ dragging: groupDraggingId === String(group.groupId) }"
+                >
+                  <span
+                    class="sort-handle"
+                    title="长按拖动排序"
+                    @pointerdown.prevent="startGroupDrag($event, String(group.groupId))"
+                    @pointerup="cancelGroupDrag"
+                  >≡</span>
                   <span>{{ group.groupName }}</span>
                   <button class="ghost" @click="renameGroup(group)">改名</button>
                   <button class="ghost" @click="removeGroup(group)">删除</button>
                 </div>
-                <div v-if="!customGroups.length" class="settings-row-desc">还没有分组</div>
+                <div v-if="!groupList.length" class="settings-row-desc">还没有分组</div>
               </div>
             </div>
           </div>

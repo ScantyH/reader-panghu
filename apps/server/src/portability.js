@@ -70,6 +70,7 @@ export function registerPortability(app, { store }) {
       role: user.role || 'user',
       createdAt: user.created_at,
       current: user.id === req.userId,
+      note: user.note || '',
       bookLimit: Number(user.bookLimit) || 0,
       sourceLimit: Number(user.sourceLimit) || 0,
       allowWebdav: Boolean(user.allowWebdav),
@@ -138,6 +139,7 @@ export function registerPortability(app, { store }) {
     const updated = store.updateUserSettings(user.id, req.body || {})
     return ok({
       username,
+      note: updated.note || '',
       bookLimit: Number(updated.bookLimit) || 0,
       sourceLimit: Number(updated.sourceLimit) || 0,
       allowWebdav: Boolean(updated.allowWebdav),
@@ -145,6 +147,13 @@ export function registerPortability(app, { store }) {
       allowEditSources: Boolean(updated.allowEditSources),
       allowEditRss: Boolean(updated.allowEditRss),
     })
+  })
+
+  /** 子账号手动排序（管理员专用，按前端拖拽后的顺序） */
+  app.post('/reader3/reorderUsers', async (req) => {
+    if (!requireAdmin(req)) return fail('需要管理员权限')
+    const usernames = Array.isArray(req.body?.usernames) ? req.body.usernames.map((name) => String(name)) : []
+    return ok({ reordered: store.reorderUsers(usernames) })
   })
 
   /**

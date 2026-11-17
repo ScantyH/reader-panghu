@@ -53,6 +53,7 @@ test('updateUserSettings 写入配额与功能开关', () => {
     allowWarehouse: false,
     allowEditSources: false,
     allowEditRss: true,
+    note: '家人共用',
   })
   const user = store.getUserById(sub.id)
   assert.equal(user.bookLimit, 12)
@@ -61,6 +62,21 @@ test('updateUserSettings 写入配额与功能开关', () => {
   assert.equal(user.allowWarehouse, 0)
   assert.equal(user.allowEditSources, 0)
   assert.equal(user.allowEditRss, 1)
+  assert.equal(user.note, '家人共用')
+  store.db.close()
+})
+
+test('reorderUsers 按拖拽顺序排列子账号，管理员仍在最前', () => {
+  const store = openDatabase(tempFile())
+  store.createUser('boss', 'x', 'admin')
+  store.createUser('a', 'x')
+  store.createUser('b', 'x')
+  store.createUser('c', 'x')
+  store.reorderUsers(['c', 'reader', 'a', 'b'])
+  assert.deepEqual(
+    store.listUsers().map((user) => user.username),
+    ['boss', 'c', 'reader', 'a', 'b'],
+  )
   store.db.close()
 })
 

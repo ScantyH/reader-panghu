@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS users (
   allow_webdav INTEGER NOT NULL DEFAULT 1,
   allow_warehouse INTEGER NOT NULL DEFAULT 1,
   allow_edit_sources INTEGER NOT NULL DEFAULT 1,
-  allow_edit_rss INTEGER NOT NULL DEFAULT 1
+  allow_edit_rss INTEGER NOT NULL DEFAULT 1,
+  note TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS book_sources (
@@ -153,6 +155,8 @@ export function openDatabase(file) {
     ['allow_warehouse', 'INTEGER NOT NULL DEFAULT 1'],
     ['allow_edit_sources', 'INTEGER NOT NULL DEFAULT 1'],
     ['allow_edit_rss', 'INTEGER NOT NULL DEFAULT 1'],
+    ['note', "TEXT NOT NULL DEFAULT ''"],
+    ['sort_order', 'INTEGER NOT NULL DEFAULT 0'],
   ]) {
     try {
       db.exec(`ALTER TABLE users ADD COLUMN ${column} ${ddl}`)
@@ -402,17 +406,33 @@ class Store {
   }
 
   saveGroup({ groupId, groupName, orderNo }, userId = currentUserId()) {
+    const nextOrder =
+      orderNo === undefined || orderNo === null
+        ? this.db.prepare('SELECT COALESCE(MAX(order_no), 0) + 1 AS n FROM book_groups WHERE user_id = ?').get(userId).n
+        : Number(orderNo) || 0
     this.db
       .prepare(
         `INSERT INTO book_groups (user_id, group_id, group_name, order_no) VALUES (?, ?, ?, ?)
          ON CONFLICT (user_id, group_id) DO UPDATE SET group_name = excluded.group_name, order_no = excluded.order_no`,
       )
-      .run(userId, Number(groupId) || 0, String(groupName || '未命名'), Number(orderNo) || 0)
-    return { groupId: Number(groupId) || 0, groupName: String(groupName || '未命名'), orderNo: Number(orderNo) || 0 }
+      .run(userId, Number(groupId) || 0, String(groupName || '未命名'), nextOrder)
+    return { groupId: Number(groupId) || 0, groupName: String(groupName || '未命名'), orderNo: nextOrder }
   }
 
   deleteGroup(groupId, userId = currentUserId()) {
     return this.db.prepare('DELETE FROM book_groups WHERE user_id = ? AND group_id = ?').run(userId, Number(groupId)).changes > 0
+  }
+
+  /** 书架分组手动排序：按给定 groupId 顺序写 order_no。 */
+  reorderGroups(groupIds = [], userId = currentUserId()) {
+    let order = 1
+    for (const groupId of groupIds) {
+      const id = Number(groupId)
+      if (!id) continue
+      this.db.prepare('UPDATE book_groups SET order_no = ? WHERE user_id = ? AND group_id = ?').run(order, userId, id)
+      order += 1
+    }
+    return order - 1
   }
 
   /* --------------------------------------------------------------- bookmarks */
@@ -488,12 +508,12 @@ class Store {
   listUsers() {
     return this.db
       .prepare(
-        `SELECT id, username, password, role, created_at,
+        `SELECT id, username, password, role, created_at, note, sort_order,
                 book_limit AS bookLimit, source_limit AS sourceLimit,
                 allow_webdav AS allowWebdav, allow_warehouse AS allowWarehouse,
                 allow_edit_sources AS allowEditSources, allow_edit_rss AS allowEditRss
            FROM users
-          ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, id`,
+          ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, sort_order, id`,
       )
       .all()
   }
@@ -505,7 +525,7 @@ class Store {
   getUserById(userId) {
     return this.db
       .prepare(
-        `SELECT id, username, role, created_at,
+        `SELECT id, username, role, created_at, note, sort_order,
                 book_limit AS bookLimit, source_limit AS sourceLimit,
                 allow_webdav AS allowWebdav, allow_warehouse AS allowWarehouse,
                 allow_edit_sources AS allowEditSources, allow_edit_rss AS allowEditRss
@@ -515,9 +535,12 @@ class Store {
   }
 
   createUser(username, password, role = 'user') {
+    const nextOrder = this.db
+      .prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM users WHERE role != 'admin'")
+      .get().n
     const result = this.db
-      .prepare('INSERT INTO users (username, password, role, created_at) VALUES (?, ?, ?, ?)')
-      .run(String(username), password, String(role), Date.now())
+      .prepare('INSERT INTO users (username, password, role, created_at, sort_order) VALUES (?, ?, ?, ?, ?)')
+      .run(String(username), password, String(role), Date.now(), Number(nextOrder) || 0)
     return { id: Number(result.lastInsertRowid), username, role }
   }
 
@@ -529,12 +552,14 @@ class Store {
   updateUserSettings(userId, settings = {}) {
     const count = (value) => Math.max(0, Math.floor(Number(value) || 0))
     const flag = (value) => (value ? 1 : 0)
+    const note = String(settings.note ?? this.getUserById(userId)?.note ?? '').slice(0, 60)
     this.db
       .prepare(
         `UPDATE users
             SET book_limit = ?, source_limit = ?,
                 allow_webdav = ?, allow_warehouse = ?,
-                allow_edit_sources = ?, allow_edit_rss = ?
+                allow_edit_sources = ?, allow_edit_rss = ?,
+                note = ?
           WHERE id = ?`,
       )
       .run(
@@ -544,9 +569,24 @@ class Store {
         flag(settings.allowWarehouse),
         flag(settings.allowEditSources),
         flag(settings.allowEditRss),
+        note,
         Number(userId),
       )
     return this.getUserById(userId)
+  }
+
+  /** 子账号手动排序：按给定顺序写入 sort_order（管理员不参与）。 */
+  reorderUsers(usernames = []) {
+    let order = 0
+    for (const username of usernames) {
+      const user = this.findUserByName(String(username))
+      if (!user) continue
+      const current = this.getUserById(user.id)
+      if (current?.role === 'admin') continue
+      this.db.prepare('UPDATE users SET sort_order = ? WHERE id = ?').run(order, user.id)
+      order += 1
+    }
+    return order
   }
 
   getUser(userId = currentUserId()) {

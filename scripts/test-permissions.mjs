@@ -99,6 +99,7 @@ try {
     token: admin.token,
     body: {
       username: 'sub1',
+      note: '家人',
       bookLimit: 1,
       sourceLimit: 1,
       allowWebdav: false,
@@ -108,6 +109,9 @@ try {
     },
   })
   check('管理员分配配额与开关', restricted.isSuccess === true, restricted.errorMsg)
+
+  const noted = ((await call('/reader3/getUserList', { token: admin.token })).data || []).find((user) => user.username === 'sub1')
+  check('管理员可写子账号备注', noted?.note === '家人', JSON.stringify(noted))
 
   const me = (await call('/reader3/getUserInfo', { token: sub.token })).data
   check('子账号读到自己的权限', me?.bookLimit === 1 && me?.allowWebdav === false, JSON.stringify(me))
@@ -175,6 +179,23 @@ try {
   check('管理员可分配书源 / RSS', copied.isSuccess === true && copied.data?.sources >= 1, JSON.stringify(copied))
   const subSources = (await call('/reader3/getBookSources', { token: sub.token })).data || []
   check('子账号能看到管理员分配的源', subSources.some((source) => source.bookSourceUrl === 'https://admin.example'))
+
+  await call('/reader3/register', { method: 'POST', body: { username: 'sub2', password: 'secret123' } })
+  const reordered = await call('/reader3/reorderUsers', {
+    method: 'POST',
+    token: admin.token,
+    body: { usernames: ['sub2', 'reader', 'sub1'] },
+  })
+  const ordered = ((await call('/reader3/getUserList', { token: admin.token })).data || []).map((user) => user.username)
+  check('子账号可手动排序且管理员仍最前', reordered.isSuccess === true && ordered.join(',') === 'admin,sub2,reader,sub1', ordered.join(','))
+
+  await call('/reader3/saveBookGroup', { method: 'POST', token: admin.token, body: { groupId: 101, groupName: 'A 组' } })
+  await call('/reader3/saveBookGroup', { method: 'POST', token: admin.token, body: { groupId: 102, groupName: 'B 组' } })
+  const groupOrder = await call('/reader3/reorderBookGroups', { method: 'POST', token: admin.token, body: { groupIds: [102, 101] } })
+  const groupNames = ((await call('/reader3/getBookGroups', { token: admin.token })).data || [])
+    .filter((group) => Number(group.groupId) !== 0)
+    .map((group) => group.groupName)
+  check('分组可手动排序', groupOrder.isSuccess === true && groupNames.join(',') === 'B 组,A 组', groupNames.join(','))
 
   await stop()
   console.log(failures ? `\n子账号权限 ${failures} 项失败` : '\n子账号权限 checks passed')

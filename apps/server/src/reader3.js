@@ -489,6 +489,12 @@ async function primeBook(book) {
     return ok('删除成功')
   })
 
+  /** 书架分组手动排序（设置 → 书架 → 分组管理里拖拽后提交） */
+  app.post('/reader3/reorderBookGroups', async (req) => {
+    const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : []
+    return ok({ reordered: store.reorderGroups(groupIds) })
+  })
+
   app.post('/reader3/saveBookGroupId', async (req) => {
     const { bookUrl, groupId } = req.body || {}
     const book = store.getBook(String(bookUrl ?? ''))
