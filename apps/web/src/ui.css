@@ -542,3 +542,152 @@
   gap: 8px;
   margin-bottom: 14px;
 }
+/* ─── 书架三种模式 ─── */
+.shelf { display: grid; gap: 18px; }
+
+.shelf-card {
+  position: relative;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.shelf-cover {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-sunken);
+  box-shadow: var(--shadow-sm);
+  aspect-ratio: 3 / 4;
+}
+
+.shelf-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shelf-cover .placeholder {
+  width: 100%; height: 100%;
+  display: grid; place-items: center;
+  text-align: center; padding: 12px;
+  font-size: 13px; color: var(--color-text-secondary);
+}
+
+.shelf-cover .progress {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.shelf-cover .progress i { display: block; height: 100%; background: var(--color-primary); }
+
+/* ⋯ 按钮：居中三点、对称 */
+.card-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(18, 14, 10, 0.55);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.card-more svg { fill: currentColor; display: block; }
+.card-more:hover { background: rgba(18, 14, 10, 0.72); }
+
+.shelf-card:hover .card-more,
+.shelf-card:focus-within .card-more { opacity: 1; transform: scale(1); }
+
+/* ① 封面模式 */
+.shelf-cover-mode { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 14px; }
+.shelf-cover-mode .shelf-cover { aspect-ratio: 3 / 4; }
+.shelf-cover-mode .shelf-card:hover { transform: translateY(-3px); }
+.shelf-cover-mode .shelf-card:hover .shelf-cover { box-shadow: var(--shadow-md); }
+
+/* ② 网格模式 */
+.shelf-grid { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 20px; }
+.shelf-grid .shelf-cover { aspect-ratio: 3 / 4; margin-bottom: 10px; }
+.shelf-grid .shelf-title { font-size: 14px; font-weight: 600; margin: 0 0 3px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.shelf-grid .shelf-author { font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px; }
+.shelf-grid .shelf-meta { font-size: 11.5px; color: var(--color-text-tertiary, var(--color-text-secondary)); margin: 0 0 4px; display: flex; gap: 5px; align-items: center; }
+.shelf-grid .shelf-latest { font-size: 11.5px; color: var(--color-text-secondary); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ③ 横向模式 */
+.shelf-list { grid-template-columns: 1fr; gap: 12px; }
+.shelf-list .shelf-card {
+  display: flex;
+  gap: 14px;
+  padding: 12px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+.shelf-list .shelf-cover { width: 76px; flex: none; aspect-ratio: 3 / 4; border-radius: var(--radius-sm); }
+.shelf-list .shelf-info { flex: 1; min-width: 0; }
+.shelf-list .shelf-title { font-size: 15px; font-weight: 600; margin: 0 0 3px; }
+.shelf-list .shelf-author { font-size: 12.5px; color: var(--color-text-secondary); margin: 0 0 4px; }
+.shelf-list .shelf-meta { font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px; display: flex; gap: 5px; }
+.shelf-list .shelf-latest { font-size: 12.5px; margin: 0 0 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shelf-list .shelf-intro {
+  font-size: 12px; color: var(--color-text-secondary); margin: 0 0 6px; line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.shelf-list .shelf-tags { display: flex; gap: 6px; margin: 0; }
+.shelf-list .chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--color-bg-sunken); color: var(--color-text-secondary);
+}
+
+.shelf-card.selected { outline: 2px solid var(--color-primary); outline-offset: 3px; border-radius: var(--radius-lg); }
+
+/* 信息弹层 */
+.info-head { display: flex; gap: 14px; margin-bottom: 14px; }
+.info-cover { width: 84px; flex: none; aspect-ratio: 3 / 4; border-radius: var(--radius-sm); overflow: hidden; background: var(--color-bg-sunken); }
+.info-cover img { width: 100%; height: 100%; object-fit: cover; }
+.info-meta { flex: 1; min-width: 0; }
+.info-meta h2 { font-size: 17px; margin: 0 0 4px; }
+.info-subtitle { font-size: 13px; color: var(--color-text-secondary); margin: 0 0 6px; }
+.info-intro { font-size: 13px; line-height: 1.75; color: var(--color-text-secondary); max-height: 32vh; overflow: auto; margin: 0; }
+
+/* 切换按钮：等宽、居中、纯图标 */
+.layout-toggle button svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+  margin: 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+.layout-toggle button.active svg { stroke-width: 2; }
+/* ─── 横向模式：四列紧凑卡片 + 未读徽标 ─── */
+.shelf-list {
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px 22px;
+}
+
+.shelf-list .shelf-card { padding: 10px; gap: 12px; }
+
+.unread-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 26px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e8503a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ⋯ 移到右下，避开未读徽标 */
+.shelf-card .card-more { top: auto; bottom: 8px; right: 8px; }

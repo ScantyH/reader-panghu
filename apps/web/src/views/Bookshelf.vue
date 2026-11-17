@@ -17,7 +17,8 @@ const newGroupName = ref('')
 const fileInput = ref(null)
 const actionBook = ref(null)
 const pressing = ref('')
-const layout = ref(localStorage.getItem('shelfLayout') || 'grid')
+const layout = ref(localStorage.getItem('shelfLayout') || 'cover')
+const infoBook = ref(null)
 const selectMode = ref(false)
 const selected = ref([])
 const moveTarget = ref('0')
@@ -243,8 +244,15 @@ onMounted(load)
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
       <div class="layout-toggle" role="group" aria-label="布局切换">
-        <button :class="{ active: layout === 'grid' }" title="网格视图" aria-label="网格视图" @click="setLayout('grid')">▦</button>
-        <button :class="{ active: layout === 'list' }" title="列表视图" aria-label="列表视图" @click="setLayout('list')">☰</button>
+        <button :class="{ active: layout === 'cover' }" title="封面模式" aria-label="封面模式" @click="setLayout('cover')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2.5" /></svg>
+        </button>
+        <button :class="{ active: layout === 'grid' }" title="网格模式" aria-label="网格模式" @click="setLayout('grid')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.8" /><rect x="13" y="4" width="7" height="7" rx="1.8" /><rect x="4" y="13" width="7" height="7" rx="1.8" /><rect x="13" y="13" width="7" height="7" rx="1.8" /></svg>
+        </button>
+        <button :class="{ active: layout === 'list' }" title="横向模式" aria-label="横向模式" @click="setLayout('list')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="5" height="14" rx="1.6" /><rect x="12" y="6.5" width="8" height="2.2" rx="1.1" /><rect x="12" y="11" width="8" height="2.2" rx="1.1" /><rect x="12" y="15.5" width="5" height="2.2" rx="1.1" /></svg>
+        </button>
       </div>
     </div>
 
@@ -290,33 +298,76 @@ onMounted(load)
       <button :disabled="!selected.length" @click="batchDelete">删除选中</button>
     </div>
 
-    <div class="grid" :class="{ 'shelf-list': layout === 'list' }">
-      <div
+    <div class="shelf" :class="'shelf-' + layout">
+      <article
         v-for="book in visible"
         :key="book.bookUrl"
-        class="card"
-        :class="{ pressing: pressing === book.bookUrl, selected: selected.includes(book.bookUrl) }"
-        @click="selectMode ? toggleSelect(book.bookUrl) : open(book)"
-        @mousedown="startPress(book)"
-        @mouseup="cancelPress"
-        @mouseleave="cancelPress"
-        @touchstart.passive="startPress(book)"
-        @touchend="cancelPress"
+        class="shelf-card"
+        :class="{ selected: selected.includes(book.bookUrl), 'is-select': selectMode }"
+        @click="selectMode ? toggleSelect(book.bookUrl) : layout === 'cover' ? (infoBook = book) : open(book)"
         @contextmenu.prevent="actionBook = book"
       >
-        <div class="cover">
+        <div class="shelf-cover">
           <img v-if="coverOf(book)" :src="coverOf(book)" :alt="book.name" loading="lazy" />
           <div v-else class="placeholder">{{ book.name }}</div>
           <div v-if="progressOf(book)" class="progress"><i :style="{ width: progressOf(book) + '%' }" /></div>
-          <div class="continue-badge">{{ book.durChapterTitle ? '继续阅读' : '开始阅读' }}</div>
-          <button class="card-more" title="更多操作" @click.stop="actionBook = book">⋯</button>
+          <span v-if="unreadCount(book)" class="unread-badge">{{ unreadCount(book) }}</span>
+          <button class="card-more" title="更多操作" aria-label="更多操作" @click.stop="actionBook = book">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" />
+            </svg>
+          </button>
         </div>
-        <h3>{{ book.name }}</h3>
-        <p>{{ book.durChapterTitle || book.author || '未开始' }}</p>
-      </div>
+
+        <div v-if="layout !== 'cover'" class="shelf-info">
+          <h3 class="shelf-title">{{ book.name }}</h3>
+          <p class="shelf-author">{{ book.author || '未知作者' }}</p>
+          <p class="shelf-meta">
+            <span>{{ book.totalChapterNum || 0 }} 章</span>
+            <span class="dot">·</span>
+            <span>{{ updatedAgo(book) }}</span>
+          </p>
+          <p class="shelf-latest">{{ book.latestChapterTitle || book.durChapterTitle || '还没有章节信息' }}</p>
+          <p v-if="layout === 'list' && book.intro" class="shelf-intro">{{ book.intro }}</p>
+          <p v-if="layout === 'list'" class="shelf-tags">
+            <span class="chip">{{ groupName(book) }}</span>
+            <span v-if="book.kind" class="chip">{{ book.kind }}</span>
+          </p>
+        </div>
+      </article>
     </div>
 
     <BookDetail v-if="editing" :book="editing" :groups="groups" mode="shelf" @close="editing = null" @save="saveEdited" />
+
+    <!-- 书籍信息 -->
+    <div v-if="infoBook" class="sheet-backdrop" @click.self="infoBook = null">
+      <div class="sheet">
+        <div class="sheet-handle" />
+        <div class="info-head">
+          <div class="info-cover">
+            <img v-if="coverOf(infoBook)" :src="coverOf(infoBook)" :alt="infoBook.name" />
+            <div v-else class="placeholder">{{ infoBook.name }}</div>
+          </div>
+          <div class="info-meta">
+            <h2>{{ infoBook.name }}</h2>
+            <p class="muted">{{ infoBook.author || '未知作者' }}</p>
+            <p class="shelf-meta">
+              <span>{{ infoBook.totalChapterNum || 0 }} 章</span><span class="dot">·</span>
+              <span>{{ updatedAgo(infoBook) }}</span><span class="dot">·</span>
+              <span>{{ groupName(infoBook) }}</span>
+            </p>
+            <p class="muted" style="font-size: 12px">最新章节：{{ infoBook.latestChapterTitle || '—' }}</p>
+            <p class="muted" style="font-size: 12px">阅读进度：{{ progressOf(infoBook) }}%</p>
+          </div>
+        </div>
+        <h3 class="info-subtitle">简介</h3>
+        <p class="info-intro">{{ infoBook.intro || '（没有简介）' }}</p>
+        <div class="row" style="gap: 8px; margin-top: 16px">
+          <button class="primary" style="flex: 1" @click="infoBook = null; open(infoBook)">继续阅读</button>
+          <button class="ghost" @click="actionBook = infoBook; infoBook = null">更多</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 长按操作菜单 -->
     <div v-if="actionBook" class="sheet-backdrop" @click.self="actionBook = null">
