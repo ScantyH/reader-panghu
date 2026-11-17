@@ -130,14 +130,62 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     return book ? ok(book) : fail('书籍不在书架中')
   })
 
+/** 已加入书架但还没抓过目录的书：后台补目录 + 首章 + 末章 */
+const priming = new Set()
+
+async function primeBook(book) {
+  if (!book?.bookUrl || priming.has(book.bookUrl)) return
+  const origin = String(book.origin || '')
+  if (!origin || /^local:\/\//i.test(origin)) return
+  if ((store.getChapters(book.bookUrl, origin) || []).length) return
+
+  priming.add(book.bookUrl)
+  try {
+    const fetched = await withRuntime(origin, (runtime) => runtime.chapter(book.tocUrl || book.bookUrl))
+    const chapters = (Array.isArray(fetched) ? fetched : []).map((chapter, index) => ({
+      title: String(chapter?.name ?? `第${index + 1}章`),
+      url: String(chapter?.chapterId ?? ''),
+      index: Number(chapter?.index ?? index),
+    }))
+    if (!chapters.length) return
+
+    store.saveChapters(book.bookUrl, origin, chapters)
+    store.saveBook({
+      ...book,
+      totalChapterNum: chapters.length,
+      latestChapterTitle: chapters[chapters.length - 1].title,
+    })
+
+    // 预热首章与末章正文，打开书时不用等
+    for (const index of [0, chapters.length - 1]) {
+      const chapter = chapters[index]
+      if (!chapter?.url) continue
+      try {
+        const raw = await withRuntime(origin, (runtime) => runtime.content(chapter.url))
+        const text = applyReplaceRules(cleanText(raw), store.listReplaceRules())
+        if (text) store.saveChapterText(cacheKey(book), origin, chapter.url, text)
+      } catch {
+        /* 单章失败不影响其它 */
+      }
+    }
+  } catch (error) {
+    app.log.warn(`[prime] ${book.bookUrl}: ${error.message}`)
+  } finally {
+    priming.delete(book.bookUrl)
+  }
+}
+
   app.post('/reader3/saveBook', async (req) => {
     const saved = store.saveBook(req.body || {})
+    primeBook(saved).catch(() => {})
     return ok(saved)
   })
 
   app.post('/reader3/saveBooks', async (req) => {
     const list = Array.isArray(req.body) ? req.body : []
-    return ok(store.saveBooks(list))
+    const saved = store.saveBooks(list)
+    for (const book of list) primeBook(store.getBook(String(book?.bookUrl ?? '')) || book).catch(() => {})
+    return ok(saved)
   })
 
   app.post('/reader3/deleteBook', async (req) => {
