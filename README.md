@@ -57,7 +57,6 @@ PORT=18080 DATA_DIR=./data node apps/server/src/index.js
 | `SOURCE_TIMEOUT_MS` | 书源请求超时 | `30000` |
 | `RSS_REFRESH_MINUTES` | RSS 刷新间隔 | `30` |
 | `CHAPTER_CHECK_INTERVAL_HOURS` | 章节更新检查间隔，0 关闭 | `24` |
-| `DEEPSEEK_API_KEY` | 配置后可用 AI 章节摘要 | 无 |
 
 ## 部署
 

@@ -1,5 +1,5 @@
 /**
- * 阅读增强：换源、阅读统计、定时检查、AI 摘要、WebDAV 目录浏览。
+ * 阅读增强：换源、阅读统计、定时检查、WebDAV 目录浏览。
  */
 
 import { evaluateRule } from './legado-rule.js'
@@ -139,37 +139,6 @@ export function registerReadingExtras(app, { store, dataDir, options = {} }) {
     timer.unref?.()
     app.log.info(`[chapter-check] 每 ${intervalHours} 小时检查一次`)
   }
-
-  /* --------------------------------------------------------------- AI 摘要 */
-
-  const apiKey = process.env.DEEPSEEK_API_KEY || ''
-  const apiBase = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com'
-
-  app.post('/reader3/getChapterSummary', async (req) => {
-    if (!apiKey) return fail('未配置 DEEPSEEK_API_KEY，AI 摘要不可用')
-    const text = String(req.body?.text || '').slice(0, 6000)
-    if (!text.trim()) return fail('缺少章节正文')
-    try {
-      const response = await fetch(`${apiBase}/chat/completions`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: process.env.DEEPSEEK_SUMMARY_MODEL || 'deepseek-chat',
-          messages: [
-            { role: 'system', content: '你是阅读助手。用不超过 150 字概括本章剧情，只讲发生了什么。' },
-            { role: 'user', content: text },
-          ],
-          temperature: 0.3,
-        }),
-        signal: AbortSignal.timeout(60000),
-      })
-      if (!response.ok) return fail(`模型接口返回 HTTP ${response.status}`)
-      const payload = await response.json()
-      return ok({ summary: payload.choices?.[0]?.message?.content || '' })
-    } catch (error) {
-      return fail(`摘要生成失败：${error.message}`)
-    }
-  })
 
   /* --------------------------------------------------------- WebDAV 浏览 */
 

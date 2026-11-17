@@ -113,7 +113,6 @@ export const api = {
   availableSources: (payload) => request('/getAvailableBookSource', { method: 'POST', body: payload }),
   saveReadingTime: (payload) => request('/saveReadingTime', { method: 'POST', body: payload }),
   readingStats: () => request('/getReadingStats'),
-  chapterSummary: (text) => request('/getChapterSummary', { method: 'POST', body: { text } }),
   webdavList: (payload) => request('/webdavList', { method: 'POST', body: payload }),
   exportBookSources: () => fetch('/reader3/exportBookSources').then((r) => r.blob()),
   exportBackup: () => fetch('/reader3/exportBackup').then((r) => r.blob()),

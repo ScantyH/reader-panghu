@@ -783,14 +783,15 @@ watch(chapterTitle, () => {
       <button class="chrome-btn" @click="showSearch = false">×</button>
     </div>
 
-    <!-- 设置抽屉 -->
-    <div v-if="showSettings" class="panel-backdrop" @click.self="showSettings = false" />
-    <aside class="reader-panel" :class="{ open: showSettings }" :style="{ background: theme.bg, color: theme.text }">
-      <header class="panel-head">
-        <h2>阅读设置</h2>
-        <button class="chrome-btn" @click="showSettings = false">×</button>
-      </header>
-      <div class="panel-body">
+    <!-- 阅读设置（沿用旧版底部弹层） -->
+    <div v-if="showSettings" class="sheet-backdrop" @click.self="showSettings = false">
+      <div class="sheet reader-sheet settings-sheet" :style="{ background: theme.bg, color: theme.text }">
+        <div class="sheet-handle" />
+        <header class="panel-head settings-head">
+          <h2>阅读设置</h2>
+          <button class="chrome-btn" @click="showSettings = false">×</button>
+        </header>
+        <div class="panel-body settings-body">
         <section class="panel-section">
           <h3>主题</h3>
           <div class="segmented">
@@ -962,8 +963,9 @@ watch(chapterTitle, () => {
             <button class="ghost" @click="toBottom">到底部</button>
           </div>
         </section>
+        </div>
       </div>
-    </aside>
+    </div>
 
     <!-- 目录 -->
     <div v-if="showCatalog" class="sheet-backdrop" @click.self="showCatalog = false">
@@ -1394,6 +1396,21 @@ watch(chapterTitle, () => {
   overflow-y: auto;
   padding: 0 18px 40px;
   flex: 1;
+}
+
+.settings-sheet {
+  max-height: 82vh;
+  overflow-y: auto;
+}
+
+.settings-head {
+  padding: 0 0 10px;
+  border: none;
+}
+
+.settings-body {
+  padding: 0;
+  overflow: visible;
 }
 
 .panel-section {
