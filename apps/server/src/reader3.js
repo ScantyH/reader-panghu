@@ -370,9 +370,22 @@ async function primeBook(book) {
     return ok({ saved: true })
   })
 
+  /** 按导入批次（bundle）批量启用/停用 */
+  app.post('/reader3/setBundleEnabled', async (req) => {
+    const bundle = String(req.body?.bundle || '')
+    const enabled = Boolean(req.body?.enabled)
+    if (!bundle) return fail('缺少分组名')
+    const targets = store.listSources().filter((source) => String(source._bundle || '未归类') === bundle)
+    for (const source of targets) store.saveSource({ ...source, enabled })
+    return ok({ bundle, enabled, count: targets.length })
+  })
+
   app.post('/reader3/saveBookSources', async (req) => {
-    const list = Array.isArray(req.body) ? req.body : []
-    return ok({ saved: true, count: store.saveSources(list) })
+    const body = req.body || {}
+    const list = Array.isArray(body) ? body : Array.isArray(body.sources) ? body.sources : []
+    const bundle = Array.isArray(body) ? '' : String(body.bundle || '').trim()
+    const prepared = bundle ? list.map((source) => ({ ...source, _bundle: bundle })) : list
+    return ok({ saved: true, count: store.saveSources(prepared), bundle: bundle || null })
   })
 
   app.post('/reader3/deleteBookSource', async (req) => {

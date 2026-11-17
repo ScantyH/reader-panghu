@@ -736,3 +736,58 @@
   flex: 1;
   max-width: 220px;
 }
+/* ─── 导入汇总卡片 + iOS 风格开关 ─── */
+.bundle-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.bundle-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-light);
+  box-shadow: var(--shadow-xs);
+}
+
+.bundle-card.active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary) inset;
+}
+
+.bundle-info { flex: 1; min-width: 0; cursor: pointer; }
+.bundle-name { font-size: 14.5px; font-weight: 600; margin-bottom: 3px; }
+.bundle-sub { font-size: 12px; color: var(--color-text-secondary); }
+
+/* 开关：宽 52 高 32，拇指 26 */
+.switch { display: inline-flex; flex: none; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.switch-track {
+  position: relative;
+  width: 52px;
+  height: 32px;
+  border-radius: 999px;
+  background: #d9d4c9;
+  transition: background 0.22s ease;
+  display: block;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+  transition: transform 0.22s cubic-bezier(0.3, 0.9, 0.4, 1);
+}
+
+.switch input:checked + .switch-track { background: #34c759; }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(20px); }

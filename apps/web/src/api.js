@@ -93,7 +93,8 @@ export const api = {
 
   // sources
   sources: () => request('/getBookSources'),
-  saveSources: (sources) => request('/saveBookSources', { method: 'POST', body: sources }),
+  saveSources: (sources, bundle) => request('/saveBookSources', { method: 'POST', body: bundle ? { sources, bundle } : sources }),
+  setBundleEnabled: (bundle, enabled) => request('/setBundleEnabled', { method: 'POST', body: { bundle, enabled } }),
   deleteSource: (bookSourceUrl) => request('/deleteBookSource', { method: 'POST', body: { bookSourceUrl } }),
   testSources: (bookSourceUrls, options = {}) =>
     request('/testBookSources', { method: 'POST', body: { bookSourceUrls, ...options } }),

@@ -33,9 +33,36 @@ const debugUrl = ref('')
 const debugResult = ref(null)
 const debugLoading = ref(false)
 
+const expanded = ref('')
+
+/** 按导入批次汇总 */
+const bundles = computed(() => {
+  const map = new Map()
+  for (const source of sources.value) {
+    const name = String(source._bundle || '未归类')
+    if (!map.has(name)) map.set(name, { name, count: 0, enabledCount: 0 })
+    const row = map.get(name)
+    row.count += 1
+    if (source.enabled !== false) row.enabledCount += 1
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count)
+})
+
+/** 整批启用 / 停用 */
+async function toggleBundle(bundle, enabled) {
+  try {
+    await api.setBundleEnabled(bundle.name, enabled)
+    await load()
+    window.__toast?.(enabled ? '已启用「' + bundle.name + '」' : '已关闭「' + bundle.name + '」')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 const groups = computed(() => [...new Set(sources.value.map((item) => item.bookSourceGroup || ''))].filter(Boolean))
 const filtered = computed(() =>
   sources.value.filter((source) => {
+    if (expanded.value && String(source._bundle || '未归类') !== expanded.value) return false
     if (groupFilter.value && (source.bookSourceGroup || '') !== groupFilter.value) return false
     const q = keywordFilter.value.trim()
     if (!q) return true
@@ -63,7 +90,7 @@ async function importFile(event) {
   try {
     const parsed = await api.importSourceFile(file)
     if (!parsed.length) throw new Error('文件里没有解析出书源')
-    await api.saveSources(parsed)
+    await api.saveSources(parsed, file.name.replace(/\.json$/i, ""))
     window.__toast?.(`已导入 ${parsed.length} 个书源`)
     await load()
   } catch (error) {
@@ -90,7 +117,7 @@ async function importRemote() {
   try {
     const list = await api.readRemoteSourceFile(url)
     const parsed = list.map((item) => (typeof item === 'string' ? JSON.parse(item) : item))
-    await api.saveSources(parsed)
+    await api.saveSources(parsed, "远程订阅")
     window.__toast?.(`已从远程导入 ${parsed.length} 个书源`)
     remoteUrl.value = ''
     await load()
@@ -247,40 +274,62 @@ onMounted(load)
 
     <!-- 管理 -->
     <section v-if="tab === 'manage'">
-      <div class="row" style="margin-bottom: 12px; flex-wrap: wrap">
-        <input v-model="keywordFilter" placeholder="搜索名称或地址" style="flex: 1; min-width: 180px" />
-        <select v-model="groupFilter" style="max-width: 180px">
-          <option value="">全部分组</option>
-          <option v-for="group in groups" :key="group" :value="group">{{ group }}</option>
-        </select>
+      <!-- 导入汇总：按批次展示，iOS 风格开关 -->
+      <div class="bundle-list">
+        <div v-for="bundle in bundles" :key="bundle.name" class="bundle-card" :class="{ active: expanded === bundle.name }">
+          <div class="bundle-info" @click="expanded = expanded === bundle.name ? '' : bundle.name">
+            <div class="bundle-name">{{ bundle.name }}</div>
+            <div class="bundle-sub">{{ bundle.count }} 个书源 · 已启用 {{ bundle.enabledCount }}</div>
+          </div>
+          <label class="switch" :title="bundle.enabledCount ? '关闭该批书源' : '启用该批书源'">
+            <input
+              type="checkbox"
+              :checked="bundle.enabledCount > 0"
+              @change="toggleBundle(bundle, $event.target.checked)"
+            />
+            <span class="switch-track"><span class="switch-thumb" /></span>
+          </label>
+          <button class="ghost bundle-toggle" @click="expanded = expanded === bundle.name ? '' : bundle.name">
+            {{ expanded === bundle.name ? '收起' : '详情' }}
+          </button>
+        </div>
+      </div>
+
+      <template v-if="expanded">
+        <div class="row" style="margin: 14px 0 10px; flex-wrap: wrap">
+          <span class="badge">{{ expanded }} · {{ filtered.length }} 个</span>
+          <div class="spacer" />
+          <input v-model="keywordFilter" placeholder="搜索名称或地址" style="min-width: 180px" />
+        </div>
+
+        <div v-if="!filtered.length" class="empty">没有匹配的书源</div>
+        <div v-else class="list">
+          <div v-for="source in filtered" :key="source.bookSourceUrl" class="list-item">
+            <div style="flex: 1; min-width: 0">
+              <div class="row" style="gap: 6px; flex-wrap: wrap">
+                <strong>{{ source.bookSourceName }}</strong>
+                <span class="badge" :class="{ accent: source.html }">{{ source.html ? 'WebView' : '规则' }}</span>
+                <span v-if="source.bookSourceGroup" class="badge">{{ source.bookSourceGroup }}</span>
+                <span v-if="source.invalid" class="badge" style="color: var(--color-danger)">失效</span>
+                <span v-if="source.enabled === false" class="badge">已禁用</span>
+              </div>
+              <div class="muted" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                {{ source.bookSourceUrl }}
+              </div>
+            </div>
+            <button class="ghost" @click="toggle(source)">{{ source.enabled === false ? '启用' : '禁用' }}</button>
+            <button class="ghost" @click="editing = JSON.stringify(source, null, 2)">编辑</button>
+            <button class="ghost" @click="removeSource(source)">删除</button>
+          </div>
+        </div>
+      </template>
+
+      <div class="row" style="margin: 16px 0 12px; flex-wrap: wrap">
         <input ref="fileInput" type="file" accept=".json" hidden @change="importFile" />
         <button class="primary" @click="fileInput.click()">导入文件</button>
         <button @click="exportSources">导出</button>
-      </div>
-      <div class="row" style="margin-bottom: 16px">
-        <input v-model="remoteUrl" placeholder="远程书源地址（订阅链接）" style="flex: 1" @keyup.enter="importRemote" />
+        <input v-model="remoteUrl" placeholder="远程书源地址（订阅链接）" style="flex: 1; min-width: 200px" @keyup.enter="importRemote" />
         <button @click="importRemote">从 URL 导入</button>
-      </div>
-
-      <div v-if="!filtered.length" class="empty">没有匹配的书源</div>
-      <div v-else class="list">
-        <div v-for="source in filtered" :key="source.bookSourceUrl" class="list-item">
-          <div style="flex: 1; min-width: 0">
-            <div class="row" style="gap: 6px; flex-wrap: wrap">
-              <strong>{{ source.bookSourceName }}</strong>
-              <span class="badge" :class="{ accent: source.html }">{{ source.html ? 'WebView' : '规则' }}</span>
-              <span v-if="source.bookSourceGroup" class="badge">{{ source.bookSourceGroup }}</span>
-              <span v-if="source.invalid" class="badge" style="color: var(--color-danger)">失效</span>
-              <span v-if="source.enabled === false" class="badge">已禁用</span>
-            </div>
-            <div class="muted" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-              {{ source.bookSourceUrl }}
-            </div>
-          </div>
-          <button class="ghost" @click="toggle(source)">{{ source.enabled === false ? '启用' : '禁用' }}</button>
-          <button class="ghost" @click="editing = JSON.stringify(source, null, 2)">编辑</button>
-          <button class="ghost" @click="removeSource(source)">删除</button>
-        </div>
       </div>
     </section>
 
