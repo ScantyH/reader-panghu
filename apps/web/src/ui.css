@@ -691,3 +691,37 @@
 
 /* ⋯ 移到右下，避开未读徽标 */
 .shelf-card .card-more { top: auto; bottom: 8px; right: 8px; }
+/* ─── 布局切换：图标在每个格子里严格居中 ─── */
+.page-head {
+  align-items: center;
+}
+
+.layout-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 34px;
+  padding: 3px;
+  flex: none;
+}
+
+.layout-toggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
+  font-size: 0;
+}
+
+.layout-toggle button svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  flex: none;
+}
