@@ -37,7 +37,8 @@ async function logout() {
   authUser.value = ''
   location.href = '/login'
 }
-const showHeaderSearch = () => route.name === 'bookshelf' || route.name === 'recent'
+// 顶部搜索框在所有页面都显示（阅读页与登录页除外）
+const showHeaderSearch = () => !isReader() && !isLogin()
 
 function submitSearch() {
   const q = headerQuery.value.trim()
