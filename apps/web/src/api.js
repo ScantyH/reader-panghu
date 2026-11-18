@@ -6,6 +6,42 @@
  */
 
 const TOKEN_KEY = 'rp_token'
+const APP_KEY = 'rp_app'
+
+/** 原生外壳里的网页：隐藏重复的退出入口，并提供「App 设置」。 */
+export const isNativeApp = () => {
+  try {
+    return Boolean(window.__PANGHU_APP__) || sessionStorage.getItem(APP_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 外壳首屏会带 ?token=…&app=1 进入：
+ * 读出来写进 localStorage，再把地址栏清理干净，后续路由不受影响。
+ */
+export function bootstrapFromURL() {
+  try {
+    if (window.__PANGHU_APP__) sessionStorage.setItem(APP_KEY, '1')
+    const params = new URLSearchParams(location.search)
+    const token = params.get('token')
+    if (token) setToken(token)
+    if (params.get('app') === '1') sessionStorage.setItem(APP_KEY, '1')
+    if (window.__PANGHU_APP__ || params.get('app') === '1') {
+      document.documentElement.classList.add('is-app')
+    }
+    if (params.has('token') || params.has('app')) {
+      params.delete('token')
+      params.delete('app')
+      const rest = params.toString()
+      history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash)
+    }
+  } catch {
+    /* 忽略：地址栏不可写时不影响登录态 */
+  }
+}
+
 export const getToken = () => {
   try {
     return localStorage.getItem(TOKEN_KEY) || ''
@@ -73,8 +109,9 @@ export const api = {
   deleteBookCache: (bookUrl) => request('/deleteBookCache', { method: 'POST', body: { bookUrl } }),
   saveBook: (book) => request('/saveBook', { method: 'POST', body: book }),
   deleteBooks: (books) => request('/deleteBooks', { method: 'POST', body: books }),
-  saveProgress: (bookUrl, index, position = 0, chapterTitle = '') =>
-    request('/saveBookProgress', { method: 'POST', body: { bookUrl, index, position, chapterTitle } }),
+  saveProgress: (bookUrl, index, position = 0, chapterTitle = '', extra = {}) =>
+    request('/saveBookProgress', { method: 'POST', body: { bookUrl, index, position, chapterTitle, ...extra } }),
+  getBookProgress: (bookUrl) => request('/getBookProgress?bookUrl=' + encodeURIComponent(bookUrl)),
   cacheBook: (bookUrl, count = 20, refresh = false, start = 0) =>
     request('/cacheBook', { method: 'POST', body: { bookUrl, count, refresh, start } }),
   checkChapterUpdates: () => request('/checkChapterUpdates', { method: 'POST', body: { limit: 30 } }),
@@ -96,7 +133,7 @@ export const api = {
   sources: () => request('/getBookSources'),
   sourceBundles: () => request('/getSourceBundles'),
   sourceBundleLimit: () => request('/getSourceBundleLimit'),
-  checkSourceKeys: () => request('/checkSourceKeys', { method: 'POST' }),
+  checkSourceKeys: () => request('/checkSourceKeys', { method: 'POST', body: {} }),
   importSources: (sources, name) => request('/importBookSources', { method: 'POST', body: { sources, name } }),
   setSourceKey: (bookSourceUrl, key) => request('/setSourceKey', { method: 'POST', body: { bookSourceUrl, key } }),
   reorderSources: (urls) => request('/reorderBookSources', { method: 'POST', body: { urls } }),
