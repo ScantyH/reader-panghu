@@ -5,7 +5,7 @@ import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf, searchStream } from '../api.js'
 
 const keyword = ref('')
-const sources = ref([])
+const bundles = ref([])
 const scope = ref('')
 const results = ref([])
 const searching = ref(false)
@@ -13,16 +13,27 @@ const picked = ref(null)
 const route = useRoute()
 const progress = ref({ seen: [], counts: {} })
 
+const totals = computed(() => {
+  return bundles.value.reduce(
+    (sum, bundle) => ({
+      count: sum.count + Number(bundle.count || 0),
+      enabled: sum.enabled + Number(bundle.enabledCount || 0),
+      searchable: sum.searchable + Number(bundle.searchableCount || 0),
+    }),
+    { count: 0, enabled: 0, searchable: 0 },
+  )
+})
+const scopeStat = computed(() => bundles.value.find((bundle) => bundle.name === scope.value) || null)
+const progressTotal = computed(() => (scopeStat.value ? Number(scopeStat.value.searchableCount) || 0 : totals.value.searchable))
 const progressText = computed(() => {
-  const total = sources.value.length
   const done = progress.value.seen.length
-  return total ? `已搜 ${done}/${total} 个源` : ''
+  return progressTotal.value ? `已搜 ${done}/${progressTotal.value} 个源` : ''
 })
 
-async function loadSources() {
+async function loadBundles() {
   try {
-    sources.value = (await api.sources()).filter((source) => source.html || source.searchUrl)
-    if (!sources.value.length) window.__toast?.('还没有可用的书源，先去「书源」页导入')
+    bundles.value = await api.sourceBundles()
+    if (!bundles.value.length) window.__toast?.('还没有可用的书源，先去「书源」页导入')
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -35,7 +46,7 @@ async function search() {
   progress.value = { seen: [], counts: {} }
   searching.value = true
   try {
-    await searchStream({ key, bookSourceUrl: scope.value || undefined }, (books) => {
+    await searchStream({ key, bookSourceBundle: scope.value || undefined }, (books) => {
       const dedupe = new Set(results.value.map((book) => `${book.origin}::${book.bookUrl}`))
       results.value = [...results.value, ...books.filter((book) => !dedupe.has(`${book.origin}::${book.bookUrl}`))]
       // 按来源累计，没有结果的书源也要算作"已搜过"
@@ -72,7 +83,7 @@ async function addToShelf(book) {
 }
 
 onMounted(async () => {
-  await loadSources()
+  await loadBundles()
   // 顶部栏搜索框跳过来时带着 q，直接搜
   const q = String(route.query.q || '').trim()
   if (q) {
@@ -91,25 +102,26 @@ onMounted(async () => {
       <span v-else-if="results.length" class="badge">{{ results.length }} 个结果</span>
     </div>
 
-    <div class="row" style="margin-bottom: 18px; flex-wrap: wrap">
+    <div class="row m-search-row" style="margin-bottom: 18px; flex-wrap: wrap">
       <input
         v-model="keyword"
+        class="m-search-input"
         placeholder="书名 / 作者"
         style="flex: 1; min-width: 200px"
         @keyup.enter="search"
       />
-      <select v-model="scope" style="max-width: 220px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px">
-        <option value="">全部书源</option>
-        <option v-for="source in sources" :key="source.bookSourceUrl" :value="source.bookSourceUrl">
-          {{ source.bookSourceName }}
+      <select v-model="scope" class="m-search-scope" style="max-width: 340px">
+        <option value="">全部书源 · {{ totals.count }} 个源 / 已启用 {{ totals.enabled }}</option>
+        <option v-for="bundle in bundles" :key="bundle.name" :value="bundle.name">
+          {{ bundle.name }} · {{ bundle.count }} 个源 / 已启用 {{ bundle.enabledCount }}
         </option>
       </select>
-      <button class="primary" :disabled="searching" @click="search">搜索</button>
+      <button class="primary m-search-btn" :disabled="searching" @click="search">搜索</button>
     </div>
 
     <div v-if="!results.length && !searching" class="empty">输入关键词，跨书源搜索。</div>
 
-    <div class="grid">
+    <div class="grid m-result-grid">
       <div v-for="book in results" :key="`${book.origin}::${book.bookUrl}`" class="card" @click="pick(book)">
         <div class="cover">
           <img v-if="coverOf(book)" :src="coverOf(book)" :alt="book.name" loading="lazy" />

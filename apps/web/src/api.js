@@ -94,6 +94,9 @@ export const api = {
 
   // sources
   sources: () => request('/getBookSources'),
+  sourceBundles: () => request('/getSourceBundles'),
+  sourceBundleLimit: () => request('/getSourceBundleLimit'),
+  importSources: (sources, name) => request('/importBookSources', { method: 'POST', body: { sources, name } }),
   saveSources: (sources, bundle) => request('/saveBookSources', { method: 'POST', body: bundle ? { sources, bundle } : sources }),
   renameBundle: (from, to) => request('/renameBundle', { method: 'POST', body: { from, to } }),
   mergeBundles: (names, into) => request('/mergeBundles', { method: 'POST', body: { names, into } }),
@@ -183,10 +186,11 @@ export const api = {
 }
 
 /** SSE multi-source search: onBooks per source batch, resolves when the stream ends. */
-export function searchStream({ key, bookSourceUrl, bookSourceGroup }, onBooks) {
+export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBundle }, onBooks) {
   const query = new URLSearchParams({ key })
   if (bookSourceUrl) query.set('bookSourceUrl', bookSourceUrl)
   if (bookSourceGroup) query.set('bookSourceGroup', bookSourceGroup)
+  if (bookSourceBundle) query.set('bookSourceBundle', bookSourceBundle)
   const source = new EventSource(`${BASE}${withToken(`/searchBookMultiSSE?${query}`)}`)
   return new Promise((resolve, reject) => {
     source.onmessage = (event) => {

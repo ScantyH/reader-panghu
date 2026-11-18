@@ -24,6 +24,12 @@ import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.j
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
 
+/** 书源批次默认上限 100，可用 SOURCE_BUNDLE_LIMIT 调整 */
+const SOURCE_BUNDLE_LIMIT = (() => {
+  const value = Math.floor(Number(process.env.SOURCE_BUNDLE_LIMIT || 100))
+  return Number.isFinite(value) && value > 0 ? value : 100
+})()
+
 const now = () => Date.now()
 
 export function registerReader3(app, { store, dataDir, options = {} }) {
@@ -480,6 +486,53 @@ async function primeBook(book) {
     return ok({ saved: true })
   })
 
+  /** 书源批次的汇总统计：搜索页只需要这些数字，不用把上千个书源发给前端 */
+  app.get('/reader3/getSourceBundles', async () => {
+    const rows = new Map()
+    for (const source of store.listSources()) {
+      const name = String(source._bundle || '未归类')
+      if (!rows.has(name)) rows.set(name, { name, count: 0, enabledCount: 0, searchableCount: 0 })
+      const row = rows.get(name)
+      row.count += 1
+      if (source.enabled !== false) {
+        row.enabledCount += 1
+        if (source.html || source.searchUrl) row.searchableCount += 1
+      }
+    }
+    return ok(
+      [...rows.values()].sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name), 'zh-Hans-CN')),
+    )
+  })
+
+  app.get('/reader3/getSourceBundleLimit', async () => ok({ limit: SOURCE_BUNDLE_LIMIT }))
+
+  /** 导入书源：每次都必须新建一个批次，同名自动加序号，不覆盖已有批次 */
+  app.post('/reader3/importBookSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
+    const list = Array.isArray(req.body?.sources) ? req.body.sources : []
+    const prepared = list
+      .filter((source) => source && source.bookSourceUrl)
+      .map((source) => ({ ...source }))
+    if (!prepared.length) return fail('没有解析出书源')
+    const newCount = prepared.filter((source) => !store.getSource(String(source.bookSourceUrl))).length
+    if (newCount) {
+      const quota = sourceQuotaError(store, req, newCount)
+      if (quota) return fail(quota)
+    }
+    const names = new Set(store.listSources().map((source) => String(source._bundle || '未归类')))
+    if (names.size >= SOURCE_BUNDLE_LIMIT) {
+      return fail(`书源批次已达上限 ${SOURCE_BUNDLE_LIMIT} 个，请先汇总或删除旧批次`)
+    }
+    const requested =
+      String(req.body?.name || '').trim() ||
+      `导入 ${new Date().toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+    let bundle = requested
+    for (let index = 2; names.has(bundle); index += 1) bundle = `${requested} (${index})`
+    store.saveSources(prepared.map((source) => ({ ...source, _bundle: bundle })))
+    return ok({ bundle, count: prepared.length, bundles: names.size + 1 })
+  })
+
   /** 给某个批次改名（备注） */
   app.post('/reader3/renameBundle', async (req) => {
     const blocked = editSourcesBlocked(req)
@@ -591,9 +644,10 @@ async function primeBook(book) {
 
   /* ----------------------------------------------------------------- search */
 
-  const searchAll = async (keyword, { group, sourceUrl, limit = 0 } = {}) => {
+  const searchAll = async (keyword, { group, sourceUrl, bundle, limit = 0 } = {}) => {
     const sources = enabledSources().filter((source) => {
       if (sourceUrl) return source.bookSourceUrl === sourceUrl
+      if (bundle) return String(source._bundle || '未归类') === bundle
       if (group) return source.bookSourceGroup === group
       return true
     })
@@ -667,10 +721,10 @@ async function primeBook(book) {
   }
 
   app.post('/reader3/searchBookMulti', async (req) => {
-    const { key, bookSourceGroup, bookSourceUrl } = req.body || {}
+    const { key, bookSourceGroup, bookSourceUrl, bookSourceBundle } = req.body || {}
     const keyword = String(key ?? '').trim()
     if (!keyword) return fail('请输入搜索关键词')
-    const books = await searchAll(keyword, { group: bookSourceGroup, sourceUrl: bookSourceUrl })
+    const books = await searchAll(keyword, { group: bookSourceGroup, sourceUrl: bookSourceUrl, bundle: bookSourceBundle })
     return ok(books)
   })
 
@@ -678,6 +732,7 @@ async function primeBook(book) {
     const keyword = String(req.query?.key ?? '').trim()
     const group = req.query?.bookSourceGroup ? String(req.query.bookSourceGroup) : ''
     const sourceUrl = req.query?.bookSourceUrl ? String(req.query.bookSourceUrl) : ''
+    const bundle = req.query?.bookSourceBundle ? String(req.query.bookSourceBundle) : ''
 
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -696,6 +751,7 @@ async function primeBook(book) {
       } else {
         const sources = enabledSources().filter((source) => {
           if (sourceUrl) return source.bookSourceUrl === sourceUrl
+          if (bundle) return String(source._bundle || '未归类') === bundle
           if (group) return source.bookSourceGroup === group
           return true
         })

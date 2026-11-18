@@ -1,4 +1,4 @@
-﻿/* ─── reader-next 风格补充：横滑 tabs、底部抽屉、浮动控制条、过渡 ─── */
+/* ─── reader-next 风格补充：横滑 tabs、底部抽屉、浮动控制条、过渡 ─── */
 
 /* 横滑分组 tabs */
 .group-tabs {
@@ -788,6 +788,11 @@
 .bundle-card.active {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 1px var(--color-primary) inset;
+}
+
+.bundle-card.picked {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg, #fdf3e6);
 }
 
 .bundle-info { flex: 1; min-width: 0; cursor: pointer; }
