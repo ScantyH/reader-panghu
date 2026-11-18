@@ -1376,6 +1376,7 @@ watch(chapterTitle, () => {
   background: rgba(255, 255, 255, 0.55);
   font-size: 15px;
   line-height: 1;
+  justify-content: center;
   box-shadow: 0 1px 2px rgba(80, 60, 30, 0.12);
 }
 
