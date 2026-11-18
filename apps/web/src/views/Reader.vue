@@ -153,6 +153,7 @@ let readSeconds = 0
 let wakeLock = null
 let mediaQuery = null
 let touchStart = null
+let cacheWarmed = false
 
 const anyPanel = computed(
   () =>
@@ -344,6 +345,7 @@ async function loadChapter(index) {
     current.value = target
     searchHits.value = []
     loadParagraphComments()
+    warmCache(target)
     api.saveProgress(book.value.bookUrl, target, 0, chapters.value[target]?.title || '').catch(() => {})
     await nextTick()
     window.scrollTo({ top: 0 })
@@ -705,13 +707,31 @@ async function toggleWakeLock() {
 async function cacheChapter() {
   caching.value = true
   try {
-    const result = await api.cacheBook(book.value.bookUrl, 50)
-    window.__toast?.(`已缓存 ${result.cached} 章（累计 ${result.totalCached}）`)
+    const from = current.value
+    const result = await api.cacheBook(book.value.bookUrl, 50, false, from)
+    window.__toast?.(`已缓存 ${result.cached} 章（从第 ${from + 1} 章起，累计 ${result.totalCached}）`)
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
     caching.value = false
   }
+}
+
+/**
+ * 打开一本书时只预热「当前章 + 后 49 章」，不整本缓存。
+ * 之后每读一章，服务端在取正文时顺手把它写入缓存，所以缓存随阅读位置向后长。
+ */
+const warmCache = (index) => {
+  const origin = String(book.value?.origin || '')
+  // 只有本地文件书不需要预热；书源自己的 URL 也可能以 local:// 开头，不能一律跳过。
+  if (!origin || /^local:\/\/(txt|epub|docx|mobi|pdf)(\/|$)/i.test(origin) || cacheWarmed) return
+  cacheWarmed = true
+  api
+    .cacheBook(book.value.bookUrl, 50, false, index)
+    .then((result) => {
+      if (result?.cached) window.__toast?.(`已从第 ${index + 1} 章起缓存 ${result.cached} 章`)
+    })
+    .catch(() => {})
 }
 
 async function setConvert(mode) {

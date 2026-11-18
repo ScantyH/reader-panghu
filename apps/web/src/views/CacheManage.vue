@@ -29,8 +29,9 @@ async function clear(book) {
 
 async function cache(book) {
   try {
-    const result = await api.cacheBook(book.bookUrl, 50)
-    window.__toast?.(`已缓存 ${result.cached} 章（累计 ${result.totalCached}）`)
+    const from = Math.max(0, Number(book.durChapterIndex) || 0)
+    const result = await api.cacheBook(book.bookUrl, 50, false, from)
+    window.__toast?.(`已从第 ${from + 1} 章起缓存 ${result.cached} 章（累计 ${result.totalCached}）`)
     await load()
   } catch (error) {
     window.__toast?.(error.message)
@@ -50,7 +51,7 @@ onMounted(load)
     </div>
 
     <p class="muted" style="font-size: 13px; margin-top: -6px">
-      缓存过的章节断网也能读；缓存存放在服务端，换设备同样有效。
+      打开一本书时会从当前章往后缓存 50 章，之后每读一章再多缓存一章，不会整本缓存。缓存过的章节断网也能读，且存在服务端，换设备同样有效。
     </p>
 
     <div v-if="loading" class="muted">加载中…</div>
@@ -60,7 +61,7 @@ onMounted(load)
         <div style="flex: 1; min-width: 0">
           <strong style="font-size: 14px">{{ book.name }}</strong>
           <div class="muted" style="font-size: 12px">
-            {{ book.totalChapterNum || 0 }} 章 · 已缓存 {{ book.cachedChapterCount || 0 }} 章
+            共 {{ book.totalChapterNum || 0 }} 章 · 已缓存 {{ book.cachedChapterCount || 0 }} 章
           </div>
         </div>
         <button class="ghost" @click="cache(book)">缓存 50 章</button>

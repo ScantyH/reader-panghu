@@ -13,14 +13,12 @@ let timer = 0
 
 /** 子页面的上一级菜单：返回按钮据此显示上一级名称 */
 const PARENTS = {
-  warehouse: { label: '书架', to: '/settings/shelf' },
-  bookmarks: { label: '书架', to: '/settings/shelf' },
-  cache: { label: '书架', to: '/settings/shelf' },
-  replace: { label: '书架', to: '/settings/shelf' },
-  stats: { label: '数据', to: '/settings/data' },
-  backup: { label: '数据', to: '/settings/data' },
-  webdav: { label: '数据', to: '/settings/data' },
-  users: { label: '账号', to: '/settings/account' },
+  warehouse: { label: '书架管理', to: '/settings/shelf' },
+  bookmarks: { label: '书架管理', to: '/settings/shelf' },
+  cache: { label: '书架管理', to: '/settings/shelf' },
+  replace: { label: '书架管理', to: '/settings/shelf' },
+  webdav: { label: '数据管理', to: '/settings/data' },
+  users: { label: '账号管理', to: '/settings/account' },
   rss: { label: '书源', to: '/sources' },
   'book-detail': { label: '书架', to: '/bookshelf' },
 }

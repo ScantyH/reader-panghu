@@ -143,7 +143,9 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   app.get('/reader3/getShelfBookWithCacheInfo', async () => {
     const books = store.listBooks().map(withReadTitle).map((book) => ({
       ...book,
-      cachedChapterCount: store.countChapters(book.bookUrl, book.origin),
+      // 缓存管理要显示「正文已缓存」的真实章数；countChapters 是目录条数，
+      // 会把整本目录都算成已缓存。
+      cachedChapterCount: store.countChapterTexts(cacheKey(book)),
       browserCachedChapterCount: 0,
     }))
     return ok(books)
@@ -433,8 +435,11 @@ async function primeBook(book) {
   })
 
   app.post('/reader3/deleteBookCache', async (req) => {
-    store.clearChapterTexts(String(req.body?.bookUrl ?? ''))
-    store.deleteChapters(String(req.body?.bookUrl ?? ''))
+    const bookUrl = String(req.body?.bookUrl ?? '')
+    // 正文缓存按 `origin|bookUrl` 存，直接拿 bookUrl 删不掉；旧实现因此清不干净。
+    const book = store.getBook(bookUrl)
+    store.clearChapterTexts(book ? cacheKey(book) : bookUrl)
+    store.deleteChapters(bookUrl)
     return ok('已清除缓存')
   })
 

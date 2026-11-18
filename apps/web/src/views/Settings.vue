@@ -8,10 +8,11 @@ const route = useRoute()
 const router = useRouter()
 
 const SECTIONS = [
-  { id: 'account', label: '账号', icon: '👤', desc: '账号信息、密码与用户' },
-  { id: 'shelf', label: '书架', icon: '📚', desc: '导入、分组、缓存与工具' },
-  { id: 'data', label: '数据', icon: '📈', desc: '阅读统计、备份与 WebDAV' },
-  { id: 'system', label: '系统', icon: '⚙️', desc: '运行状态与关于' },
+  { id: 'account', label: '账号管理', icon: '👤', desc: '账号信息、密码与用户' },
+  { id: 'shelf', label: '书架管理', icon: '📚', desc: '导入、分组、缓存与工具' },
+  { id: 'data', label: '数据管理', icon: '📈', desc: '阅读统计、备份与 WebDAV' },
+  { id: 'system', label: '系统', icon: '⚙️', desc: '运行状态' },
+  { id: 'about', label: '关于', icon: 'ℹ️', desc: '应用信息与版本' },
 ]
 
 const section = computed(() => {
@@ -603,14 +604,17 @@ onMounted(load)
         </template>
 
         <!-- 系统 -->
-        <template v-else>
+        <template v-else-if="section === 'system'">
           <div class="settings-card">
             <div class="settings-card-title">运行状态</div>
             <div class="settings-kv"><span>书源</span><b>{{ health?.sources ?? '—' }}</b></div>
             <div class="settings-kv"><span>书籍</span><b>{{ health?.books ?? '—' }}</b></div>
             <div class="settings-kv"><span>运行时长</span><b>{{ uptimeText }}</b></div>
           </div>
+        </template>
 
+        <!-- 关于 -->
+        <template v-else>
           <div class="settings-card">
             <div class="settings-card-title">关于</div>
             <div class="settings-kv"><span>应用</span><b>胖虎阅读</b></div>
