@@ -114,6 +114,7 @@ watch(
 )
 
 const book = ref(null)
+let pendingRestore = null
 const chapters = ref([])
 const current = ref(0)
 const content = ref('')
