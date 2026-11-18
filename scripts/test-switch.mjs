@@ -1,5 +1,5 @@
 /**
- * 换源 test：旧源失效自动换源、手动换源保留章节进度、本地书不换源。
+ * 换源 test：手动换源保留章节进度、本地书不换源。
  *
  *   node scripts/test-switch.mjs
  */
@@ -105,12 +105,6 @@ try {
   })
   check('手动换源能找到其它来源', available.isSuccess === true && available.data.books.some((book) => book.origin === sourceB.bookSourceUrl), JSON.stringify(available.data))
 
-  const auto = await call('/reader3/autoSwitchBookSource', { method: 'POST', token, body: { bookUrl: bookA.bookUrl } })
-  check('自动换源成功', auto.isSuccess === true && auto.data?.book?.origin === sourceB.bookSourceUrl, auto.errorMsg)
-  check('按章节名保留进度', auto.data?.book?.durChapterIndex === 2 && auto.data?.book?.durChapterTitle === '第二章', JSON.stringify(auto.data?.book))
-  check('阅读位置保留', auto.data?.book?.durChapterPos === 50, String(auto.data?.book?.durChapterPos))
-  check('换源后能读正文', auto.data?.book && String(auto.data?.chapterTitle) === '第二章', auto.data?.chapterTitle)
-
   await call('/reader3/saveBook', { method: 'POST', token, body: bookA })
   const manual = await call('/reader3/setBookSource', {
     method: 'POST',
@@ -118,12 +112,11 @@ try {
     body: { bookUrl: bookA.bookUrl, newUrl: 'https://b.example/book/9', bookSourceUrl: sourceB.bookSourceUrl },
   })
   check('手动换源成功', manual.isSuccess === true && manual.data?.origin === sourceB.bookSourceUrl, manual.errorMsg)
-  check('手动换源也按章节名定位', manual.data?.durChapterIndex === 2 && manual.data?.durChapterTitle === '第二章', JSON.stringify(manual.data))
+  check('手动换源按章节名定位', manual.data?.durChapterIndex === 2 && manual.data?.durChapterTitle === '第二章', JSON.stringify(manual.data))
+  check('手动换源保留阅读位置', manual.data?.durChapterPos === 50, String(manual.data?.durChapterPos))
 
   const localBook = { ...bookA, bookUrl: 'local://switch-local', origin: 'local://txt', originName: '本地', name: '本地书' }
   await call('/reader3/saveBook', { method: 'POST', token, body: localBook })
-  const localAuto = await call('/reader3/autoSwitchBookSource', { method: 'POST', token, body: { bookUrl: localBook.bookUrl } })
-  check('本地书不自动换源', localAuto.isSuccess === false && /本地/.test(localAuto.errorMsg), localAuto.errorMsg)
   const localManual = await call('/reader3/setBookSource', {
     method: 'POST',
     token,

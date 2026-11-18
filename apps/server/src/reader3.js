@@ -81,7 +81,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     const runtime = { ...(source._runtime || {}) }
     const key = String(runtime.key || '')
     delete runtime.key
-    return { ...source, _runtime: runtime, hasKey: Boolean(key), keyHint: key ? key.slice(-4) : '' }
+    return { ...source, _runtime: runtime, hasKey: Boolean(key), keyHint: key ? key.slice(-4) : '', keyCheck: source._keyCheck || null }
   }
 
   /** Build a runtime for one stored source, or throw a readable error. */
@@ -532,68 +532,6 @@ async function primeBook(book) {
     return ok(store.saveBook(next))
   })
 
-  /** 自动换源：旧源失效时按书名/作者找可用来源，验证目录和正文后切换并保留进度 */
-  app.post('/reader3/autoSwitchBookSource', async (req) => {
-    const book = store.getBook(String(req.body?.bookUrl ?? ''))
-    if (!book) return fail('书籍不存在')
-    if (isLocalOrigin(book.origin)) return fail('本地书籍不需要换源')
-    const oldChapters = store.getChapters(book.bookUrl, book.origin) || []
-    const oldIndex = Math.max(0, Number(book.durChapterIndex) || 0)
-    const oldTitle = oldChapters[oldIndex]?.title || String(book.durChapterTitle || '')
-    const limit = Math.max(1, Math.min(30, Number(process.env.AUTO_SWITCH_SOURCES || 20)))
-    const candidates = store
-      .listSources()
-      .filter((source) => source.enabled !== false && source.bookSourceUrl !== book.origin)
-      .filter((source) => source.html || source.searchUrl)
-      .slice(0, limit)
-    let tried = 0
-
-    for (const source of candidates) {
-      tried += 1
-      try {
-        const match = await Promise.race([
-          withRuntime(source.bookSourceUrl, async (runtime) => {
-            const found = await runtime.search(book.name, 1)
-            for (const candidate of Array.isArray(found) ? found : []) {
-              if (String(candidate?.name || '').trim() !== String(book.name || '').trim()) continue
-              if (book.author && candidate.author && !String(candidate.author).includes(String(book.author)) && !String(book.author).includes(String(candidate.author))) continue
-              const chapters = mapChapters(await runtime.chapter(candidate.tocUrl || candidate.bookUrl))
-              if (!chapters.length) continue
-              const matched = oldTitle ? chapters.findIndex((chapter) => chapter.title === oldTitle) : -1
-              const target = matched >= 0 ? matched : Math.min(oldIndex, chapters.length - 1)
-              const content = await runtime.content(chapters[target].url)
-              const text = String(content || '')
-              if (text.trim().length < 20 || looksLikeSourceError(text)) continue
-              return { candidate, chapters, target }
-            }
-            return null
-          }),
-          new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
-        ])
-        if (!match) continue
-        const next = toBook({ ...match.candidate }, source, book)
-        next.durChapterIndex = match.target
-        next.durChapterTitle = match.chapters[match.target]?.title || next.durChapterTitle
-        next.totalChapterNum = match.chapters.length
-        next.latestChapterTitle = match.chapters.at(-1)?.title || next.latestChapterTitle
-        store.deleteChapters(book.bookUrl)
-        store.saveChapters(next.bookUrl, next.origin, match.chapters)
-        const saved = store.saveBook(next)
-        return ok({
-          book: saved,
-          chapterIndex: match.target,
-          chapterTitle: next.durChapterTitle,
-          originName: source.bookSourceName,
-          switchedFrom: book.originName,
-          tried,
-        })
-      } catch (error) {
-        app.log.warn(`[switch] ${source.bookSourceName}: ${error.message}`)
-      }
-    }
-    return fail(`没有找到可用的其它书源（已尝试 ${tried} 个），可以在换源里手动选择`)
-  })
-
   /* ---------------------------------------------------------------- sources */
 
   app.get('/reader3/getBookSources', async () => ok(store.listSources().map(sanitizeSource)))
@@ -659,6 +597,40 @@ async function primeBook(book) {
   })
 
   app.get('/reader3/getSourceBundleLimit', async () => ok({ limit: SOURCE_BUNDLE_LIMIT }))
+
+  /** 每小时检测一次设置了密钥的书源是否仍然有效 */
+  app.post('/reader3/checkSourceKeys', async () => {
+    const interval = 60 * 60 * 1000
+    const now = Date.now()
+    const sources = store.listSources().filter((source) => source._runtime?.key)
+    const results = []
+    let checked = 0
+    for (const source of sources) {
+      const checkedAt = Number(source._keyCheck?.checkedAt || 0)
+      if (now - checkedAt < interval) {
+        results.push({ bookSourceUrl: source.bookSourceUrl, ...source._keyCheck })
+        continue
+      }
+      let valid = false
+      let message = ''
+      try {
+        const books = await Promise.race([
+          withRuntime(source.bookSourceUrl, (runtime) => runtime.search('斗罗大陆', 1)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('检测超时')), 12000)),
+        ])
+        valid = true
+        message = `可用（${Array.isArray(books) ? books.length : 0} 个结果）`
+      } catch (error) {
+        valid = false
+        message = error.message || '检测失败'
+      }
+      source._keyCheck = { valid, message, checkedAt: Date.now() }
+      store.saveSource(source)
+      checked += 1
+      results.push({ bookSourceUrl: source.bookSourceUrl, ...source._keyCheck })
+    }
+    return ok({ checked, results })
+  })
 
   /** 导入书源：每次都必须新建一个批次，同名自动加序号，不覆盖已有批次 */
   app.post('/reader3/importBookSources', async (req) => {

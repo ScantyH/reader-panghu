@@ -114,8 +114,6 @@ watch(
 )
 
 const book = ref(null)
-const autoSwitching = ref(false)
-let autoSwitchTried = false
 const chapters = ref([])
 const current = ref(0)
 const content = ref('')
@@ -389,7 +387,6 @@ function openSearchFromSettings() {
 }
 
 async function loadBook() {
-  autoSwitchTried = false
   try {
     const shelf = await api.bookshelf()
     book.value = shelf.find((item) => item.bookUrl === props.bookUrl) || null
@@ -410,38 +407,7 @@ async function loadBook() {
     loadNotes()
     loadBookmarks()
   } catch (error) {
-    if (!isLocalBook.value && !autoSwitchTried && looksLikeSourceError(error.message) && (await tryAutoSwitch())) return
     window.__toast?.(error.message)
-  }
-}
-
-const sourceErrorPattern = /(加载失败|获取失败|请求失败|密钥|设备数已满|书源不存在|章节不存在|找不到章节|HTTP\s*[45]\d\d|超时|timeout)/i
-const looksLikeSourceError = (text) => sourceErrorPattern.test(String(text || ''))
-
-/** 书源失效时自动找可用来源，切完跳到同一章 */
-async function tryAutoSwitch() {
-  if (isLocalBook.value || autoSwitching.value || autoSwitchTried) return false
-  autoSwitchTried = true
-  autoSwitching.value = true
-  try {
-    window.__toast?.('原书源可能失效，正在自动换源…')
-    const result = await api.autoSwitchBookSource({ bookUrl: book.value.bookUrl })
-    book.value = result.book
-    chapters.value = await api.chapterList({
-      bookUrl: book.value.bookUrl,
-      tocUrl: book.value.tocUrl,
-      bookSourceUrl: book.value.origin,
-    })
-    const index = Math.min(Math.max(0, Number(result.chapterIndex) || 0), Math.max(0, chapters.value.length - 1))
-    window.__toast?.(`已自动换到「${result.originName}」`)
-    pendingRestore = null
-    await loadChapter(index, { fromRemote: true })
-    return true
-  } catch (error) {
-    window.__toast?.(`自动换源失败：${error.message}`)
-    return false
-  } finally {
-    autoSwitching.value = false
   }
 }
 
@@ -458,9 +424,6 @@ async function loadChapter(index, { fromRemote = false } = {}) {
       index: target,
       convert: prefs.value.convert || undefined,
     })
-    if ((!String(text || '').trim() || looksLikeSourceError(text)) && !isLocalBook.value && !autoSwitchTried) {
-      if (await tryAutoSwitch()) return
-    }
     content.value = text
     current.value = target
     searchHits.value = []
@@ -478,7 +441,6 @@ async function loadChapter(index, { fromRemote = false } = {}) {
     // 用户自己翻章：立刻把新章节写进服务端，另一端马上能看到。
     if (!fromRemote) saveProgressNow({ force: true })
   } catch (error) {
-    if (!isLocalBook.value && !autoSwitchTried && looksLikeSourceError(error.message) && (await tryAutoSwitch())) return
     window.__toast?.(error.message)
   } finally {
     loading.value = false
@@ -649,7 +611,6 @@ async function switchSource(candidate) {
       tocUrl: switched.tocUrl,
       bookSourceUrl: switched.origin,
     })
-    autoSwitchTried = false
     showSource.value = false
     window.__toast?.(`已切换到「${candidate.originName}」`)
     router.replace({ path: '/read', query: { book: switched.bookUrl } }).catch(() => {})
