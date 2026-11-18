@@ -134,6 +134,7 @@ export const api = {
   sourceBundles: () => request('/getSourceBundles'),
   sourceBundleLimit: () => request('/getSourceBundleLimit'),
   importSources: (sources, name) => request('/importBookSources', { method: 'POST', body: { sources, name } }),
+  setSourceKey: (bookSourceUrl, key) => request('/setSourceKey', { method: 'POST', body: { bookSourceUrl, key } }),
   saveSources: (sources, bundle) => request('/saveBookSources', { method: 'POST', body: bundle ? { sources, bundle } : sources }),
   renameBundle: (from, to) => request('/renameBundle', { method: 'POST', body: { from, to } }),
   mergeBundles: (names, into) => request('/mergeBundles', { method: 'POST', body: { names, into } }),
@@ -258,4 +259,13 @@ export const coverOf = (book) => {
   const token = getToken()
   const suffix = token ? `&token=${encodeURIComponent(token)}` : ''
   return `${BASE}/cover?path=${encodeURIComponent(url)}${suffix}`
+}
+
+/** 给 /reader3/* 的图片代理补 token，<img> 无法携带自定义请求头 */
+export const withImageToken = (path) => {
+  const value = String(path || '')
+  if (!value.startsWith('/reader3/')) return value
+  const token = getToken()
+  if (!token) return value
+  return value + (value.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token)
 }

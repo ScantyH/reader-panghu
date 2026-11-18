@@ -59,7 +59,7 @@ export function extractDpMarkers(html, { transform } = {}) {
   }
   marked += text.slice(cursor)
 
-  let cleaned = cleanText(marked)
+  let cleaned = cleanText(marked, { dropImages: true })
   if (typeof transform === 'function') cleaned = String(transform(cleaned))
 
   const lines = cleaned
@@ -87,22 +87,79 @@ export function extractDpMarkers(html, { transform } = {}) {
   return markers
 }
 
+const CARD_SENTINEL_RE = /\u0002CARD(\d+)\u0002/g
+
+const parseLooseJson = (raw) => {
+  try {
+    return JSON.parse(raw)
+  } catch {
+    /* 书源里的 json 常用单引号，继续尝试 */
+  }
+  try {
+    return JSON.parse(String(raw).replace(/'/g, '"'))
+  } catch {
+    return null
+  }
+}
+
 /**
- * 提取评论卡片：起点源把「本章说 / 神评论 / 作者说」做成服务端图片，
- * 正文里就是普通 <img src="http…">，这里按出现顺序收集。
+ * 提取正文里的普通图片（神评论 / 本章说 / 插图等卡片）。
+ * 段落序号按清洗后的正文行对齐；行内图片跟随所在段落，独占一行的图片归到上一段。
  */
 export function extractCards(html) {
   const text = String(html || '')
-  const cards = []
-  const re = /<img[^>]*src="(https?:\/\/[^"]+)"[^>]*>/gi
-  let cursor = 0
-  let paragraph = 0
+  const entries = []
+  IMAGE_TAG_RE.lastIndex = 0
   let match
-  while ((match = re.exec(text))) {
-    paragraph += (text.slice(cursor, match.index).match(/\n/g) || []).length
-    cursor = match.index + match[0].length
-    const alt = /alt="([^"]*)"/i.exec(match[0])?.[1] || ''
-    cards.push({ paragraph, src: match[1], alt })
+  while ((match = IMAGE_TAG_RE.exec(text))) {
+    const tag = match[0]
+    const srcMatch = /src\s*=\s*"([\s\S]*?)"/i.exec(tag) || /src\s*=\s*'([\s\S]*?)'/i.exec(tag)
+    if (!srcMatch) continue
+    let src = srcMatch[1].trim()
+    if (!src || /^dp:/i.test(src)) continue
+    let headers = {}
+    const jsonMatch = /^(.*),\s*(\{[\s\S]*\})\s*$/.exec(src)
+    if (jsonMatch) {
+      src = jsonMatch[1].trim()
+      const meta = parseLooseJson(jsonMatch[2])
+      if (meta && meta.headers && typeof meta.headers === 'object') headers = meta.headers
+    }
+    if (!src) continue
+    const alt = /alt\s*=\s*"([^"]*)"/i.exec(tag)?.[1] || ''
+    entries.push({ index: match.index, length: tag.length, src, alt, headers })
+  }
+  if (!entries.length) return []
+
+  let marked = ''
+  let cursor = 0
+  let seq = 0
+  for (const entry of entries) {
+    marked += text.slice(cursor, entry.index) + `\u0002CARD${seq++}\u0002`
+    cursor = entry.index + entry.length
+  }
+  marked += text.slice(cursor)
+
+  const cleaned = cleanText(marked, { dropImages: true })
+  const lines = cleaned
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const cards = []
+  let paragraph = -1
+  for (const line of lines) {
+    const ids = [...line.matchAll(CARD_SENTINEL_RE)].map((item) => Number(item[1]))
+    if (!ids.length) {
+      paragraph += 1
+      continue
+    }
+    const textOnly = line.replace(CARD_SENTINEL_RE, '').trim()
+    if (textOnly) paragraph += 1
+    const target = paragraph < 0 ? -1 : paragraph
+    for (const id of ids) {
+      const entry = entries[id]
+      if (entry) cards.push({ paragraph: target, src: entry.src, alt: entry.alt, headers: entry.headers })
+    }
   }
   return cards
 }

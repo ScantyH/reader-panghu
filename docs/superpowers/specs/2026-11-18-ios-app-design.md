@@ -134,3 +134,17 @@
 - WKWebView 的后台定时器会被挂起：进度兜底由原生在 `didEnterBackground` 触发一次。
 - 现有网页桌面优先，移动适配要动 `ui.css` / `styles.css` 与 Reader.vue，注意桌面不回归。
 - 免费签名 7 天续签；建议用户用 SideStore 自动续签。
+
+## 修订 2026-11-18（v2）：改为全原生，真材质
+
+用户明确要求「真材质，所有页面按苹果风格」。据此推翻 v1 的「网页内核 + 外壳」：
+
+- App 改为**原生 SwiftUI**（书架/详情/阅读器/发现/统计/我的），不再用 WKWebView 承载主界面。
+- CI 从 `macos-15` 改为 `macos-26`，用 iOS 26 SDK 构建，系统 TabView / NavigationStack / Sheet
+  自动获得 Liquid Glass，无需手写材质。
+- 网页端保留两件事：电脑端阅读界面（用于双向同步的另一端），以及复杂管理页的临时兜底。
+- 进度协议不变：`durChapterPos` = 章节内字符偏移，服务端最新者胜，SSE 推送。
+- 原生阅读器：滚动阅读 + 点按左右翻章 + 目录搜索 + 字号行距 + 五套主题 + AVSpeechSynthesizer 朗读；
+  打开时先取 `/reader3/getBookProgress`，还原到上次字符偏移；阅读中 1.2s 防抖写、切后台立即写。
+
+后续：书源调试/备份/WebDAV/用户管理等页面逐批转原生，最终去掉 WKWebView 兜底。
