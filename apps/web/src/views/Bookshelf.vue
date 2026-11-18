@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf } from '../api.js'
@@ -20,6 +20,7 @@ const infoBook = ref(null)
 const selectMode = ref(route.query.manage === '1')
 const selected = ref([])
 const moveTarget = ref('0')
+const isMobile = ref(false)
 /** 封面加载失败的书，回退成书名占位，避免显示破图 */
 const brokenCovers = reactive(new Set())
 let pressTimer = 0
@@ -118,6 +119,16 @@ const groupOptions = computed(() => {
   const rest = groups.value.filter((group) => Number(group.groupId) !== 0)
   return [{ groupId: 0, groupName: '未分组' }, ...rest]
 })
+
+/** 手机「继续阅读」卡片：优先最近读过的一本 */
+const continueBook = computed(() => {
+  const read = visible.value.filter((book) => Number(book.durChapterTime) > 0)
+  return read[0] || visible.value[0] || null
+})
+
+function updateMobile() {
+  isMobile.value = window.innerWidth <= 760
+}
 
 const tabs = computed(() => groups.value.filter((group) => group.groupId !== 0 || groups.value.length === 1))
 
@@ -269,12 +280,18 @@ function openMore(book) {
   actionBook.value = target
 }
 
-onMounted(load)
+onMounted(() => {
+  updateMobile()
+  window.addEventListener('resize', updateMobile)
+  load()
+})
+
+onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
 </script>
 
 <template>
   <div>
-    <div class="page-head">
+    <div class="page-head shelf-head">
       <h1>{{ recentOnly ? '最近阅读' : '书架' }}</h1>
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
@@ -290,6 +307,45 @@ onMounted(load)
         </button>
       </div>
     </div>
+
+    <!-- 手机：继续阅读卡片 + 全部书籍 -->
+    <template v-if="isMobile">
+      <section v-if="continueBook" class="m-continue" @click="open(continueBook)">
+        <div class="m-continue-main">
+          <h2>{{ continueBook.name }}</h2>
+          <p class="m-author">{{ continueBook.author || '未知作者' }}</p>
+          <p class="m-chapter">第 {{ Number(continueBook.durChapterIndex || 0) + 1 }} 章 · 共 {{ continueBook.totalChapterNum || 0 }} 章</p>
+          <div class="m-bar" :style="{ '--value': progressOf(continueBook) + '%' }">
+            <i />
+            <span>{{ progressOf(continueBook) }}%</span>
+          </div>
+          <button class="m-continue-btn" @click.stop="open(continueBook)">继续阅读 →</button>
+        </div>
+        <img
+          v-if="coverOf(continueBook)"
+          class="m-continue-cover"
+          :src="coverOf(continueBook)"
+          :alt="continueBook.name"
+        />
+      </section>
+
+      <div class="m-section-head">
+        <h2>全部书籍</h2>
+        <span class="m-count">{{ visible.length }} 本</span>
+        <div class="m-layout">
+          <button :class="{ active: layout === 'cover' }" aria-label="封面" @click="setLayout('cover')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="5" y="3.5" width="14" height="17" rx="3" />
+            </svg>
+          </button>
+          <button :class="{ active: layout === 'list' }" aria-label="列表" @click="setLayout('list')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <path d="M4 6h16M4 12h16M4 18h10" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </template>
 
     <div v-if="!recentOnly" class="group-tabs">
       <button class="group-tab" :class="{ active: activeGroup === 0 }" @click="activeGroup = 0">全部</button>
@@ -353,8 +409,17 @@ onMounted(load)
           <p class="shelf-line">{{ updatedAgo(book) }}：{{ latestName(book) }}</p>
           <p class="shelf-line shelf-intro">{{ book.intro || '' }}</p>
         </div>
-        <!-- 手机封面模式：书名列在封面下方，桌面保持纯封面 -->
+        <!-- 手机封面模式：书名 / 作者 / 进度 -->
         <h3 v-else class="shelf-cover-title">{{ book.name }}</h3>
+        <p v-if="layout === 'cover'" class="shelf-cover-author">{{ book.author || '未知作者' }}</p>
+        <div
+          v-if="layout === 'cover' && progressOf(book)"
+          class="shelf-card-progress"
+          :style="{ '--value': progressOf(book) + '%' }"
+        >
+          <i />
+          <span>已读 {{ progressOf(book) }}%</span>
+        </div>
       </article>
     </div>
 

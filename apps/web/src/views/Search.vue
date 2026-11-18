@@ -102,25 +102,26 @@ onMounted(async () => {
       <span v-else-if="results.length" class="badge">{{ results.length }} 个结果</span>
     </div>
 
-    <div class="row" style="margin-bottom: 18px; flex-wrap: wrap">
+    <div class="row m-search-row" style="margin-bottom: 18px; flex-wrap: wrap">
       <input
         v-model="keyword"
+        class="m-search-input"
         placeholder="书名 / 作者"
         style="flex: 1; min-width: 200px"
         @keyup.enter="search"
       />
-      <select v-model="scope" style="max-width: 340px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px">
+      <select v-model="scope" class="m-search-scope" style="max-width: 340px">
         <option value="">全部书源 · {{ totals.count }} 个源 / 已启用 {{ totals.enabled }}</option>
         <option v-for="bundle in bundles" :key="bundle.name" :value="bundle.name">
           {{ bundle.name }} · {{ bundle.count }} 个源 / 已启用 {{ bundle.enabledCount }}
         </option>
       </select>
-      <button class="primary" :disabled="searching" @click="search">搜索</button>
+      <button class="primary m-search-btn" :disabled="searching" @click="search">搜索</button>
     </div>
 
     <div v-if="!results.length && !searching" class="empty">输入关键词，跨书源搜索。</div>
 
-    <div class="grid">
+    <div class="grid m-result-grid">
       <div v-for="book in results" :key="`${book.origin}::${book.bookUrl}`" class="card" @click="pick(book)">
         <div class="cover">
           <img v-if="coverOf(book)" :src="coverOf(book)" :alt="book.name" loading="lazy" />
