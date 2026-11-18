@@ -94,7 +94,24 @@ function loadPrefs() {
 }
 
 const prefs = ref(loadPrefs())
-watch(prefs, (value) => localStorage.setItem('readerPrefs', JSON.stringify(value)), { deep: true })
+/** 打开设置面板时的快照：面板内先实时预览，点 ✓ 才保存，点 × 回滚 */
+const settingsSnapshot = ref('')
+const settingsDirty = computed(
+  () => Boolean(settingsSnapshot.value) && JSON.stringify(prefs.value) !== settingsSnapshot.value,
+)
+let skipNextPrefsPersist = false
+watch(
+  prefs,
+  (value) => {
+    if (skipNextPrefsPersist) {
+      skipNextPrefsPersist = false
+      return
+    }
+    // 设置面板打开期间只预览，写入由 ✓ 触发；面板内快捷切换不受影响
+    if (!showSettings.value) localStorage.setItem('readerPrefs', JSON.stringify(value))
+  },
+  { deep: true },
+)
 
 const book = ref(null)
 const chapters = ref([])
@@ -278,6 +295,7 @@ function onTouchEnd(event) {
 }
 
 function closePanels() {
+  if (showSettings.value) cancelSettings()
   showSettings.value = false
   showCatalog.value = false
   showSearch.value = false
@@ -305,6 +323,54 @@ function onKeydown(event) {
 
 function savePrefs() {
   localStorage.setItem('readerPrefs', JSON.stringify(prefs.value))
+}
+
+function openSettings() {
+  settingsSnapshot.value = JSON.stringify(prefs.value)
+  showSettings.value = true
+}
+
+function saveSettings() {
+  savePrefs()
+  settingsSnapshot.value = ''
+  showSettings.value = false
+  window.__toast?.('阅读设置已保存')
+}
+
+function cancelSettings() {
+  if (settingsSnapshot.value) {
+    try {
+      const restored = JSON.parse(settingsSnapshot.value)
+      skipNextPrefsPersist = true
+      prefs.value = restored
+    } catch {
+      /* 快照损坏时保持当前值 */
+    }
+  }
+  settingsSnapshot.value = ''
+  showSettings.value = false
+}
+
+/** 从设置面板跳到别的面板：有改动先保存，没改动直接关 */
+function leaveSettingsTo(open) {
+  if (settingsDirty.value) saveSettings()
+  else {
+    settingsSnapshot.value = ''
+    showSettings.value = false
+  }
+  open()
+}
+
+function openCatalogFromSettings() {
+  leaveSettingsTo(() => {
+    showCatalog.value = true
+  })
+}
+
+function openSearchFromSettings() {
+  leaveSettingsTo(() => {
+    showSearch.value = true
+  })
 }
 
 async function loadBook() {
@@ -816,7 +882,7 @@ watch(chapterTitle, () => {
       <button class="rail-btn" title="返回书架" @click="router.push('/bookshelf')"><span>⌂</span><i>书架</i></button>
       <button class="rail-btn" title="书源" @click="router.push('/sources')"><span>⌘</span><i>书源</i></button>
       <button class="rail-btn" title="目录" @click="showCatalog = true"><span>☰</span><i>目录</i></button>
-      <button class="rail-btn" title="设置" @click="showSettings = true"><span>⚙</span><i>设置</i></button>
+      <button class="rail-btn" title="设置" @click="openSettings"><span>⚙</span><i>设置</i></button>
       <button class="rail-btn" title="顶部" @click="toTop"><span>︿</span><i>顶部</i></button>
       <button class="rail-btn" title="底部" @click="toBottom"><span>﹀</span><i>底部</i></button>
     </aside>
@@ -880,14 +946,25 @@ watch(chapterTitle, () => {
     </div>
 
     <!-- 阅读设置（沿用旧版底部弹层） -->
-    <div v-if="showSettings" class="sheet-backdrop" @click.self="showSettings = false">
+    <div v-if="showSettings" class="sheet-backdrop" @click.self="cancelSettings">
       <div class="sheet reader-sheet settings-sheet" :style="{ background: theme.bg, color: theme.text }">
         <div class="sheet-handle" />
         <header class="panel-head settings-head">
           <h2>阅读设置</h2>
-          <button class="chrome-btn close-btn" aria-label="关闭阅读设置" title="关闭" @click="showSettings = false">
-            <span class="close-glyph" aria-hidden="true" />
-          </button>
+          <div class="settings-head-actions">
+            <button
+              v-if="settingsDirty"
+              class="chrome-btn save-btn"
+              aria-label="保存阅读设置"
+              title="保存阅读设置"
+              @click="saveSettings"
+            >
+              <span class="check-glyph" aria-hidden="true" />
+            </button>
+            <button class="chrome-btn close-btn" aria-label="关闭阅读设置" title="关闭" @click="cancelSettings">
+              <span class="close-glyph" aria-hidden="true" />
+            </button>
+          </div>
         </header>
         <div class="panel-body settings-body">
         <section class="panel-section">
@@ -1048,13 +1125,13 @@ watch(chapterTitle, () => {
             </select>
           </label>
           <div class="panel-actions">
-            <button class="ghost" @click="showCatalog = true; showSettings = false">目录</button>
+            <button class="ghost" @click="openCatalogFromSettings">目录</button>
             <button class="ghost" @click="showBookmarks = true; loadBookmarks()">书签</button>
             <button class="ghost" @click="showNotes = true; loadNotes()">笔记</button>
             <button class="ghost" @click="openDp">段评</button>
             <button class="ghost" @click="findSources">换源</button>
             <button class="ghost" :disabled="caching" @click="cacheChapter">{{ caching ? '缓存中…' : '缓存 50 章' }}</button>
-            <button class="ghost" @click="showSearch = true; showSettings = false">正文查找</button>
+            <button class="ghost" @click="openSearchFromSettings">正文查找</button>
             <button class="ghost" @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</button>
             <button class="ghost" @click="toggleWakeLock">{{ wakeLockOn ? '取消常亮' : '保持常亮' }}</button>
             <button class="ghost" @click="toTop">回顶部</button>
@@ -1647,6 +1724,28 @@ watch(chapterTitle, () => {
 .settings-head {
   padding: 0 0 10px;
   border: none;
+}
+
+.settings-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.save-btn {
+  color: var(--color-primary);
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.check-glyph {
+  display: block;
+  width: 15px;
+  height: 8px;
+  margin-top: -3px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
 }
 
 .settings-body {

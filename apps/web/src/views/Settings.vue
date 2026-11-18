@@ -139,6 +139,12 @@ async function changePassword() {
   }
 }
 
+/** 取消修改密码：清空输入，等同撤销未保存的改动 */
+function cancelPassword() {
+  oldPassword.value = ''
+  newPassword.value = ''
+}
+
 async function toggleRole(user) {
   const next = user.role === 'admin' ? 'user' : 'admin'
   if (!confirm(`把「${user.username}」设为${next === 'admin' ? '管理员' : '普通用户'}？`)) return
@@ -373,7 +379,10 @@ onMounted(load)
             <div class="settings-inline-form">
               <input v-model="oldPassword" type="password" name="rp-old-pass" autocomplete="new-password" placeholder="原密码" style="max-width: 200px" />
               <input v-model="newPassword" type="password" name="rp-new-pass" autocomplete="new-password" placeholder="新密码（≥6 位）" style="max-width: 200px" />
-              <button class="primary" @click="changePassword">保存</button>
+              <template v-if="oldPassword || newPassword">
+                <button class="primary" @click="changePassword">保存</button>
+                <button class="ghost" @click="cancelPassword">取消</button>
+              </template>
             </div>
           </div>
 
