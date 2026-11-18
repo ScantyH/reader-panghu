@@ -17,7 +17,7 @@ import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
 import { convertText } from './text-convert.js'
 import { extractContentImages, sourceTextToPlain } from './source-text.js'
-import { extractDpMarkers } from './comment-markers.js'
+import { extractCards, extractDpMarkers } from './comment-markers.js'
 import { cleanIntro, cleanText } from './text.js'
 import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
 
@@ -52,6 +52,36 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
         if (now - value.at > 15 * 60 * 1000) dpMarkerCache.delete(key)
       }
     }
+  }
+
+  // 正文卡片图（神评论 / 本章说 / 插图）短期缓存，前端只拿 id，不接触原地址和 headers
+  const cardImageCache = new Map()
+  const cacheCardImage = (card) => {
+    const src = String(card?.src || '')
+    const paragraph = Number.isFinite(Number(card?.paragraph)) ? Number(card.paragraph) : 0
+    if (/^data:image\//i.test(src)) {
+      if (src.length > 2 * 1024 * 1024) return null
+      return { paragraph, src, alt: String(card?.alt || '') }
+    }
+    if (!/^https?:\/\//i.test(src)) return null
+    const id = randomUUID()
+    cardImageCache.set(id, { url: src, headers: card?.headers || {}, at: Date.now() })
+    if (cardImageCache.size > 400) {
+      const now = Date.now()
+      for (const [key, value] of cardImageCache) {
+        if (now - value.at > 15 * 60 * 1000) cardImageCache.delete(key)
+      }
+    }
+    return { paragraph, src: `/reader3/contentImage?id=${id}`, alt: String(card?.alt || '') }
+  }
+
+  /** 返回给前端的书源不能包含密钥：只告诉「是否已设置」和末四位 */
+  const sanitizeSource = (source) => {
+    if (!source || typeof source !== 'object') return source
+    const runtime = { ...(source._runtime || {}) }
+    const key = String(runtime.key || '')
+    delete runtime.key
+    return { ...source, _runtime: runtime, hasKey: Boolean(key), keyHint: key ? key.slice(-4) : '' }
   }
 
   /** Build a runtime for one stored source, or throw a readable error. */
@@ -194,7 +224,7 @@ async function primeBook(book) {
       if (!chapter?.url) continue
       try {
         const raw = await withRuntime(origin, (runtime) => runtime.content(chapter.url))
-        const text = applyReplaceRules(cleanText(raw), store.listReplaceRules())
+        const text = applyReplaceRules(cleanText(raw, { dropImages: true }), store.listReplaceRules())
         if (text) store.saveChapterText(cacheKey(book), origin, chapter.url, text)
       } catch {
         /* 单章失败不影响其它 */
@@ -307,7 +337,8 @@ async function primeBook(book) {
       })
       cacheDpMarkers(book.bookUrl, target, parsed)
       const markers = parsed.map(({ paragraph, count }) => ({ paragraph, count }))
-      return ok({ markers, cards: [] })
+      const cards = extractCards(raw).map(cacheCardImage).filter(Boolean)
+      return ok({ markers, cards })
     } catch (error) {
       return fail(error.message)
     }
@@ -384,7 +415,7 @@ async function primeBook(book) {
       const stored = store.getChapters(`${book.bookUrl}#content`, book.origin)
       if (Array.isArray(stored) && stored.length) {
         const chapter = stored.find((item) => item.index === Number(index))
-        return chapter ? ok(applyReplaceRules(cleanText(chapter.content), store.listReplaceRules())) : fail('本地章节不存在')
+        return chapter ? ok(applyReplaceRules(cleanText(chapter.content, { dropImages: true }), store.listReplaceRules())) : fail('本地章节不存在')
       }
     }
     const origin = String(bookSourceUrl || book?.origin || '')
@@ -398,10 +429,10 @@ async function primeBook(book) {
     // Cached text is served as-is: caching exists so a book stays readable offline.
     if (!req.body?.refresh && book) {
       const cached = store.getChapterText(cacheKey(book), target)
-      if (cached) return ok(applyReplaceRules(cleanText(cached), store.listReplaceRules()))
+      if (cached) return ok(applyReplaceRules(cleanText(cached, { dropImages: true }), store.listReplaceRules()))
     }
     const content = await withRuntime(origin, (runtime) => runtime.content(target))
-    const text = applyReplaceRules(cleanText(content), store.listReplaceRules())
+    const text = applyReplaceRules(cleanText(content, { dropImages: true }), store.listReplaceRules())
     if (book && text) store.saveChapterText(cacheKey(book), book.origin, target, text)
     return ok(text)
   })
@@ -432,7 +463,7 @@ async function primeBook(book) {
       if (!chapter?.url) continue
       if (!refresh && store.getChapterText(cacheKey(book), chapter.url)) continue
       try {
-        const text = cleanText(await withRuntime(book.origin, (runtime) => runtime.content(chapter.url)))
+        const text = cleanText(await withRuntime(book.origin, (runtime) => runtime.content(chapter.url)), { dropImages: true })
         if (text) {
           store.saveChapterText(cacheKey(book), book.origin, chapter.url, text)
           cached += 1
@@ -466,24 +497,50 @@ async function primeBook(book) {
 
   /* ---------------------------------------------------------------- sources */
 
-  app.get('/reader3/getBookSources', async () => ok(store.listSources()))
+  app.get('/reader3/getBookSources', async () => ok(store.listSources().map(sanitizeSource)))
 
   app.post('/reader3/getBookSource', async (req) => {
     const source = store.getSource(String(req.body?.bookSourceUrl ?? ''))
-    return source ? ok(source) : fail('书源不存在')
+    return source ? ok(sanitizeSource(source)) : fail('书源不存在')
   })
+
+  /** 保存编辑时保留服务端已有的书源密钥（前端不会拿到明文） */
+  const preserveSourceKey = (source, existing) => {
+    const incoming = source?._runtime || {}
+    const runtime = { ...(existing?._runtime || {}), ...incoming }
+    if (!Object.prototype.hasOwnProperty.call(incoming, 'key') && existing?._runtime?.key !== undefined) {
+      runtime.key = existing._runtime.key
+    }
+    return { ...source, _runtime: runtime }
+  }
 
   app.post('/reader3/saveBookSource', async (req) => {
     const blocked = editSourcesBlocked(req)
     if (blocked) return fail(blocked)
     const source = req.body || {}
     const url = String(source.bookSourceUrl || '')
-    if (url && !store.getSource(url)) {
+    const existing = url ? store.getSource(url) : null
+    if (url && !existing) {
       const quota = sourceQuotaError(store, req, 1)
       if (quota) return fail(quota)
     }
-    store.saveSource(source)
+    store.saveSource(preserveSourceKey(source, existing))
     return ok({ saved: true })
+  })
+
+  /** 单独设置 WebView 书源的密钥；只存服务端，不回传明文 */
+  app.post('/reader3/setSourceKey', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
+    const url = String(req.body?.bookSourceUrl ?? '')
+    const source = store.getSource(url)
+    if (!source) return fail('书源不存在')
+    const key = String(req.body?.key ?? '').trim()
+    const runtime = { ...(source._runtime || {}) }
+    if (key) runtime.key = key
+    else delete runtime.key
+    store.saveSource({ ...source, _runtime: runtime })
+    return ok({ hasKey: Boolean(key), keyHint: key ? key.slice(-4) : '' })
   })
 
   /** 书源批次的汇总统计：搜索页只需要这些数字，不用把上千个书源发给前端 */
@@ -583,7 +640,8 @@ async function primeBook(book) {
     const body = req.body || {}
     const list = Array.isArray(body) ? body : Array.isArray(body.sources) ? body.sources : []
     const bundle = Array.isArray(body) ? '' : String(body.bundle || '').trim()
-    const prepared = bundle ? list.map((source) => ({ ...source, _bundle: bundle })) : list
+    const withKeys = list.map((source) => preserveSourceKey(source, store.getSource(String(source?.bookSourceUrl ?? ''))))
+    const prepared = bundle ? withKeys.map((source) => ({ ...source, _bundle: bundle })) : withKeys
     const newCount = prepared.filter((source) => source?.bookSourceUrl && !store.getSource(String(source.bookSourceUrl))).length
     if (newCount) {
       const quota = sourceQuotaError(store, req, newCount)
@@ -791,6 +849,28 @@ async function primeBook(book) {
       return reply.send(Buffer.from(await upstream.arrayBuffer()))
     } catch (error) {
       return reply.code(502).send(`封面获取失败: ${error.message}`)
+    }
+  })
+
+  /** 正文卡片图代理：神评论/本章说卡片可能带防盗链 headers，由服务端代取 */
+  app.get('/reader3/contentImage', async (req, reply) => {
+    const id = String(req.query?.id ?? '')
+    const entry = cardImageCache.get(id)
+    if (!entry) return reply.code(404).send('图片不存在或已过期')
+    try {
+      const headers = { 'user-agent': 'reader-panghu' }
+      for (const [key, value] of Object.entries(entry.headers || {})) {
+        if (typeof value === 'string' || typeof value === 'number') headers[key] = String(value)
+      }
+      const upstream = await fetch(entry.url, { headers, signal: AbortSignal.timeout(20000) })
+      if (!upstream.ok) return reply.code(502).send('图片获取失败')
+      const type = upstream.headers.get('content-type') || 'image/png'
+      if (!/^image\//i.test(type)) return reply.code(502).send('返回的不是图片')
+      reply.header('cache-control', 'private, max-age=3600')
+      reply.header('content-type', type)
+      return reply.send(Buffer.from(await upstream.arrayBuffer()))
+    } catch (error) {
+      return reply.code(502).send(`图片获取失败: ${error.message}`)
     }
   })
 

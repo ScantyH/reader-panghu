@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '../api.js'
+import { api, withImageToken } from '../api.js'
 
 const props = defineProps({ bookUrl: { type: String, required: true } })
 const router = useRouter()
@@ -189,7 +189,19 @@ const theme = computed(() => (isDark.value ? DARK : PAPER[prefs.value.paper] || 
 const dimOpacity = computed(() => ((100 - Number(prefs.value.brightness || 100)) / 100) * 0.72)
 const chapter = computed(() => chapters.value[current.value] || null)
 const chapterTitle = computed(() => chapter.value?.title || book.value?.name || '加载中…')
-const paragraphs = computed(() => String(content.value).split(/\n+/).filter((line) => line.trim()))
+const paragraphs = computed(() =>
+  String(content.value)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line && line !== '[图片]'),
+)
+const cardsAt = (index) => dpCards.value.filter((card) => Number(card.paragraph) === index)
+const tailCards = computed(() =>
+  dpCards.value.filter((card) => {
+    const paragraph = Number(card.paragraph)
+    return !Number.isFinite(paragraph) || paragraph < 0 || paragraph >= paragraphs.value.length
+  }),
+)
 const dpMarkerMap = computed(() => {
   const map = new Map()
   for (const marker of dpMarkers.value) {
@@ -903,17 +915,25 @@ watch(chapterTitle, () => {
       </h1>
       <div v-if="loading" class="reader-loading">加载中…</div>
       <div v-else class="chapter-body" :style="bodyStyle">
-        <p v-for="(paragraph, index) in paragraphs" :key="index">
-          {{ paragraph.trim() }}
-          <button
-            v-if="dpMarkerMap.get(index)"
-            class="dp-bubble"
-            :title="`${dpMarkerMap.get(index).count} 条段评`"
-            @click.stop="openDpComment(dpMarkerMap.get(index))"
-          >
-            {{ dpMarkerMap.get(index).count }}
-          </button>
-        </p>
+        <template v-for="(paragraph, index) in paragraphs" :key="index">
+          <p :data-para="index">
+            {{ paragraph }}
+            <button
+              v-if="dpMarkerMap.get(index)"
+              class="dp-bubble"
+              :title="`${dpMarkerMap.get(index).count} 条段评`"
+              @click.stop="openDpComment(dpMarkerMap.get(index))"
+            >
+              {{ dpMarkerMap.get(index).count }}
+            </button>
+          </p>
+          <div v-for="(card, cardIndex) in cardsAt(index)" :key="'card-' + cardIndex" class="chapter-card">
+            <img :src="withImageToken(card.src)" :alt="card.alt || ''" loading="lazy" />
+          </div>
+        </template>
+        <div v-for="(card, cardIndex) in tailCards" :key="'tail-card-' + cardIndex" class="chapter-card">
+          <img :src="withImageToken(card.src)" :alt="card.alt || ''" loading="lazy" />
+        </div>
       </div>
       <div class="chapter-end">
         <button class="chapter-end-btn" @click.stop="turnNext">下一章 →</button>
@@ -1241,7 +1261,7 @@ watch(chapterTitle, () => {
           </div>
           <div v-if="dpCards.length" class="list" style="margin-top: 12px">
             <div v-for="(card, index) in dpCards" :key="index" class="list-item">
-              <img :src="card.src" alt="" style="max-width: 100%; border-radius: 8px" loading="lazy" />
+              <img :src="withImageToken(card.src)" alt="" style="max-width: 100%; border-radius: 8px" loading="lazy" />
             </div>
           </div>
         </template>
@@ -1521,6 +1541,20 @@ watch(chapterTitle, () => {
   text-align: inherit;
   word-break: break-word;
   line-height: inherit;
+}
+
+/* 神评论 / 本章说：书源生成的 PNG/SVG 卡片，按段落位置插在正文里 */
+.chapter-card {
+  margin: 0 0 var(--para-gap, 0.8em);
+  text-indent: 0;
+}
+
+.chapter-card img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
 }
 
 .reader-loading {

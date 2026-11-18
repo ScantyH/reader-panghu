@@ -28,6 +28,7 @@ const SUITES = [
   'test-rule-source',
   'test-source-tools',
   'test-bundles',
+  'test-cards',
   'test-warehouse',
   'test-reading-extras',
   'test-legado-client',

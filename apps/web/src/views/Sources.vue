@@ -174,6 +174,20 @@ async function importRemote() {
   }
 }
 
+/** 设置 WebView 书源的密钥：只在服务端保存，界面不显示明文 */
+async function editSourceKey(source) {
+  const current = source.hasKey ? `当前已设置（末四位 ${source.keyHint || '****'}），留空则清除` : '当前尚未设置'
+  const input = prompt(`输入「${source.bookSourceName}」的书源密钥\n${current}`, '')
+  if (input === null) return
+  try {
+    const result = await api.setSourceKey(source.bookSourceUrl, input.trim())
+    await load()
+    window.__toast?.(result.hasKey ? '书源密钥已保存' : '已清除书源密钥')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 async function removeSource(source) {
   if (!confirm(`删除书源「${source.bookSourceName}」？`)) return
   try {
@@ -323,7 +337,7 @@ onMounted(load)
     <!-- 管理 -->
     <section v-if="tab === 'manage'">
       <p class="muted" style="font-size: 13px; margin: 0 0 10px">
-        按导入批次汇总，共 {{ bundles.length }}/{{ bundleLimit }} 个批次。每次导入都会新建一个批次；勾选多个批次后可汇总成一个。
+        按导入批次汇总，共 {{ bundles.length }}/{{ bundleLimit }} 个批次。每次导入都会新建一个批次；勾选多个批次后可汇总成一个。展开批次后，WebView 书源可点「密钥」填写书源密钥（只保存在服务端，不回显明文）。
       </p>
 
       <!-- 导入汇总：按批次展示，iOS 风格开关 -->
@@ -376,6 +390,9 @@ onMounted(load)
                 <strong>{{ source.bookSourceName }}</strong>
                 <span class="badge" :class="{ accent: source.html }">{{ source.html ? 'WebView' : '规则' }}</span>
                 <span v-if="source.bookSourceGroup" class="badge">{{ source.bookSourceGroup }}</span>
+                <span v-if="source.html" class="badge" :class="{ accent: source.hasKey }">
+                  {{ source.hasKey ? '已设密钥' : '未设密钥' }}
+                </span>
                 <span v-if="source.invalid" class="badge" style="color: var(--color-danger)">失效</span>
                 <span v-if="source.enabled === false" class="badge">已禁用</span>
               </div>
@@ -383,6 +400,7 @@ onMounted(load)
                 {{ source.bookSourceUrl }}
               </div>
             </div>
+            <button v-if="source.html" class="ghost" @click="editSourceKey(source)">密钥</button>
             <button class="ghost" @click="toggle(source)">{{ source.enabled === false ? '启用' : '禁用' }}</button>
             <button class="ghost" @click="editing = JSON.stringify(source, null, 2)">编辑</button>
             <button class="ghost" @click="removeSource(source)">删除</button>
