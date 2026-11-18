@@ -885,7 +885,9 @@ watch(chapterTitle, () => {
         <div class="sheet-handle" />
         <header class="panel-head settings-head">
           <h2>阅读设置</h2>
-          <button class="chrome-btn" @click="showSettings = false">×</button>
+          <button class="chrome-btn close-btn" aria-label="关闭阅读设置" title="关闭" @click="showSettings = false">
+            <span class="close-glyph" aria-hidden="true" />
+          </button>
         </header>
         <div class="panel-body settings-body">
         <section class="panel-section">
@@ -1259,9 +1261,11 @@ watch(chapterTitle, () => {
 .rail-btn.round {
   width: 34px;
   height: 34px;
+  padding: 0;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.55);
   font-size: 15px;
+  line-height: 1;
   box-shadow: 0 1px 2px rgba(80, 60, 30, 0.12);
 }
 
@@ -1344,10 +1348,39 @@ watch(chapterTitle, () => {
   color: inherit;
   width: 34px;
   height: 34px;
+  padding: 0;
   border-radius: 50%;
   font-size: 16px;
+  line-height: 1;
   cursor: pointer;
   flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+
+/* 关闭按钮用两条线画 ×，避免字体基线和字重导致图标偏心 */
+.close-glyph {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.close-glyph::before,
+.close-glyph::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 1.5px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.close-glyph::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .chrome-btn:disabled {
@@ -1608,6 +1641,7 @@ watch(chapterTitle, () => {
 .settings-sheet {
   max-height: 82vh;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .settings-head {
