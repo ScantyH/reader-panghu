@@ -115,6 +115,7 @@ export const api = {
     request('/exploreBook', { method: 'POST', body: { bookSourceUrl, url, page } }),
   debugSource: (payload) => request('/debugSource', { method: 'POST', body: payload }),
   setBookSource: (payload) => request('/setBookSource', { method: 'POST', body: payload }),
+  autoSwitchBookSource: (payload) => request('/autoSwitchBookSource', { method: 'POST', body: payload }),
   availableSources: (payload) => request('/getAvailableBookSource', { method: 'POST', body: payload }),
   saveReadingTime: (payload) => request('/saveReadingTime', { method: 'POST', body: payload }),
   readingStats: () => request('/getReadingStats'),

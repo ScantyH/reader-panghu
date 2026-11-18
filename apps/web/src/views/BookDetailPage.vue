@@ -11,7 +11,9 @@ const loading = ref(true)
 const editingIntro = ref(false)
 const introDraft = ref('')
 const coverFailed = ref(false)
+const switching = ref(false)
 const coverUrl = computed(() => coverOf(book.value))
+const isLocal = computed(() => /^local:\/\//i.test(String(book.value?.origin || '')))
 
 const decodeUrl = (value) => {
   try {
@@ -83,6 +85,22 @@ async function remove() {
   }
 }
 
+/** 旧书源失效时，一键自动找可用来源并保留阅读进度 */
+async function changeSource() {
+  if (isLocal.value || switching.value) return
+  if (!confirm(`自动为《${book.value.name}》寻找可用书源并切换？`)) return
+  switching.value = true
+  try {
+    const result = await api.autoSwitchBookSource({ bookUrl: book.value.bookUrl })
+    book.value = result.book
+    window.__toast?.(`已换到「${result.originName}」`)
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    switching.value = false
+  }
+}
+
 function share() {
   const url = location.origin + '/book/' + encodeUrl(book.value.bookUrl)
   navigator.clipboard?.writeText(url)
@@ -130,6 +148,9 @@ onMounted(load)
         <select :value="book.group" style="max-width: 160px" @change="moveTo($event.target.value)">
           <option v-for="group in groups" :key="group.groupId" :value="group.groupId">{{ group.groupName }}</option>
         </select>
+        <button v-if="!isLocal" class="ghost" :disabled="switching" @click="changeSource">
+          {{ switching ? '换源中…' : '换源' }}
+        </button>
         <button class="ghost" @click="editingIntro = true; introDraft = book.intro || ''">编辑简介</button>
         <button class="ghost" @click="remove">移出书架</button>
       </div>

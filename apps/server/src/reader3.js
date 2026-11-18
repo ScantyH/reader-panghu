@@ -484,15 +484,114 @@ async function primeBook(book) {
     return ok('已清除缓存')
   })
 
+  const isLocalOrigin = (origin) => /^local:\/\//i.test(String(origin || ''))
+
+  const looksLikeSourceError = (text) =>
+    /(加载失败|获取失败|请求失败|密钥|设备数已满|书源不存在|章节不存在|找不到章节|HTTP\s*(4\d\d|5\d\d)|超时|timeout)/i.test(String(text || ''))
+
+  const mapChapters = (chapters) =>
+    (Array.isArray(chapters) ? chapters : []).map((chapter, index) => ({
+      title: String(chapter?.name ?? `第${index + 1}章`),
+      url: String(chapter?.chapterId ?? ''),
+      index: Number(chapter?.index ?? index),
+      isVolume: Boolean(chapter?.isVolume),
+      tag: String(chapter?.tag ?? ''),
+    }))
+
   /** Switch the source a shelf book reads from, keeping its progress. */
   app.post('/reader3/setBookSource', async (req) => {
     const { bookUrl, newUrl, bookSourceUrl } = req.body || {}
     const existing = store.getBook(String(bookUrl ?? ''))
-    const info = await withRuntime(String(bookSourceUrl ?? ''), (runtime) => runtime.info(String(newUrl ?? bookUrl)))
-    const source = store.getSource(String(bookSourceUrl ?? ''))
+    if (existing && isLocalOrigin(existing.origin)) return fail('本地书籍不需要换源')
+    const sourceUrl = String(bookSourceUrl ?? '')
+    const oldChapters = existing ? store.getChapters(existing.bookUrl, existing.origin) || [] : []
+    const oldIndex = Number(existing?.durChapterIndex || 0)
+    const oldTitle = oldChapters[oldIndex]?.title || String(existing?.durChapterTitle || '')
+    const { info, chapters } = await withRuntime(sourceUrl, async (runtime) => {
+      const nextInfo = await runtime.info(String(newUrl ?? bookUrl))
+      let nextChapters = []
+      try {
+        nextChapters = mapChapters(await runtime.chapter(nextInfo.tocUrl || nextInfo.bookUrl || newUrl))
+      } catch {
+        /* 目录失败不阻塞换源，继续用原进度 */
+      }
+      return { info: nextInfo, chapters: nextChapters }
+    })
+    const source = store.getSource(sourceUrl)
     const next = toBook({ ...info, bookUrl: String(newUrl ?? bookUrl) }, source, existing)
+    if (chapters.length) {
+      const matched = oldTitle ? chapters.findIndex((chapter) => chapter.title === oldTitle) : -1
+      const target = matched >= 0 ? matched : Math.min(Math.max(0, oldIndex), chapters.length - 1)
+      next.durChapterIndex = target
+      next.durChapterTitle = chapters[target]?.title || next.durChapterTitle
+      next.totalChapterNum = chapters.length
+      next.latestChapterTitle = chapters.at(-1)?.title || next.latestChapterTitle
+      store.saveChapters(next.bookUrl, next.origin, chapters)
+    }
     store.deleteChapters(String(bookUrl ?? ''))
     return ok(store.saveBook(next))
+  })
+
+  /** 自动换源：旧源失效时按书名/作者找可用来源，验证目录和正文后切换并保留进度 */
+  app.post('/reader3/autoSwitchBookSource', async (req) => {
+    const book = store.getBook(String(req.body?.bookUrl ?? ''))
+    if (!book) return fail('书籍不存在')
+    if (isLocalOrigin(book.origin)) return fail('本地书籍不需要换源')
+    const oldChapters = store.getChapters(book.bookUrl, book.origin) || []
+    const oldIndex = Math.max(0, Number(book.durChapterIndex) || 0)
+    const oldTitle = oldChapters[oldIndex]?.title || String(book.durChapterTitle || '')
+    const limit = Math.max(1, Math.min(30, Number(process.env.AUTO_SWITCH_SOURCES || 20)))
+    const candidates = store
+      .listSources()
+      .filter((source) => source.enabled !== false && source.bookSourceUrl !== book.origin)
+      .filter((source) => source.html || source.searchUrl)
+      .slice(0, limit)
+    let tried = 0
+
+    for (const source of candidates) {
+      tried += 1
+      try {
+        const match = await Promise.race([
+          withRuntime(source.bookSourceUrl, async (runtime) => {
+            const found = await runtime.search(book.name, 1)
+            for (const candidate of Array.isArray(found) ? found : []) {
+              if (String(candidate?.name || '').trim() !== String(book.name || '').trim()) continue
+              if (book.author && candidate.author && !String(candidate.author).includes(String(book.author)) && !String(book.author).includes(String(candidate.author))) continue
+              const chapters = mapChapters(await runtime.chapter(candidate.tocUrl || candidate.bookUrl))
+              if (!chapters.length) continue
+              const matched = oldTitle ? chapters.findIndex((chapter) => chapter.title === oldTitle) : -1
+              const target = matched >= 0 ? matched : Math.min(oldIndex, chapters.length - 1)
+              const content = await runtime.content(chapters[target].url)
+              const text = String(content || '')
+              if (text.trim().length < 20 || looksLikeSourceError(text)) continue
+              return { candidate, chapters, target }
+            }
+            return null
+          }),
+          new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
+        ])
+        if (!match) continue
+        const next = toBook({ ...match.candidate }, source, book)
+        next.durChapterIndex = match.target
+        next.durChapterTitle = match.chapters[match.target]?.title || next.durChapterTitle
+        next.totalChapterNum = match.chapters.length
+        next.latestChapterTitle = match.chapters.at(-1)?.title || next.latestChapterTitle
+        store.deleteChapters(book.bookUrl)
+        store.saveChapters(next.bookUrl, next.origin, match.chapters)
+        const saved = store.saveBook(next)
+        return ok({
+          book: saved,
+          chapterIndex: match.target,
+          chapterTitle: next.durChapterTitle,
+          originName: source.bookSourceName,
+          switchedFrom: book.originName,
+          tried,
+        })
+      } catch (error) {
+        app.log.warn(`[switch] ${source.bookSourceName}: ${error.message}`)
+      }
+    }
+    return fail(`没有找到可用的其它书源（已尝试 ${tried} 个），可以在换源里手动选择`)
   })
 
   /* ---------------------------------------------------------------- sources */

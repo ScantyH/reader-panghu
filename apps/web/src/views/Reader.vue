@@ -114,6 +114,8 @@ watch(
 )
 
 const book = ref(null)
+const autoSwitching = ref(false)
+let autoSwitchTried = false
 const chapters = ref([])
 const current = ref(0)
 const content = ref('')
@@ -188,6 +190,7 @@ const isDark = computed(() => prefs.value.appearance === 'dark' || (prefs.value.
 const theme = computed(() => (isDark.value ? DARK : PAPER[prefs.value.paper] || PAPER.parchment))
 const dimOpacity = computed(() => ((100 - Number(prefs.value.brightness || 100)) / 100) * 0.72)
 const chapter = computed(() => chapters.value[current.value] || null)
+const isLocalBook = computed(() => /^local:\/\//i.test(String(book.value?.origin || '')))
 const chapterTitle = computed(() => chapter.value?.title || book.value?.name || '加载中…')
 const paragraphs = computed(() =>
   String(content.value)
@@ -386,6 +389,7 @@ function openSearchFromSettings() {
 }
 
 async function loadBook() {
+  autoSwitchTried = false
   try {
     const shelf = await api.bookshelf()
     book.value = shelf.find((item) => item.bookUrl === props.bookUrl) || null
@@ -400,35 +404,81 @@ async function loadBook() {
       bookSourceUrl: book.value.origin,
     })
     current.value = Number(book.value.durChapterIndex || 0)
-    await loadChapter(current.value)
+    // 打开书：先按服务端进度定位，再把「当前章 + 章节内位置」交给 loadChapter 还原
+    pendingRestore = { index: current.value, position: Number(book.value.durChapterPos || 0) }
+    await loadChapter(current.value, { fromRemote: true })
     loadNotes()
     loadBookmarks()
   } catch (error) {
+    if (!isLocalBook.value && !autoSwitchTried && looksLikeSourceError(error.message) && (await tryAutoSwitch())) return
     window.__toast?.(error.message)
   }
 }
 
-async function loadChapter(index) {
+const sourceErrorPattern = /(加载失败|获取失败|请求失败|密钥|设备数已满|书源不存在|章节不存在|找不到章节|HTTP\s*[45]\d\d|超时|timeout)/i
+const looksLikeSourceError = (text) => sourceErrorPattern.test(String(text || ''))
+
+/** 书源失效时自动找可用来源，切完跳到同一章 */
+async function tryAutoSwitch() {
+  if (isLocalBook.value || autoSwitching.value || autoSwitchTried) return false
+  autoSwitchTried = true
+  autoSwitching.value = true
+  try {
+    window.__toast?.('原书源可能失效，正在自动换源…')
+    const result = await api.autoSwitchBookSource({ bookUrl: book.value.bookUrl })
+    book.value = result.book
+    chapters.value = await api.chapterList({
+      bookUrl: book.value.bookUrl,
+      tocUrl: book.value.tocUrl,
+      bookSourceUrl: book.value.origin,
+    })
+    const index = Math.min(Math.max(0, Number(result.chapterIndex) || 0), Math.max(0, chapters.value.length - 1))
+    window.__toast?.(`已自动换到「${result.originName}」`)
+    pendingRestore = null
+    await loadChapter(index, { fromRemote: true })
+    return true
+  } catch (error) {
+    window.__toast?.(`自动换源失败：${error.message}`)
+    return false
+  } finally {
+    autoSwitching.value = false
+  }
+}
+
+async function loadChapter(index, { fromRemote = false } = {}) {
   if (!chapters.value.length) return
   stopTts()
   const target = Math.max(0, Math.min(index, chapters.value.length - 1))
   loading.value = true
   turnDirection.value = target > current.value ? 'next' : target < current.value ? 'prev' : ''
+  if (fromRemote) suppressSyncUntil = Date.now() + 2000
   try {
-    content.value = await api.content({
+    const text = await api.content({
       bookUrl: book.value.bookUrl,
       index: target,
       convert: prefs.value.convert || undefined,
     })
+    if ((!String(text || '').trim() || looksLikeSourceError(text)) && !isLocalBook.value && !autoSwitchTried) {
+      if (await tryAutoSwitch()) return
+    }
+    content.value = text
     current.value = target
     searchHits.value = []
     loadParagraphComments()
     warmCache(target)
-    api.saveProgress(book.value.bookUrl, target, 0, chapters.value[target]?.title || '').catch(() => {})
     await nextTick()
-    window.scrollTo({ top: 0 })
-    updateScroll()
+    const restore = pendingRestore && Number(pendingRestore.index) === target ? pendingRestore : null
+    pendingRestore = null
+    if (restore && Number(restore.position) > 0) {
+      scrollToCharOffset(Number(restore.position))
+    } else {
+      window.scrollTo({ top: 0 })
+      updateScroll()
+    }
+    // 用户自己翻章：立刻把新章节写进服务端，另一端马上能看到。
+    if (!fromRemote) saveProgressNow({ force: true })
   } catch (error) {
+    if (!isLocalBook.value && !autoSwitchTried && looksLikeSourceError(error.message) && (await tryAutoSwitch())) return
     window.__toast?.(error.message)
   } finally {
     loading.value = false
@@ -563,6 +613,10 @@ async function removeNote(note) {
 
 /* ---------------- 换源 ---------------- */
 async function findSources() {
+  if (isLocalBook.value) {
+    window.__toast?.('本地导入的书不需要换源')
+    return
+  }
   showSource.value = true
   sourceLoading.value = true
   sourceCandidates.value = []
@@ -584,14 +638,23 @@ async function findSources() {
 
 async function switchSource(candidate) {
   try {
-    await api.setBookSource({
-      bookUrl: props.bookUrl,
+    const switched = await api.setBookSource({
+      bookUrl: book.value.bookUrl,
       newUrl: candidate.bookUrl,
       bookSourceUrl: candidate.origin,
     })
+    book.value = switched
+    chapters.value = await api.chapterList({
+      bookUrl: switched.bookUrl,
+      tocUrl: switched.tocUrl,
+      bookSourceUrl: switched.origin,
+    })
+    autoSwitchTried = false
     showSource.value = false
     window.__toast?.(`已切换到「${candidate.originName}」`)
-    location.reload()
+    router.replace({ path: '/read', query: { book: switched.bookUrl } }).catch(() => {})
+    const index = Math.min(Math.max(0, Number(switched.durChapterIndex) || 0), Math.max(0, chapters.value.length - 1))
+    await loadChapter(index, { fromRemote: true })
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -943,7 +1006,7 @@ watch(chapterTitle, () => {
     <aside class="rail rail-right">
       <button class="rail-btn round" title="加书签" @click="addBookmark">🔖</button>
       <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">⌕</button>
-      <button class="rail-btn round" title="换源" @click="findSources">⇄</button>
+      <button v-if="!isLocalBook" class="rail-btn round" title="换源" @click="findSources">⇄</button>
       <button class="rail-btn round" title="笔记" @click="showNotes = true; loadNotes()">✎</button>
       <button class="rail-btn round" title="段评" @click="openDp">💬</button>
       <button class="rail-btn round" :title="caching ? '缓存中…' : '缓存 50 章'" @click="cacheChapter">⤓</button>
@@ -1149,7 +1212,7 @@ watch(chapterTitle, () => {
             <button class="ghost" @click="showBookmarks = true; loadBookmarks()">书签</button>
             <button class="ghost" @click="showNotes = true; loadNotes()">笔记</button>
             <button class="ghost" @click="openDp">段评</button>
-            <button class="ghost" @click="findSources">换源</button>
+            <button v-if="!isLocalBook" class="ghost" @click="findSources">换源</button>
             <button class="ghost" :disabled="caching" @click="cacheChapter">{{ caching ? '缓存中…' : '缓存 50 章' }}</button>
             <button class="ghost" @click="openSearchFromSettings">正文查找</button>
             <button class="ghost" @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</button>
