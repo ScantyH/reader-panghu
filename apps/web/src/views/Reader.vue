@@ -188,6 +188,7 @@ const isDark = computed(() => prefs.value.appearance === 'dark' || (prefs.value.
 const theme = computed(() => (isDark.value ? DARK : PAPER[prefs.value.paper] || PAPER.parchment))
 const dimOpacity = computed(() => ((100 - Number(prefs.value.brightness || 100)) / 100) * 0.72)
 const chapter = computed(() => chapters.value[current.value] || null)
+const isLocalBook = computed(() => /^local:\/\//i.test(String(book.value?.origin || '')))
 const chapterTitle = computed(() => chapter.value?.title || book.value?.name || '加载中…')
 const paragraphs = computed(() =>
   String(content.value)
@@ -633,11 +634,12 @@ async function loadChapter(index, { fromRemote = false } = {}) {
   turnDirection.value = target > current.value ? 'next' : target < current.value ? 'prev' : ''
   if (fromRemote) suppressSyncUntil = Date.now() + 2000
   try {
-    content.value = await api.content({
+    const text = await api.content({
       bookUrl: book.value.bookUrl,
       index: target,
       convert: prefs.value.convert || undefined,
     })
+    content.value = text
     current.value = target
     searchHits.value = []
     loadParagraphComments()
@@ -788,6 +790,10 @@ async function removeNote(note) {
 
 /* ---------------- 换源 ---------------- */
 async function findSources() {
+  if (isLocalBook.value) {
+    window.__toast?.('本地导入的书不需要换源')
+    return
+  }
   showSource.value = true
   sourceLoading.value = true
   sourceCandidates.value = []
@@ -809,14 +815,22 @@ async function findSources() {
 
 async function switchSource(candidate) {
   try {
-    await api.setBookSource({
-      bookUrl: props.bookUrl,
+    const switched = await api.setBookSource({
+      bookUrl: book.value.bookUrl,
       newUrl: candidate.bookUrl,
       bookSourceUrl: candidate.origin,
     })
+    book.value = switched
+    chapters.value = await api.chapterList({
+      bookUrl: switched.bookUrl,
+      tocUrl: switched.tocUrl,
+      bookSourceUrl: switched.origin,
+    })
     showSource.value = false
     window.__toast?.(`已切换到「${candidate.originName}」`)
-    location.reload()
+    router.replace({ path: '/read', query: { book: switched.bookUrl } }).catch(() => {})
+    const index = Math.min(Math.max(0, Number(switched.durChapterIndex) || 0), Math.max(0, chapters.value.length - 1))
+    await loadChapter(index, { fromRemote: true })
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -1210,7 +1224,7 @@ watch(chapterTitle, () => {
     <aside class="rail rail-right">
       <button class="rail-btn round" title="加书签" @click="addBookmark">🔖</button>
       <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">⌕</button>
-      <button class="rail-btn round" title="换源" @click="findSources">⇄</button>
+      <button v-if="!isLocalBook" class="rail-btn round" title="换源" @click="findSources">⇄</button>
       <button class="rail-btn round" title="笔记" @click="showNotes = true; loadNotes()">✎</button>
       <button class="rail-btn round" title="段评" @click="openDp">💬</button>
       <button class="rail-btn round" :title="caching ? '缓存中…' : '缓存 50 章'" @click="cacheChapter">⤓</button>
@@ -1416,7 +1430,7 @@ watch(chapterTitle, () => {
             <button class="ghost" @click="showBookmarks = true; loadBookmarks()">书签</button>
             <button class="ghost" @click="showNotes = true; loadNotes()">笔记</button>
             <button class="ghost" @click="openDp">段评</button>
-            <button class="ghost" @click="findSources">换源</button>
+            <button v-if="!isLocalBook" class="ghost" @click="findSources">换源</button>
             <button class="ghost" :disabled="caching" @click="cacheChapter">{{ caching ? '缓存中…' : '缓存 50 章' }}</button>
             <button class="ghost" @click="openSearchFromSettings">正文查找</button>
             <button class="ghost" @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</button>
@@ -1630,6 +1644,7 @@ watch(chapterTitle, () => {
   background: rgba(255, 255, 255, 0.55);
   font-size: 15px;
   line-height: 1;
+  justify-content: center;
   box-shadow: 0 1px 2px rgba(80, 60, 30, 0.12);
 }
 

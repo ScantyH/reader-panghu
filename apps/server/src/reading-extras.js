@@ -72,12 +72,13 @@ export function registerReadingExtras(app, { store, dataDir, options = {} }) {
     const { name, author, origin, resultLimit = 8 } = req.body || {}
     const title = String(name || '').trim()
     if (!title) return fail('缺少书名')
+    if (/^local:\/\//i.test(String(origin || ''))) return fail('本地书籍不需要换源')
 
     const candidates = store
       .listSources()
       .filter((source) => source.enabled !== false && source.bookSourceUrl !== origin)
       .filter((source) => source.html || source.searchUrl)
-      .slice(0, 12)
+      .slice(0, 20)
 
     const books = []
     for (const source of candidates) {
@@ -86,15 +87,19 @@ export function registerReadingExtras(app, { store, dataDir, options = {} }) {
         const runtime = makeRuntime(source)
         await runtime.init()
         try {
-          const found = await runtime.search(title, 1)
+          const found = await Promise.race([
+            runtime.search(title, 1),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('搜索超时')), 12000)),
+          ])
           for (const book of Array.isArray(found) ? found : []) {
             // 同名优先，作者能对上更可信
-            if (book.name !== title) continue
+            if (String(book.name || '').trim() !== title) continue
             if (author && book.author && !book.author.includes(String(author)) && !String(author).includes(book.author)) continue
             books.push({
               name: book.name,
               author: book.author,
               bookUrl: book.bookUrl,
+              tocUrl: book.tocUrl || '',
               origin: source.bookSourceUrl,
               originName: source.bookSourceName,
               coverUrl: book.coverUrl,

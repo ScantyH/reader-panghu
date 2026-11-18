@@ -81,7 +81,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     const runtime = { ...(source._runtime || {}) }
     const key = String(runtime.key || '')
     delete runtime.key
-    return { ...source, _runtime: runtime, hasKey: Boolean(key), keyHint: key ? key.slice(-4) : '' }
+    return { ...source, _runtime: runtime, hasKey: Boolean(key), keyHint: key ? key.slice(-4) : '', keyCheck: source._keyCheck || null }
   }
   // 网页与 App 订阅同一条 SSE 流：任一设备写入进度，其它在线设备立刻收到，
   // 不必等轮询；断线时客户端自己降级为定时查询。
@@ -555,13 +555,50 @@ async function primeBook(book) {
     return ok('已清除缓存')
   })
 
+  const isLocalOrigin = (origin) => /^local:\/\//i.test(String(origin || ''))
+
+  const looksLikeSourceError = (text) =>
+    /(加载失败|获取失败|请求失败|密钥|设备数已满|书源不存在|章节不存在|找不到章节|HTTP\s*(4\d\d|5\d\d)|超时|timeout)/i.test(String(text || ''))
+
+  const mapChapters = (chapters) =>
+    (Array.isArray(chapters) ? chapters : []).map((chapter, index) => ({
+      title: String(chapter?.name ?? `第${index + 1}章`),
+      url: String(chapter?.chapterId ?? ''),
+      index: Number(chapter?.index ?? index),
+      isVolume: Boolean(chapter?.isVolume),
+      tag: String(chapter?.tag ?? ''),
+    }))
+
   /** Switch the source a shelf book reads from, keeping its progress. */
   app.post('/reader3/setBookSource', async (req) => {
     const { bookUrl, newUrl, bookSourceUrl } = req.body || {}
     const existing = store.getBook(String(bookUrl ?? ''))
-    const info = await withRuntime(String(bookSourceUrl ?? ''), (runtime) => runtime.info(String(newUrl ?? bookUrl)))
-    const source = store.getSource(String(bookSourceUrl ?? ''))
+    if (existing && isLocalOrigin(existing.origin)) return fail('本地书籍不需要换源')
+    const sourceUrl = String(bookSourceUrl ?? '')
+    const oldChapters = existing ? store.getChapters(existing.bookUrl, existing.origin) || [] : []
+    const oldIndex = Number(existing?.durChapterIndex || 0)
+    const oldTitle = oldChapters[oldIndex]?.title || String(existing?.durChapterTitle || '')
+    const { info, chapters } = await withRuntime(sourceUrl, async (runtime) => {
+      const nextInfo = await runtime.info(String(newUrl ?? bookUrl))
+      let nextChapters = []
+      try {
+        nextChapters = mapChapters(await runtime.chapter(nextInfo.tocUrl || nextInfo.bookUrl || newUrl))
+      } catch {
+        /* 目录失败不阻塞换源，继续用原进度 */
+      }
+      return { info: nextInfo, chapters: nextChapters }
+    })
+    const source = store.getSource(sourceUrl)
     const next = toBook({ ...info, bookUrl: String(newUrl ?? bookUrl) }, source, existing)
+    if (chapters.length) {
+      const matched = oldTitle ? chapters.findIndex((chapter) => chapter.title === oldTitle) : -1
+      const target = matched >= 0 ? matched : Math.min(Math.max(0, oldIndex), chapters.length - 1)
+      next.durChapterIndex = target
+      next.durChapterTitle = chapters[target]?.title || next.durChapterTitle
+      next.totalChapterNum = chapters.length
+      next.latestChapterTitle = chapters.at(-1)?.title || next.latestChapterTitle
+      store.saveChapters(next.bookUrl, next.origin, chapters)
+    }
     store.deleteChapters(String(bookUrl ?? ''))
     return ok(store.saveBook(next))
   })
@@ -644,11 +681,45 @@ async function primeBook(book) {
       }
     }
     return ok(
-      [...rows.values()].sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name), 'zh-Hans-CN')),
+      [...rows.values()],
     )
   })
 
   app.get('/reader3/getSourceBundleLimit', async () => ok({ limit: SOURCE_BUNDLE_LIMIT }))
+
+  /** 每小时检测一次设置了密钥的书源是否仍然有效 */
+  app.post('/reader3/checkSourceKeys', async () => {
+    const interval = 60 * 60 * 1000
+    const now = Date.now()
+    const sources = store.listSources().filter((source) => source._runtime?.key)
+    const results = []
+    let checked = 0
+    for (const source of sources) {
+      const checkedAt = Number(source._keyCheck?.checkedAt || 0)
+      if (now - checkedAt < interval) {
+        results.push({ bookSourceUrl: source.bookSourceUrl, ...source._keyCheck })
+        continue
+      }
+      let valid = false
+      let message = ''
+      try {
+        const books = await Promise.race([
+          withRuntime(source.bookSourceUrl, (runtime) => runtime.search('斗罗大陆', 1)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('检测超时')), 12000)),
+        ])
+        valid = true
+        message = `可用（${Array.isArray(books) ? books.length : 0} 个结果）`
+      } catch (error) {
+        valid = false
+        message = error.message || '检测失败'
+      }
+      source._keyCheck = { valid, message, checkedAt: Date.now() }
+      store.saveSource(source)
+      checked += 1
+      results.push({ bookSourceUrl: source.bookSourceUrl, ...source._keyCheck })
+    }
+    return ok({ checked, results })
+  })
 
   /** 导入书源：每次都必须新建一个批次，同名自动加序号，不覆盖已有批次 */
   app.post('/reader3/importBookSources', async (req) => {
@@ -736,6 +807,16 @@ async function primeBook(book) {
     return ok({ saved: true, count: store.saveSources(prepared), bundle: bundle || null })
   })
 
+  app.post('/reader3/reorderBookSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
+    const urls = Array.isArray(req.body?.urls) ? req.body.urls.map((url) => String(url)) : []
+    if (!urls.length) return fail('缺少排序列表')
+    const known = new Set(store.listSources().map((source) => source.bookSourceUrl))
+    store.saveSourceOrder(urls.filter((url) => known.has(url)))
+    return ok({ reordered: urls.length })
+  })
+
   app.post('/reader3/deleteBookSource', async (req) => {
     const blocked = editSourcesBlocked(req)
     if (blocked) return fail(blocked)
@@ -803,17 +884,8 @@ async function primeBook(book) {
     // 串行跑 2000+ 个源要一小时，这里改成有限并发；NAS 是弱机器，默认 6 路
     const SEARCH_CONCURRENCY = Math.max(1, Number(process.env.SEARCH_CONCURRENCY || 6))
     const SEARCH_TIMEOUT_MS = Math.max(2000, Number(process.env.SEARCH_TIMEOUT_MS || 8000))
-    // 按历史成功率排序：成功的排前面，从未成功的排后面
-    const sourceScore = (source) => {
-      const stats = source._stats || {}
-      const ok = Number(stats.ok || 0)
-      const fail = Number(stats.fail || 0)
-      const total = ok + fail
-      const rate = total ? ok / total : 0.5
-      return rate * 1000 + Math.min(ok, 200) + (stats.lastOk ? 1 : 0)
-    }
-    const ranked = [...sources].sort((a, b) => sourceScore(b) - sourceScore(a))
-    const targets = ranked.slice(0, maxSources)
+    // 搜索顺序与书源列表一致：手动排序 > WebView 优先 > 导入顺序
+    const targets = sources.slice(0, maxSources)
     const results = []
     let cursor = 0
     let aborted = false
@@ -1127,4 +1199,5 @@ function parseRewrites(raw) {
     return []
   }
 }
+
 

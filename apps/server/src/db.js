@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS book_sources (
   UNIQUE (user_id, book_source_url)
 );
 
+CREATE TABLE IF NOT EXISTS source_order (
+  user_id INTEGER PRIMARY KEY,
+  json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS books (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -190,7 +196,38 @@ class Store {
     const rows = this.db
       .prepare('SELECT json FROM book_sources WHERE user_id = ? ORDER BY id')
       .all(userId)
-    return rows.map((row) => JSON.parse(row.json))
+    const sources = rows.map((row) => JSON.parse(row.json))
+    const order = this.getSourceOrder(userId)
+    const rank = new Map(order.map((url, index) => [url, index]))
+    return sources.sort((a, b) => {
+      const ai = rank.get(a.bookSourceUrl)
+      const bi = rank.get(b.bookSourceUrl)
+      // 手动排序优先；没排过的 WebView 书源排前面，再按导入顺序
+      if (ai !== undefined || bi !== undefined) return (ai ?? Number.MAX_SAFE_INTEGER) - (bi ?? Number.MAX_SAFE_INTEGER)
+      return Number(Boolean(b.html)) - Number(Boolean(a.html))
+    })
+  }
+
+  getSourceOrder(userId = currentUserId()) {
+    const row = this.db.prepare('SELECT json FROM source_order WHERE user_id = ?').get(userId)
+    if (!row) return []
+    try {
+      const value = JSON.parse(row.json)
+      return Array.isArray(value) ? value.map((item) => String(item)) : []
+    } catch {
+      return []
+    }
+  }
+
+  saveSourceOrder(urls, userId = currentUserId()) {
+    const list = Array.isArray(urls) ? [...new Set(urls.map((url) => String(url)))] : []
+    this.db
+      .prepare(
+        `INSERT INTO source_order (user_id, json, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at`,
+      )
+      .run(userId, JSON.stringify(list), Date.now())
+    return list
   }
 
   getSource(bookSourceUrl, userId = currentUserId()) {

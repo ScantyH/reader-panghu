@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api.js'
+import { useSortable } from '../use-sortable.js'
 import Rss from './Rss.vue'
 
 const TAB = { manage: '管理', explore: '探索', rss: 'RSS', check: '检测', debug: '调试' }
@@ -36,6 +37,8 @@ const debugLoading = ref(false)
 
 const expanded = ref('')
 const bundleLimit = ref(100)
+const keyChecking = ref(false)
+let keyCheckRunning = false
 
 /** 按导入批次汇总 */
 const bundles = computed(() => {
@@ -47,7 +50,7 @@ const bundles = computed(() => {
     row.count += 1
     if (source.enabled !== false) row.enabledCount += 1
   }
-  return [...map.values()].sort((a, b) => b.count - a.count)
+  return [...map.values()]
 })
 
 /** 给批次改名（备注） */
@@ -105,6 +108,28 @@ async function toggleBundle(bundle, enabled) {
   }
 }
 
+/** 整批上移 / 下移：按批次块重排，搜索顺序也跟着变 */
+async function moveBundle(bundle, delta) {
+  const names = bundles.value.map((item) => item.name)
+  const index = names.indexOf(bundle.name)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= names.length) return
+  ;[names[index], names[target]] = [names[target], names[index]]
+  const urls = []
+  for (const name of names) {
+    for (const source of sources.value) {
+      if (String(source._bundle || '未归类') === name) urls.push(source.bookSourceUrl)
+    }
+  }
+  try {
+    await api.reorderSources(urls)
+    await load()
+    window.__toast?.('批次顺序已保存')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 const groups = computed(() => [...new Set(sources.value.map((item) => item.bookSourceGroup || ''))].filter(Boolean))
 const filtered = computed(() =>
   sources.value.filter((source) => {
@@ -125,11 +150,50 @@ async function load() {
     const [list, limit] = await Promise.all([api.sources(), api.sourceBundleLimit().catch(() => ({ limit: 100 }))])
     sources.value = list
     bundleLimit.value = Number(limit?.limit) || 100
+    void maybeCheckKeys(list)
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
     loading.value = false
   }
+}
+
+/** 打开书源页时，若密钥状态超过 1 小时就自动检测一次 */
+async function maybeCheckKeys(list) {
+  if (keyCheckRunning) return
+  const stale = list.some((source) => source.hasKey && Date.now() - Number(source.keyCheck?.checkedAt || 0) >= 60 * 60 * 1000)
+  if (!stale) return
+  keyCheckRunning = true
+  keyChecking.value = true
+  try {
+    await api.checkSourceKeys()
+    sources.value = await api.sources()
+  } catch {
+    /* 检测失败下次再试 */
+  } finally {
+    keyCheckRunning = false
+    keyChecking.value = false
+  }
+}
+
+function keyBadgeText(source) {
+  if (!source.hasKey) return '未设密钥'
+  if (!source.keyCheck) return '密钥待检测'
+  return source.keyCheck.valid ? '密钥有效' : '密钥失效'
+}
+
+function keyBadgeClass(source) {
+  if (!source.hasKey) return ''
+  if (!source.keyCheck) return ''
+  return source.keyCheck.valid ? 'accent' : ''
+}
+
+function keyBadgeTitle(source) {
+  if (!source.hasKey) return '点「密钥」填写'
+  const check = source.keyCheck
+  if (!check) return '等待自动检测'
+  const time = check.checkedAt ? new Date(check.checkedAt).toLocaleString('zh-CN', { hour12: false }) : ''
+  return `${check.message || ''} ${time}`.trim()
 }
 
 async function importFile(event) {
@@ -203,6 +267,108 @@ async function toggle(source) {
     const next = source.enabled === false
     await api.setSourceEnabled(source.bookSourceUrl, next)
     source.enabled = next
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+/** 保存书源顺序：搜索“全部书源”时也按这个顺序跑 */
+async function saveSourceOrder() {
+  await api.reorderSources(sources.value.map((item) => item.bookSourceUrl))
+}
+
+const bundleNameOf = (source) => String(source._bundle || '未归类')
+const bundleIds = computed(() => bundles.value.map((bundle) => bundle.name))
+const expandedSourceIds = computed(() =>
+  sources.value.filter((source) => bundleNameOf(source) === expanded.value).map((source) => source.bookSourceUrl),
+)
+
+function rebuildByBundleOrder(names) {
+  const list = []
+  for (const name of names) {
+    for (const source of sources.value) {
+      if (bundleNameOf(source) === name) list.push(source)
+    }
+  }
+  sources.value = list
+}
+
+function moveBundleBlock(from, to) {
+  const names = [...bundleIds.value]
+  const [name] = names.splice(from, 1)
+  names.splice(to, 0, name)
+  rebuildByBundleOrder(names)
+}
+
+const {
+  start: startBundleDrag,
+  cancel: cancelBundleDrag,
+  draggingId: bundleDraggingId,
+} = useSortable({
+  getIds: () => bundleIds.value,
+  move: moveBundleBlock,
+  onCommit: async () => {
+    try {
+      await saveSourceOrder()
+      window.__toast?.('批次顺序已保存')
+    } catch (error) {
+      window.__toast?.(error.message)
+    }
+  },
+})
+
+function moveSourceBlock(from, to) {
+  const ids = expandedSourceIds.value
+  const fromUrl = ids[from]
+  const toUrl = ids[to]
+  const list = [...sources.value]
+  const fromIndex = list.findIndex((source) => source.bookSourceUrl === fromUrl)
+  if (fromIndex < 0) return
+  const [item] = list.splice(fromIndex, 1)
+  const toIndex = list.findIndex((source) => source.bookSourceUrl === toUrl)
+  list.splice(toIndex < 0 ? fromIndex : toIndex, 0, item)
+  sources.value = list
+}
+
+const {
+  start: startSourceDrag,
+  cancel: cancelSourceDrag,
+  draggingId: sourceDraggingId,
+} = useSortable({
+  getIds: () => expandedSourceIds.value,
+  move: moveSourceBlock,
+  onCommit: async () => {
+    try {
+      await saveSourceOrder()
+      window.__toast?.('书源顺序已保存')
+    } catch (error) {
+      window.__toast?.(error.message)
+    }
+  },
+})
+
+async function pinBundle(bundle) {
+  const names = bundleIds.value.filter((name) => name !== bundle.name)
+  names.unshift(bundle.name)
+  rebuildByBundleOrder(names)
+  try {
+    await saveSourceOrder()
+    window.__toast?.(`已把「${bundle.name}」固定在顶部`)
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function pinSource(source) {
+  const list = [...sources.value]
+  const index = list.findIndex((item) => item.bookSourceUrl === source.bookSourceUrl)
+  if (index <= 0) return
+  const [item] = list.splice(index, 1)
+  list.unshift(item)
+  sources.value = list
+  try {
+    await saveSourceOrder()
+    window.__toast?.(`已把「${source.bookSourceName}」固定在顶部，全部书源搜索会先搜它`)
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -337,7 +503,7 @@ onMounted(load)
     <!-- 管理 -->
     <section v-if="tab === 'manage'">
       <p class="muted" style="font-size: 13px; margin: 0 0 10px">
-        按导入批次汇总，共 {{ bundles.length }}/{{ bundleLimit }} 个批次。每次导入都会新建一个批次；勾选多个批次后可汇总成一个。展开批次后，WebView 书源可点「密钥」填写书源密钥（只保存在服务端，不回显明文）。
+        按导入批次汇总，共 {{ bundles.length }}/{{ bundleLimit }} 个批次。可长按 ≡ 拖动排序，或点「固定」置顶；「全部书源」搜索会按这个顺序优先搜索。设置了密钥的 WebView 书源每小时自动检测一次，状态显示在书源行里；点「密钥」可填写或更新。
       </p>
 
       <!-- 导入汇总：按批次展示，iOS 风格开关 -->
@@ -353,8 +519,10 @@ onMounted(load)
           v-for="bundle in bundles"
           :key="bundle.name"
           class="bundle-card"
-          :class="{ active: expanded === bundle.name, picked: picked.includes(bundle.name) }"
+          :class="{ active: expanded === bundle.name, picked: picked.includes(bundle.name), dragging: bundleDraggingId === bundle.name }"
+          :data-sort-id="bundle.name"
         >
+          <span class="sort-handle" title="长按拖动排序" @pointerdown.prevent="startBundleDrag($event, bundle.name)" @pointerup="cancelBundleDrag">≡</span>
           <input class="bundle-pick" type="checkbox" :checked="picked.includes(bundle.name)" title="选中用于汇总" @click.stop="togglePicked(bundle.name)" />
           <div class="bundle-info" @click="expanded = expanded === bundle.name ? '' : bundle.name">
             <div class="bundle-name">{{ bundle.name }}</div>
@@ -368,6 +536,7 @@ onMounted(load)
             />
             <span class="switch-track"><span class="switch-thumb" /></span>
           </label>
+          <button class="ghost" title="固定到顶部" @click="pinBundle(bundle)">固定</button>
           <button class="ghost" title="重命名" @click="renameBundle(bundle)">备注</button>
           <button class="ghost bundle-toggle" @click="expanded = expanded === bundle.name ? '' : bundle.name">
             {{ expanded === bundle.name ? '收起' : '详情' }}
@@ -384,14 +553,27 @@ onMounted(load)
 
         <div v-if="!filtered.length" class="empty">没有匹配的书源</div>
         <div v-else class="list">
-          <div v-for="source in filtered" :key="source.bookSourceUrl" class="list-item">
+          <div
+            v-for="source in filtered"
+            :key="source.bookSourceUrl"
+            class="list-item"
+            :class="{ dragging: sourceDraggingId === source.bookSourceUrl }"
+            :data-sort-id="source.bookSourceUrl"
+          >
+            <span class="sort-handle" title="长按拖动排序" @pointerdown.prevent="startSourceDrag($event, source.bookSourceUrl)" @pointerup="cancelSourceDrag">≡</span>
             <div style="flex: 1; min-width: 0">
               <div class="row" style="gap: 6px; flex-wrap: wrap">
                 <strong>{{ source.bookSourceName }}</strong>
                 <span class="badge" :class="{ accent: source.html }">{{ source.html ? 'WebView' : '规则' }}</span>
                 <span v-if="source.bookSourceGroup" class="badge">{{ source.bookSourceGroup }}</span>
-                <span v-if="source.html" class="badge" :class="{ accent: source.hasKey }">
-                  {{ source.hasKey ? '已设密钥' : '未设密钥' }}
+                <span
+                  v-if="source.html"
+                  class="badge"
+                  :class="keyBadgeClass(source)"
+                  :title="keyBadgeTitle(source)"
+                  :style="source.hasKey && source.keyCheck && !source.keyCheck.valid ? 'color: var(--color-danger)' : ''"
+                >
+                  {{ keyBadgeText(source) }}
                 </span>
                 <span v-if="source.invalid" class="badge" style="color: var(--color-danger)">失效</span>
                 <span v-if="source.enabled === false" class="badge">已禁用</span>
@@ -400,6 +582,7 @@ onMounted(load)
                 {{ source.bookSourceUrl }}
               </div>
             </div>
+            <button class="ghost" title="固定到顶部，全部书源搜索时最先搜它" @click="pinSource(source)">固定</button>
             <button v-if="source.html" class="ghost" @click="editSourceKey(source)">密钥</button>
             <button class="ghost" @click="toggle(source)">{{ source.enabled === false ? '启用' : '禁用' }}</button>
             <button class="ghost" @click="editing = JSON.stringify(source, null, 2)">编辑</button>

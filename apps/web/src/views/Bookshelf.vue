@@ -14,6 +14,10 @@ const activeGroup = ref(0)
 const loading = ref(false)
 const editing = ref(null)
 const actionBook = ref(null)
+const sourceBook = ref(null)
+const sourceCandidates = ref([])
+const sourceLoading = ref(false)
+const sourceSwitching = ref('')
 const pressing = ref('')
 const layout = ref(localStorage.getItem('shelfLayout') || 'cover')
 const infoBook = ref(null)
@@ -97,7 +101,54 @@ function runAction(action) {
   if (!book) return
   if (action === 'edit') editing.value = { ...book }
   else if (action === 'cache') cache(book)
+  else if (action === 'source') openSourcePicker(book)
   else if (action === 'delete') remove(book)
+}
+
+const isLocalBook = (book) => /^local:\/\//i.test(String(book?.origin || ''))
+
+/** 封面三个点 → 手动换源：列出其它来源供用户选择 */
+async function openSourcePicker(book) {
+  if (isLocalBook(book)) {
+    window.__toast?.('本地导入的书不需要换源')
+    return
+  }
+  sourceBook.value = book
+  sourceCandidates.value = []
+  sourceLoading.value = true
+  try {
+    const result = await api.availableSources({
+      name: book.name || '',
+      author: book.author || '',
+      origin: book.origin || '',
+      resultLimit: 10,
+    })
+    sourceCandidates.value = result.books || []
+    if (!sourceCandidates.value.length) window.__toast?.('其它书源里没找到同名书')
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    sourceLoading.value = false
+  }
+}
+
+async function switchToSource(candidate) {
+  if (sourceSwitching.value) return
+  sourceSwitching.value = `${candidate.origin}|${candidate.bookUrl}`
+  try {
+    await api.setBookSource({
+      bookUrl: sourceBook.value.bookUrl,
+      newUrl: candidate.bookUrl,
+      bookSourceUrl: candidate.origin,
+    })
+    window.__toast?.(`已切换到「${candidate.originName}」`)
+    sourceBook.value = null
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    sourceSwitching.value = ''
+  }
 }
 
 const visible = computed(() => {
@@ -472,7 +523,29 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
         </div>
         <button class="action-sheet-item" @click="runAction('edit')">✏️ 编辑信息与封面</button>
         <button class="action-sheet-item" @click="runAction('cache')">⬇️ 缓存前 20 章</button>
+        <button v-if="!isLocalBook(actionBook)" class="action-sheet-item" @click="runAction('source')">⇄ 换源</button>
         <button class="action-sheet-item danger" @click="runAction('delete')">🗑️ 从书架删除</button>
+      </div>
+    </div>
+
+    <!-- 手动换源：只列出其它可用来源，由用户选择 -->
+    <div v-if="sourceBook" class="sheet-backdrop" @click.self="sourceBook = null">
+      <div class="sheet">
+        <div class="sheet-handle" />
+        <h2 style="margin: 0 0 12px">换源 · {{ sourceBook.name }}</h2>
+        <div v-if="sourceLoading" class="muted">正在其它书源里搜索同名书…</div>
+        <div v-else-if="!sourceCandidates.length" class="muted" style="font-size: 13px">没有找到其它来源。</div>
+        <div v-else class="list">
+          <div v-for="candidate in sourceCandidates" :key="candidate.origin + candidate.bookUrl" class="list-item">
+            <div style="flex: 1; min-width: 0">
+              <strong style="font-size: 14px">{{ candidate.originName }}</strong>
+              <div class="muted" style="font-size: 12px">{{ candidate.author || '未知作者' }}</div>
+            </div>
+            <button class="primary" :disabled="Boolean(sourceSwitching)" @click="switchToSource(candidate)">
+              {{ sourceSwitching === candidate.origin + '|' + candidate.bookUrl ? '切换中…' : '切到此处' }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
