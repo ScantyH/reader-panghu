@@ -60,14 +60,41 @@ PORT=18080 DATA_DIR=./data node apps/server/src/index.js
 
 ## 部署
 
-仓库自带 `docs/FEATURES` 与 Docker 文件：
+需要 Docker（或 Docker Compose）。
+
+### 方式一：直接用发布的镜像（推荐）
+
+```bash
+docker pull ghcr.io/scantyh/reader-panghu:latest
+
+docker run -d \
+  --name reader-panghu \
+  --restart unless-stopped \
+  -p 18080:18080 \
+  -v /你的数据目录:/app/data \
+  ghcr.io/scantyh/reader-panghu:latest
+```
+
+也可以直接用仓库里的 [docker-compose.yml](docker-compose.yml)：
+
+```bash
+docker compose up -d
+```
+
+默认监听 `18080`，数据保存在当前目录的 `./data`。打开 `http://127.0.0.1:18080` 即可使用；第一个注册的账号会成为管理员，也可以在 compose 里用 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 指定。
+
+> 镜像为 `linux/amd64`（x86_64）架构，ARM 设备请用方式二自行构建。
+
+### 方式二：从源码构建
 
 ```bash
 docker build -f docker/Dockerfile -t reader-panghu:latest .
 docker run -d -p 18080:18080 -v $PWD/data:/app/data reader-panghu:latest
 ```
 
-NAS 上的一次性部署脚本见 `scripts/deploy-nas.mjs`（上传源码 → 重启容器 → 等待就绪）。
+开发模式见上面的「快速开始」。
+
+> 数据目录里包含用户、账号密码、书源、书籍和阅读设置，升级镜像不会改动它，请定期备份 `./data`。极空间 NAS 的自动部署脚本见 `scripts/deploy-nas.mjs`。
 
 ## 测试
 
