@@ -24,6 +24,12 @@ import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.j
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
 
+/** 书源批次默认上限 100，可用 SOURCE_BUNDLE_LIMIT 调整 */
+const SOURCE_BUNDLE_LIMIT = (() => {
+  const value = Math.floor(Number(process.env.SOURCE_BUNDLE_LIMIT || 100))
+  return Number.isFinite(value) && value > 0 ? value : 100
+})()
+
 const now = () => Date.now()
 
 export function registerReader3(app, { store, dataDir, options = {} }) {
@@ -44,6 +50,32 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     if (dpMarkerCache.size > 800) {
       for (const [key, value] of dpMarkerCache) {
         if (now - value.at > 15 * 60 * 1000) dpMarkerCache.delete(key)
+      }
+    }
+  }
+
+  /* ------------------------------------------------------- progress sync */
+  // 网页与 App 订阅同一条 SSE 流：任一设备写入进度，其它在线设备立刻收到，
+  // 不必等轮询；断线时客户端自己降级为定时查询。
+  const progressClients = new Set()
+
+  const progressPayload = (book) => ({
+    bookUrl: book.bookUrl,
+    index: Number(book.durChapterIndex || 0),
+    position: Number(book.durChapterPos || 0),
+    chapterTitle: book.durChapterTitle || '',
+    updatedAt: Number(book.durChapterTime || 0),
+    device: book.lastDevice || '',
+  })
+
+  const broadcastProgress = (userId, payload) => {
+    const frame = `data: ${JSON.stringify(payload)}\n\n`
+    for (const client of progressClients) {
+      if (client.userId !== userId) continue
+      try {
+        client.res.write(frame)
+      } catch {
+        progressClients.delete(client)
       }
     }
   }
@@ -241,12 +273,59 @@ async function primeBook(book) {
 
   /** Server-authoritative progress: the stored row always keeps the newest write. */
   app.post('/reader3/saveBookProgress', async (req) => {
-    const { bookUrl, index, position, clientUpdatedAt, chapterTitle } = req.body || {}
-    const updated = store.saveProgress({ bookUrl: String(bookUrl ?? ''), index, position, clientUpdatedAt, chapterTitle })
+    const { bookUrl, index, position, clientUpdatedAt, chapterTitle, device, clientId } = req.body || {}
+    const updated = store.saveProgress({
+      bookUrl: String(bookUrl ?? ''),
+      index,
+      position,
+      clientUpdatedAt,
+      chapterTitle,
+      device,
+    })
     if (!updated) return fail('书籍不存在')
-    // The client adopts this timestamp; a rejected stale write still returns the
-    // server's authoritative one, which is what "backend latest wins" means here.
-    return ok(String(updated.durChapterTime))
+    // 被拒的旧写入也要返回服务端权威值，客户端据此直接纠正本地位置。
+    const accepted = updated.progressAccepted !== false
+    const payload = progressPayload(updated)
+    // clientId 只用于让写入方忽略自己的回声，不落库。
+    if (accepted) broadcastProgress(req.userId ?? 1, { ...payload, clientId: String(clientId || '') })
+    return ok({ accepted, ...payload })
+  })
+
+  /** 轻量读取单本进度：App 前台回来、切书时只拉这一条。 */
+  app.get('/reader3/getBookProgress', async (req) => {
+    const bookUrl = String(req.query?.bookUrl || '')
+    if (!bookUrl) return fail('缺少 bookUrl')
+    const book = store.getBook(bookUrl)
+    if (!book) return fail('书籍不存在')
+    return ok(progressPayload(book))
+  })
+
+  /** 进度推送流（SSE）：客户端断线会自动重连，心跳保持连接不被代理掐断。 */
+  app.get('/reader3/progressSSE', (req, reply) => {
+    reply.hijack()
+    const res = reply.raw
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    })
+    res.write(': connected\n\n')
+    const client = { res, userId: req.userId ?? 1 }
+    progressClients.add(client)
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(': ping\n\n')
+      } catch {
+        clearInterval(heartbeat)
+        progressClients.delete(client)
+      }
+    }, 25000)
+    heartbeat.unref?.()
+    req.raw.on('close', () => {
+      clearInterval(heartbeat)
+      progressClients.delete(client)
+    })
   })
 
   /* -------------------------------------------------------------- book data */
@@ -480,7 +559,53 @@ async function primeBook(book) {
     return ok({ saved: true })
   })
 
-  /** 给某个批次改名（备注） */
+  /** 书源批次的汇总统计：搜索页只需要这些数字，不用把上千个书源发给前端 */
+  app.get('/reader3/getSourceBundles', async () => {
+    const rows = new Map()
+    for (const source of store.listSources()) {
+      const name = String(source._bundle || '未归类')
+      if (!rows.has(name)) rows.set(name, { name, count: 0, enabledCount: 0, searchableCount: 0 })
+      const row = rows.get(name)
+      row.count += 1
+      if (source.enabled !== false) {
+        row.enabledCount += 1
+        if (source.html || source.searchUrl) row.searchableCount += 1
+      }
+    }
+    return ok(
+      [...rows.values()].sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name), 'zh-Hans-CN')),
+    )
+  })
+
+  app.get('/reader3/getSourceBundleLimit', async () => ok({ limit: SOURCE_BUNDLE_LIMIT }))
+
+  /** 导入书源：每次都必须新建一个批次，同名自动加序号，不覆盖已有批次 */
+  app.post('/reader3/importBookSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
+    const list = Array.isArray(req.body?.sources) ? req.body.sources : []
+    const prepared = list
+      .filter((source) => source && source.bookSourceUrl)
+      .map((source) => ({ ...source }))
+    if (!prepared.length) return fail('没有解析出书源')
+    const newCount = prepared.filter((source) => !store.getSource(String(source.bookSourceUrl))).length
+    if (newCount) {
+      const quota = sourceQuotaError(store, req, newCount)
+      if (quota) return fail(quota)
+    }
+    const names = new Set(store.listSources().map((source) => String(source._bundle || '未归类')))
+    if (names.size >= SOURCE_BUNDLE_LIMIT) {
+      return fail(`书源批次已达上限 ${SOURCE_BUNDLE_LIMIT} 个，请先汇总或删除旧批次`)
+    }
+    const requested =
+      String(req.body?.name || '').trim() ||
+      `导入 ${new Date().toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+    let bundle = requested
+    for (let index = 2; names.has(bundle); index += 1) bundle = `${requested} (${index})`
+    store.saveSources(prepared.map((source) => ({ ...source, _bundle: bundle })))
+    return ok({ bundle, count: prepared.length, bundles: names.size + 1 })
+  })
+
   app.post('/reader3/renameBundle', async (req) => {
     const blocked = editSourcesBlocked(req)
     if (blocked) return fail(blocked)
@@ -591,9 +716,10 @@ async function primeBook(book) {
 
   /* ----------------------------------------------------------------- search */
 
-  const searchAll = async (keyword, { group, sourceUrl, limit = 0 } = {}) => {
+  const searchAll = async (keyword, { group, sourceUrl, bundle, limit = 0 } = {}) => {
     const sources = enabledSources().filter((source) => {
       if (sourceUrl) return source.bookSourceUrl === sourceUrl
+      if (bundle) return String(source._bundle || '未归类') === bundle
       if (group) return source.bookSourceGroup === group
       return true
     })
@@ -667,10 +793,10 @@ async function primeBook(book) {
   }
 
   app.post('/reader3/searchBookMulti', async (req) => {
-    const { key, bookSourceGroup, bookSourceUrl } = req.body || {}
+    const { key, bookSourceGroup, bookSourceUrl, bookSourceBundle } = req.body || {}
     const keyword = String(key ?? '').trim()
     if (!keyword) return fail('请输入搜索关键词')
-    const books = await searchAll(keyword, { group: bookSourceGroup, sourceUrl: bookSourceUrl })
+    const books = await searchAll(keyword, { group: bookSourceGroup, sourceUrl: bookSourceUrl, bundle: bookSourceBundle })
     return ok(books)
   })
 
@@ -678,6 +804,7 @@ async function primeBook(book) {
     const keyword = String(req.query?.key ?? '').trim()
     const group = req.query?.bookSourceGroup ? String(req.query.bookSourceGroup) : ''
     const sourceUrl = req.query?.bookSourceUrl ? String(req.query.bookSourceUrl) : ''
+    const bundle = req.query?.bookSourceBundle ? String(req.query.bookSourceBundle) : ''
 
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -696,6 +823,7 @@ async function primeBook(book) {
       } else {
         const sources = enabledSources().filter((source) => {
           if (sourceUrl) return source.bookSourceUrl === sourceUrl
+          if (bundle) return String(source._bundle || '未归类') === bundle
           if (group) return source.bookSourceGroup === group
           return true
         })

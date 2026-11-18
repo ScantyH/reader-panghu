@@ -1,4 +1,4 @@
-﻿/* ─── reader-next 风格补充：横滑 tabs、底部抽屉、浮动控制条、过渡 ─── */
+/* ─── reader-next 风格补充：横滑 tabs、底部抽屉、浮动控制条、过渡 ─── */
 
 /* 横滑分组 tabs */
 .group-tabs {
@@ -790,6 +790,11 @@
   box-shadow: 0 0 0 1px var(--color-primary) inset;
 }
 
+.bundle-card.picked {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg, #fdf3e6);
+}
+
 .bundle-info { flex: 1; min-width: 0; cursor: pointer; }
 .bundle-name { font-size: 14.5px; font-weight: 600; margin-bottom: 3px; }
 .bundle-sub { font-size: 12px; color: var(--color-text-secondary); }
@@ -1528,6 +1533,65 @@
   .shelf-info {
     padding-top: 8px;
   }
+}
+
+/* 手机竖屏：书架三列，卡片只留封面 + 一行书名，靠近原生书架的密度 */
+@media (max-width: 480px) {
+  .mode-cover,
+  .mode-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px 10px;
+  }
+
+  .mode-cover .shelf-title,
+  .mode-grid .shelf-title {
+    margin-top: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .shelf-cover .unread-badge {
+    top: 6px;
+    right: 6px;
+    padding: 1px 5px;
+    font-size: 10px;
+  }
+
+  .page-head h1 {
+    font-size: 20px;
+  }
+
+  .page-head {
+    padding: 4px 0 10px;
+  }
+}
+
+/* App 外壳里：隐藏与原生设置重复的退出入口 */
+html.is-app .header-user {
+  display: none;
+}
+
+/* 封面模式默认只展示封面，手机竖屏补一行书名 */
+.shelf-cover-title {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .shelf-cover-title {
+    display: -webkit-box;
+    margin: 6px 2px 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+html.is-app .app-header {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* ─── 手机顶部栏：标题不换行，隐藏版本徽标与用户名，把宽度留给搜索 ─── */

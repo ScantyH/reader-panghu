@@ -353,6 +353,8 @@ onMounted(load)
           <p class="shelf-line">{{ updatedAgo(book) }}：{{ latestName(book) }}</p>
           <p class="shelf-line shelf-intro">{{ book.intro || '' }}</p>
         </div>
+        <!-- 手机封面模式：书名列在封面下方，桌面保持纯封面 -->
+        <h3 v-else class="shelf-cover-title">{{ book.name }}</h3>
       </article>
     </div>
 

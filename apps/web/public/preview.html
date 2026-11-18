@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>胖虎阅读 · 手机开发台</title>
+<style>
+  :root {
+    --bg: #14110d;
+    --panel: #1e1a15;
+    --panel-2: #26211a;
+    --line: #3a3228;
+    --text: #f4ece0;
+    --muted: #a99c8b;
+    --accent: #d98a2b;
+    --ok: #5fb87a;
+    --warn: #e2b33c;
+    --err: #e46a5a;
+    --frame: #0b0a09;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 800px at 20% 0%, #241d15 0%, var(--bg) 60%);
+    color: var(--text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    overflow: hidden;
+  }
+  .studio { display: flex; flex-direction: column; height: 100vh; }
+  .topbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: rgba(30,26,21,.9); backdrop-filter: blur(12px);
+  }
+  .brand { font-size: 15px; font-weight: 700; letter-spacing: .5px; white-space: nowrap; }
+  .brand span { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .top-actions { display: flex; gap: 8px; align-items: center; flex: 1; }
+  .top-actions input {
+    flex: 1; min-width: 120px; background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--text); border-radius: 8px; padding: 7px 10px; font-size: 12px;
+  }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #221705; font-weight: 600; }
+  button.ghost { background: transparent; }
+  .body { display: flex; flex: 1; min-height: 0; }
+  .stage {
+    flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
+    gap: 28px; padding: 20px; overflow: hidden;
+  }
+  .stage::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size: 22px 22px; pointer-events: none;
+  }
+  .device {
+    position: relative; transform-origin: center center; flex: none;
+    filter: drop-shadow(0 30px 60px rgba(0,0,0,.55));
+  }
+  .device-frame {
+    position: relative; background: var(--frame); border-radius: 54px; padding: 13px;
+    border: 1px solid #322a20; box-shadow: inset 0 0 0 2px #1a1612;
+  }
+  .device-screen { position: relative; border-radius: 42px; overflow: hidden; background: #f6efe3; }
+  .statusbar {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    height: 47px; padding: 0 26px 7px; background: #f6efe3;
+    color: #1c1c1e; font-size: 13px; font-weight: 600; letter-spacing: .2px;
+  }
+  .statusbar .sb-right { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .device-screen iframe { display: block; border: 0; background: #f6efe3; }
+  .island {
+    position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+    width: 118px; height: 33px; background: #050505; border-radius: 20px; z-index: 3;
+    pointer-events: none;
+  }
+  .homebar {
+    position: absolute; bottom: 9px; left: 50%; transform: translateX(-50%);
+    width: 130px; height: 5px; border-radius: 3px; background: rgba(0,0,0,.35); z-index: 3;
+    pointer-events: none;
+  }
+  .device-label {
+    position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
+    color: var(--muted); font-size: 11px; white-space: nowrap;
+  }
+  .desktop-device .device-frame { border-radius: 16px; padding: 10px; }
+  .desktop-device .device-screen { border-radius: 8px; }
+  .desktop-device .island, .desktop-device .homebar { display: none; }
+
+  .panel {
+    width: 400px; flex: none; border-left: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(38,33,26,.6), rgba(24,20,16,.92));
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button {
+    flex: 1; border: 0; border-radius: 0; background: transparent; padding: 11px 6px;
+    color: var(--muted); border-bottom: 2px solid transparent;
+  }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+  .pane { display: none; padding: 14px; overflow: auto; flex: 1; min-height: 0; }
+  .pane.active { display: block; }
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .field label { color: var(--muted); font-size: 11px; letter-spacing: .3px; }
+  .field input, .field select {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .hint { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 4px 0 12px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chips button { padding: 6px 10px; font-size: 11px; }
+  .chips button.active { border-color: var(--accent); color: var(--accent); }
+  .net-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .net-table th, .net-table td { text-align: left; padding: 5px 4px; border-bottom: 1px solid rgba(58,50,40,.6); vertical-align: top; }
+  .net-table th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: #1b1712; }
+  .net-table td.url { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 99px; font-size: 10px; background: #2d261d; color: var(--muted); }
+  .status-ok { color: var(--ok); }
+  .status-warn { color: var(--warn); }
+  .status-err { color: var(--err); }
+  .log-list { list-style: none; margin: 0; padding: 0; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .log-list li { padding: 6px; border-bottom: 1px solid rgba(58,50,40,.6); word-break: break-all; }
+  .log-list li .time { color: var(--muted); margin-right: 6px; }
+  .sync-box {
+    background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; margin-bottom: 12px;
+  }
+  .sync-box h4 { margin: 0 0 8px; font-size: 12px; color: var(--accent); font-weight: 600; }
+  .kv { display: grid; grid-template-columns: 84px 1fr; gap: 4px 8px; font-size: 11px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: #2a231a; border: 1px solid var(--line); color: var(--text);
+    padding: 9px 16px; border-radius: 10px; font-size: 12px; opacity: 0; transition: opacity .2s;
+    pointer-events: none; z-index: 9;
+  }
+  .toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="studio">
+  <div class="topbar">
+    <div class="brand">胖虎阅读<span>iPhone 开发台</span></div>
+    <div class="top-actions">
+      <input id="pathInput" value="/bookshelf?app=1" spellcheck="false" />
+      <button id="loadBtn" class="primary">加载</button>
+      <button id="reloadBtn">刷新</button>
+      <button id="openBtn" class="ghost">独立窗口</button>
+      <button id="layoutBtn" class="ghost">并排对照</button>
+    </div>
+  </div>
+
+  <div class="body">
+    <section class="stage" id="stage">
+      <div class="device phone-device" id="phoneDevice">
+        <div class="device-frame">
+          <div class="device-screen">
+            <div class="statusbar"><span>9:41</span><span class="sb-right">5G ▮▮▮</span></div>
+            <div class="island"></div>
+            <iframe id="phone" title="phone preview"></iframe>
+            <div class="homebar"></div>
+          </div>
+        </div>
+        <div class="device-label" id="phoneLabel">iPhone 13 Pro Max · 428×926</div>
+      </div>
+
+      <div class="device desktop-device hidden" id="desktopDevice">
+        <div class="device-frame">
+          <div class="device-screen">
+            <iframe id="desktop" title="desktop preview"></iframe>
+          </div>
+        </div>
+        <div class="device-label">电脑网页 · 1280×800（0.52×）</div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="tabs">
+        <button data-tab="device" class="active">设备</button>
+        <button data-tab="sync">同步</button>
+        <button data-tab="net">网络</button>
+        <button data-tab="log">日志</button>
+      </div>
+
+      <div class="pane active" data-pane="device">
+        <div class="field">
+          <label>设备尺寸</label>
+          <div class="chips" id="sizeChips">
+            <button data-w="428" data-h="926" class="active">13 Pro Max</button>
+            <button data-w="393" data-h="852">15 Pro</button>
+            <button data-w="375" data-h="667">SE</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>后端账号（自动登录用）</label>
+          <div class="row">
+            <input id="username" value="demo" autocomplete="off" />
+            <input id="password" type="password" value="demo123456" autocomplete="off" />
+          </div>
+        </div>
+        <div class="field">
+          <label>直达页面</label>
+          <div class="row">
+            <button id="goShelf">书架</button>
+            <button id="goSearch">搜索</button>
+            <button id="goSources">书源</button>
+            <button id="goStats">统计</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>直达阅读器（bookUrl）</label>
+          <div class="row">
+            <input id="bookUrlInput" placeholder="点击「同步」页载入书架后选择" />
+            <button id="goReader">打开</button>
+          </div>
+        </div>
+        <p class="hint">
+          改代码后 Vite 会自动热更新到这台「手机」里。手机连同一 Wi-Fi 打开
+          <code>http://&lt;电脑IP&gt;:5173/preview.html</code> 也能看到同样的开发台。
+        </p>
+        <div class="field">
+          <label>快捷操作</label>
+          <div class="row">
+            <button id="backBtn">后退</button>
+            <button id="forwardBtn">前进</button>
+            <button id="clearBtn">清空登录态</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" data-pane="sync">
+        <div class="sync-box">
+          <h4>服务端进度（每 3 秒刷新）</h4>
+          <div class="kv" id="serverProgress">
+            <span>书籍</span><b id="spBook">—</b>
+            <span>章节</span><b id="spChapter">—</b>
+            <span>位置</span><b id="spPosition">—</b>
+            <span>更新时间</span><b id="spTime">—</b>
+            <span>设备</span><b id="spDevice">—</b>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>目标书（来自服务端书架）</label>
+          <select id="bookSelect"></select>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>章节序号（0 起）</label>
+            <input id="chapterInput" type="number" min="0" value="0" />
+          </div>
+          <div class="field">
+            <label>章节内字符位置</label>
+            <input id="positionInput" type="number" min="0" value="0" />
+          </div>
+        </div>
+        <p class="hint">
+          用「另一台设备」的身份写一条进度，再看手机画面是否自动跟随——这就是双向同步的验收开关。
+        </p>
+        <div class="row">
+          <button id="pushWeb" class="primary">以「网页」身份写入</button>
+          <button id="pushApp">以「App」身份写入</button>
+        </div>
+        <p class="hint" id="syncHint">进度协议升级完成后，这里写入会立刻推送到手机画面。</p>
+      </div>
+
+      <div class="pane" data-pane="net">
+        <div class="row" style="margin-bottom:10px">
+          <button id="netClear" class="ghost">清空</button>
+          <button id="netPause" class="ghost">暂停</button>
+        </div>
+        <table class="net-table">
+          <thead><tr><th>来源</th><th>请求</th><th>状态</th><th>耗时</th></tr></thead>
+          <tbody id="netBody"></tbody>
+        </table>
+      </div>
+
+      <div class="pane" data-pane="log">
+        <ul class="log-list" id="logList"></ul>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (sel) => document.querySelector(sel)
+const phone = $('#phone')
+const desktop = $('#desktop')
+const stage = $('#stage')
+
+let token = ''
+let currentBookUrl = ''
+let paused = false
+let netRows = []
+
+/* ----------------------------------------------------------- 基础工具 */
+function toast(text) {
+  const el = $('#toast')
+  el.textContent = text
+  el.classList.add('show')
+  clearTimeout(toast.timer)
+  toast.timer = setTimeout(() => el.classList.remove('show'), 2200)
+}
+
+function logLine(text, kind = 'info') {
+  const list = $('#logList')
+  const li = document.createElement('li')
+  const time = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  li.innerHTML = `<span class="time">${time}</span><span class="${kind === 'error' ? 'status-err' : ''}"></span>`
+  li.lastChild.textContent = text
+  list.prepend(li)
+  while (list.children.length > 300) list.lastChild.remove()
+}
+
+window.__previewReport = (entry) => {
+  if (!entry) return
+  if (entry.kind === 'net') {
+    if (paused) return
+    const url = String(entry.url || '').replace(location.origin, '')
+    netRows.unshift(entry)
+    if (netRows.length > 120) netRows.pop()
+    renderNet()
+  } else if (entry.kind === 'error') {
+    logLine(`[${entry.tag}] ${entry.message}`, 'error')
+  } else {
+    logLine(`[${entry.tag}] ${entry.message}`)
+  }
+}
+
+function statusClass(status) {
+  if (!status) return 'status-err'
+  if (status >= 500) return 'status-err'
+  if (status >= 400) return 'status-warn'
+  return 'status-ok'
+}
+
+function renderNet() {
+  const body = $('#netBody')
+  body.innerHTML = netRows
+    .slice(0, 80)
+    .map((row) => {
+      const path = String(row.url || '').replace(/^https?:\/\/[^/]+/, '')
+      const shortPath = path.length > 46 ? path.slice(0, 46) + '…' : path
+      return `<tr>
+        <td><span class="tag">${row.tag}</span></td>
+        <td class="url" title="${escapeHtml(path)}">${escapeHtml(row.method)} ${escapeHtml(shortPath)}</td>
+        <td class="${statusClass(row.status)}">${row.status || (row.error ? 'ERR' : '—')}</td>
+        <td>${row.ms != null ? row.ms + 'ms' : ''}</td>
+      </tr>`
+    })
+    .join('')
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
+}
+
+/* ----------------------------------------------------- iframe 注入探针 */
+const INSTRUMENT = `
+(function () {
+  if (window.__previewInstrumented) return;
+  window.__previewInstrumented = true;
+  var TAG = window.__previewTag || 'web';
+  function report(data) { try { window.parent.__previewReport(data); } catch (e) {} }
+  var origFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (origFetch) {
+    window.fetch = function () {
+      var args = arguments;
+      var req = args[0];
+      var url = typeof req === 'string' ? req : (req && req.url) || '';
+      var method = (args[1] && args[1].method) || 'GET';
+      var started = performance.now();
+      return origFetch.apply(this, args).then(function (res) {
+        report({ kind: 'net', tag: TAG, method: method, url: url, status: res.status, ms: Math.round(performance.now() - started) });
+        return res;
+      }, function (err) {
+        report({ kind: 'net', tag: TAG, method: method, url: url, error: String(err), ms: Math.round(performance.now() - started) });
+        throw err;
+      });
+    };
+  }
+  window.addEventListener('error', function (e) {
+    report({ kind: 'error', tag: TAG, message: (e.message || 'error') + ' @ ' + (e.filename || '') + ':' + (e.lineno || 0) });
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var reason = e.reason && (e.reason.message || e.reason);
+    report({ kind: 'error', tag: TAG, message: 'Promise: ' + reason });
+  });
+  var origError = window.console.error;
+  window.console.error = function () {
+    report({ kind: 'error', tag: TAG, message: Array.prototype.map.call(arguments, String).join(' ') });
+    origError.apply(window.console, arguments);
+  };
+})();
+`
+
+function instrument(frame, tag) {
+  try {
+    const win = frame.contentWindow
+    if (!win) return
+    win.__previewTag = tag
+    win.eval(INSTRUMENT)
+  } catch (error) {
+    logLine(`注入探针失败：${error.message}`, 'error')
+  }
+}
+
+/* --------------------------------------------------------------- 登录态 */
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) }
+  if (token) headers['x-auth-token'] = token
+  if (options.body && !headers['content-type']) headers['content-type'] = 'application/json'
+  const response = await fetch(path, { ...options, headers })
+  const text = await response.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { isSuccess: response.ok, data: text }
+  }
+}
+
+function readFrameToken() {
+  try {
+    return phone.contentWindow.localStorage.getItem('rp_token') || ''
+  } catch {
+    return ''
+  }
+}
+
+async function ensureToken() {
+  token = readFrameToken()
+  if (token) return token
+  const mode = await api('/reader3/getAuthMode').catch(() => null)
+  if (mode?.data?.enabled === false) return ''
+  const name = $('#username').value.trim()
+  const pass = $('#password').value
+  if (!name || !pass) return ''
+  const result = await api('/reader3/login', {
+    method: 'POST',
+    body: JSON.stringify({ username: name, password: pass }),
+  }).catch((error) => ({ isSuccess: false, errorMsg: error.message }))
+  if (result?.isSuccess) {
+    token = result.data.token
+    logLine(`自动登录成功：${result.data.username}`)
+    return token
+  }
+  logLine(`自动登录失败：${result?.errorMsg || '未知错误'}`, 'error')
+  return ''
+}
+
+/* ------------------------------------------------------------- 尺寸与缩放 */
+function layout() {
+  const width = Number(phone.dataset.width || 428)
+  const height = Number(phone.dataset.height || 926)
+  const padW = 40
+  const padH = 90
+  const scale = Math.min(1, (stage.clientHeight - padH) / height, (stage.clientWidth - padW) / width)
+  const phoneDevice = document.querySelector('.phone-device')
+  phoneDevice.style.transform = `scale(${scale.toFixed(3)})`
+  const desktopDevice = document.querySelector('.desktop-device')
+  const dScale = Math.min(0.62, (stage.clientHeight - 60) / 800, (stage.clientWidth * 0.56) / 1280)
+  desktopDevice.style.transform = `scale(${dScale.toFixed(3)})`
+}
+
+function applySize(width, height, label) {
+  const bar = 47
+  phone.style.width = width + 'px'
+  phone.style.height = height - bar + 'px'
+  phone.dataset.width = width
+  phone.dataset.height = height
+  const screen = phone.closest('.device-screen')
+  if (screen) {
+    screen.style.width = width + 'px'
+    screen.style.height = height + 'px'
+  }
+  $('#phoneLabel').textContent = `${label} · ${width}×${height}`
+  layout()
+}
+
+/* --------------------------------------------------------------- 加载与导航 */
+function frameUrl(path) {
+  const base = path || $('#pathInput').value || '/bookshelf'
+  const url = new URL(base, location.origin)
+  if (token) url.searchParams.set('token', token)
+  url.searchParams.set('app', '1')
+  return url.toString()
+}
+
+function loadPhone() {
+  const url = frameUrl()
+  logLine(`加载 ${url.replace(location.origin, '')}`)
+  phone.src = url
+}
+
+function loadDesktop() {
+  if (!token) return
+  // 对照窗口跟随手机当前页面，但不带 app=1：它代表「电脑网页」这一端
+  const path = $('#pathInput').value || '/bookshelf'
+  const url = new URL(path, location.origin)
+  url.searchParams.set('token', token)
+  desktop.src = url.toString()
+}
+
+/* --------------------------------------------------------------- 同步页 */
+async function refreshBooks() {
+  const shelf = await api('/reader3/getBookshelf').catch(() => null)
+  const books = shelf?.data
+  if (!Array.isArray(books)) return
+  const select = $('#bookSelect')
+  const previous = select.value
+  select.innerHTML = books
+    .map((book) => `<option value="${escapeHtml(book.bookUrl)}">${escapeHtml(book.name || book.bookUrl)}</option>`)
+    .join('')
+  if (previous) select.value = previous
+  if (!currentBookUrl && books[0]) {
+    currentBookUrl = books[0].bookUrl
+    $('#bookUrlInput').value = currentBookUrl
+  }
+  select.onchange = () => {
+    currentBookUrl = select.value
+    $('#bookUrlInput').value = currentBookUrl
+    refreshServerProgress()
+  }
+  if (!select.dataset.bound) {
+    select.dataset.bound = '1'
+    select.dispatchEvent(new Event('change'))
+  }
+}
+
+async function refreshServerProgress() {
+  const bookUrl = $('#bookSelect').value || currentBookUrl
+  if (!bookUrl) return
+  const result = await api(`/reader3/getBookProgress?bookUrl=${encodeURIComponent(bookUrl)}`).catch(() => null)
+  const progress = result?.data
+  $('#spBook').textContent = bookUrl.split('/').pop() || bookUrl
+  if (!progress) {
+    $('#spChapter').textContent = '—'
+    $('#spPosition').textContent = '—'
+    $('#spTime').textContent = '—'
+    $('#spDevice').textContent = '—'
+    return
+  }
+  $('#spChapter').textContent = progress.index ?? '—'
+  $('#spPosition').textContent = progress.position ?? '—'
+  $('#spTime').textContent = progress.updatedAt ? new Date(Number(progress.updatedAt)).toLocaleTimeString('zh-CN', { hour12: false }) : '—'
+  $('#spDevice').textContent = progress.device || '—'
+}
+
+async function pushProgress(device) {
+  const bookUrl = $('#bookSelect').value || currentBookUrl
+  if (!bookUrl) {
+    toast('先载入书架')
+    return
+  }
+  const index = Number($('#chapterInput').value || 0)
+  const position = Number($('#positionInput').value || 0)
+  const result = await api('/reader3/saveBookProgress', {
+    method: 'POST',
+    body: JSON.stringify({ bookUrl, index, position, device, clientUpdatedAt: Date.now(), chapterTitle: '' }),
+  }).catch((error) => ({ isSuccess: false, errorMsg: error.message }))
+  if (result?.isSuccess === false) {
+    toast(`写入失败：${result.errorMsg}`)
+    logLine(`写入失败：${result.errorMsg}`, 'error')
+    return
+  }
+  toast(`已以 ${device} 身份写入：第 ${index} 章 / ${position}`)
+  logLine(`写入进度 device=${device} chapter=${index} position=${position}`)
+  refreshServerProgress()
+}
+
+/* --------------------------------------------------------------- 交互绑定 */
+document.querySelectorAll('.tabs button').forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach((item) => item.classList.toggle('active', item === button))
+    document.querySelectorAll('.pane').forEach((pane) => pane.classList.toggle('active', pane.dataset.pane === button.dataset.tab))
+    if (button.dataset.tab === 'sync') {
+      refreshBooks()
+      refreshServerProgress()
+    }
+  }
+})
+
+document.querySelectorAll('#sizeChips button').forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll('#sizeChips button').forEach((item) => item.classList.toggle('active', item === button))
+    applySize(Number(button.dataset.w), Number(button.dataset.h), button.textContent)
+  }
+})
+
+$('#loadBtn').onclick = async () => {
+  await ensureToken()
+  loadPhone()
+}
+$('#reloadBtn').onclick = () => {
+  if (phone.contentWindow) phone.contentWindow.location.reload()
+}
+$('#openBtn').onclick = () => window.open(frameUrl(), '_blank')
+$('#layoutBtn').onclick = () => {
+  const desktopDevice = $('#desktopDevice')
+  const showing = !desktopDevice.classList.contains('hidden')
+  desktopDevice.classList.toggle('hidden', showing)
+  if (!showing) {
+    if (!token) ensureToken().then(loadDesktop)
+    else loadDesktop()
+  }
+  layout()
+}
+$('#goShelf').onclick = () => { $('#pathInput').value = '/bookshelf?app=1'; loadPhone() }
+$('#goSearch').onclick = () => { $('#pathInput').value = '/search?app=1'; loadPhone() }
+$('#goSources').onclick = () => { $('#pathInput').value = '/sources?app=1'; loadPhone() }
+$('#goStats').onclick = () => { $('#pathInput').value = '/stats?app=1'; loadPhone() }
+$('#goReader').onclick = () => {
+  const bookUrl = $('#bookUrlInput').value.trim()
+  if (!bookUrl) return toast('先填 bookUrl')
+  $('#pathInput').value = `/read?book=${encodeURIComponent(bookUrl)}&app=1`
+  loadPhone()
+}
+$('#backBtn').onclick = () => { try { phone.contentWindow.history.back() } catch {} }
+$('#forwardBtn').onclick = () => { try { phone.contentWindow.history.forward() } catch {} }
+$('#clearBtn').onclick = () => {
+  try {
+    phone.contentWindow.localStorage.removeItem('rp_token')
+    phone.contentWindow.location.href = '/login'
+  } catch {}
+  token = ''
+  toast('已清空网页登录态')
+}
+$('#pushWeb').onclick = () => pushProgress('web')
+$('#pushApp').onclick = () => pushProgress('app:iphone')
+$('#netClear').onclick = () => { netRows = []; renderNet() }
+$('#netPause').onclick = (event) => {
+  paused = !paused
+  event.target.textContent = paused ? '继续' : '暂停'
+}
+
+phone.addEventListener('load', () => {
+  instrument(phone, 'phone')
+  layout()
+})
+desktop.addEventListener('load', () => instrument(desktop, 'web'))
+
+window.addEventListener('resize', layout)
+
+/* --------------------------------------------------------------- 启动 */
+;(async () => {
+  applySize(428, 926, 'iPhone 13 Pro Max')
+  layout()
+  const initialPath = new URLSearchParams(location.search).get('path')
+  if (initialPath) $('#pathInput').value = initialPath
+  await ensureToken()
+  loadPhone()
+  setInterval(async () => {
+    const current = readFrameToken()
+    if (current && current !== token) token = current
+    refreshServerProgress()
+  }, 3000)
+})()
+</script>
+</body>
+</html>

@@ -70,7 +70,6 @@ const NAV = [
   { to: '/search', label: '搜索', icon: '🔍' },
   { to: '/sources', label: '书源', icon: '🔗' },
   { to: '/stats', label: '统计', icon: '📊' },
-  { to: '/backup', label: '备份', icon: '💾' },
   { to: '/settings', label: '设置', icon: '⚙️' },
 ]
 onMounted(loadAuth)

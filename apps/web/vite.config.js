@@ -17,6 +17,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Windows 上编辑器的原子写会先落一个 .tmpdir 再改名，chokidar 去 watch 它
+    // 会拿到 EBUSY 把 dev server 整个弄崩；这些临时目录直接忽略。
+    watch: {
+      ignored: ['**/*.tmpdir/**', '**/*.tmp', '**/.~*'],
+    },
     proxy: {
       '/reader3': { target: backend, changeOrigin: true },
       '/api': { target: backend, changeOrigin: true },

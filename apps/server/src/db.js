@@ -273,8 +273,12 @@ class Store {
    * a write that carries a clientUpdatedAt older than what we already stored is
    * rejected so a stale web/APP client cannot roll back newer progress. The
    * returned book always holds the value the client should adopt.
+   *
+   * `position` is the character offset inside the chapter text (Legado's
+   * durChapterPos), so it survives layout differences between web and app.
+   * `device` only labels the writer for cross-device UI hints.
    */
-  saveProgress({ bookUrl, index, position, clientUpdatedAt, chapterTitle }, userId = currentUserId()) {
+  saveProgress({ bookUrl, index, position, clientUpdatedAt, chapterTitle, device }, userId = currentUserId()) {
     const book = this.getBook(bookUrl, userId)
     if (!book) return null
     const storedAt = Number(book.durChapterTime || 0)
@@ -287,6 +291,7 @@ class Store {
       durChapterPos: Number(position) || 0,
       durChapterTime: Date.now(),
       durChapterTitle: String(chapterTitle || '').trim() || book.durChapterTitle || '',
+      lastDevice: String(device || book.lastDevice || '').slice(0, 40),
     }
     this.saveBook(updated, userId)
     return { ...updated, progressAccepted: true }

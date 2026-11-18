@@ -35,6 +35,7 @@ const debugResult = ref(null)
 const debugLoading = ref(false)
 
 const expanded = ref('')
+const bundleLimit = ref(100)
 
 /** 按导入批次汇总 */
 const bundles = computed(() => {
@@ -78,15 +79,16 @@ async function mergePicked() {
     window.__toast?.('至少选择两个批次')
     return
   }
-  const target = prompt('合并到哪个名称（留空则用第一个选中的）', picked.value[0])
+  const defaultName = `汇总 ${new Date().toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+  const target = prompt('汇总后的批次名称', defaultName)
   if (target === null) return
-  const into = (target || picked.value[0]).trim()
-  if (!confirm(`把 ${picked.value.length} 个批次合并为「${into}」？`)) return
+  const into = (target || defaultName).trim()
+  if (!confirm(`把 ${picked.value.length} 个批次汇总为「${into}」？`)) return
   try {
     const result = await api.mergeBundles(picked.value, into)
     picked.value = []
     await load()
-    window.__toast?.( `已合并 ${result.merged} 个书源` )
+    window.__toast?.(`已汇总 ${result.merged} 个书源到「${into}」`)
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -120,7 +122,9 @@ const webviewCount = computed(() => sources.value.filter((item) => item.html).le
 async function load() {
   loading.value = true
   try {
-    sources.value = await api.sources()
+    const [list, limit] = await Promise.all([api.sources(), api.sourceBundleLimit().catch(() => ({ limit: 100 }))])
+    sources.value = list
+    bundleLimit.value = Number(limit?.limit) || 100
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
@@ -134,8 +138,8 @@ async function importFile(event) {
   try {
     const parsed = await api.importSourceFile(file)
     if (!parsed.length) throw new Error('文件里没有解析出书源')
-    await api.saveSources(parsed, file.name.replace(/\.json$/i, ""))
-    window.__toast?.(`已导入 ${parsed.length} 个书源`)
+    const result = await api.importSources(parsed, file.name.replace(/\.json$/i, ''))
+    window.__toast?.(`已导入 ${parsed.length} 个书源，新批次「${result.bundle}」`)
     await load()
   } catch (error) {
     window.__toast?.(error.message)
@@ -161,8 +165,8 @@ async function importRemote() {
   try {
     const list = await api.readRemoteSourceFile(url)
     const parsed = list.map((item) => (typeof item === 'string' ? JSON.parse(item) : item))
-    await api.saveSources(parsed, "远程订阅")
-    window.__toast?.(`已从远程导入 ${parsed.length} 个书源`)
+    const result = await api.importSources(parsed, '远程订阅')
+    window.__toast?.(`已从远程导入 ${parsed.length} 个书源，新批次「${result.bundle}」`)
     remoteUrl.value = ''
     await load()
   } catch (error) {
@@ -318,17 +322,26 @@ onMounted(load)
 
     <!-- 管理 -->
     <section v-if="tab === 'manage'">
+      <p class="muted" style="font-size: 13px; margin: 0 0 10px">
+        按导入批次汇总，共 {{ bundles.length }}/{{ bundleLimit }} 个批次。每次导入都会新建一个批次；勾选多个批次后可汇总成一个。
+      </p>
+
       <!-- 导入汇总：按批次展示，iOS 风格开关 -->
       <div v-if="picked.length" class="row merge-bar">
         <span class="badge">已选 {{ picked.length }} 个批次</span>
         <div class="spacer" />
         <button class="ghost" @click="picked = []">取消</button>
-        <button class="primary" @click="mergePicked">合并选中批次</button>
+        <button class="primary" @click="mergePicked">汇总选中批次</button>
       </div>
 
       <div class="bundle-list">
-        <div v-for="bundle in bundles" :key="bundle.name" class="bundle-card" :class="{ active: expanded === bundle.name }">
-          <input class="bundle-pick" type="checkbox" :checked="picked.includes(bundle.name)" title="选中用于合并" @click.stop="togglePicked(bundle.name)" />
+        <div
+          v-for="bundle in bundles"
+          :key="bundle.name"
+          class="bundle-card"
+          :class="{ active: expanded === bundle.name, picked: picked.includes(bundle.name) }"
+        >
+          <input class="bundle-pick" type="checkbox" :checked="picked.includes(bundle.name)" title="选中用于汇总" @click.stop="togglePicked(bundle.name)" />
           <div class="bundle-info" @click="expanded = expanded === bundle.name ? '' : bundle.name">
             <div class="bundle-name">{{ bundle.name }}</div>
             <div class="bundle-sub">{{ bundle.count }} 个书源 · 已启用 {{ bundle.enabledCount }}</div>
