@@ -8,35 +8,81 @@
  * 这里做两件事：
  *   1. 解析成结构化数据（段落序号、条数、接口地址），正文清洗时再丢掉图片
  *   2. 按接口地址拉评论内容；接口通常要起点登录态，拿不到时如实返回错误
+ *
+ * 段落序号必须和前端渲染的段落一致：不能按原始 HTML 的换行数数，
+ * 因为原始 HTML 里 <p>、空行、段评图片都会各占一行。做法是先把段评图片
+ * 换成哨兵标记，再用和正文相同的 cleanText 流程清洗，最后按清洗后的
+ * 非空行定位；出现在第一行正文之前的标记归到「章节名」（-1）。
  */
+
+import { cleanText } from './text.js'
+
+const SENTINEL_RE = /\u0001DP(\d+)\u0001/g
+const sentinel = (index) => `\u0001DP${index}\u0001`
+const IMAGE_TAG_RE = /<img\b[^>]*>/gi
 
 /**
  * 解析正文里的段评标记。
  * 标记里的 JSON 会带引号，属性边界不可靠，所以按 "dp:数字," 起、到标签结束止来切。
  */
-export function extractDpMarkers(html) {
+export function extractDpMarkers(html, { transform } = {}) {
   const text = String(html || '')
-  const markers = []
-  const re = /dp:([0-9]+[+]?),([\s\S]{0,600}?)(?:\/>|>)/g
-  let cursor = 0
-  let paragraph = 0
+  const rawMarkers = []
+  const dpTags = []
   let match
-  while ((match = re.exec(text))) {
-    const between = text.slice(cursor, match.index)
-    paragraph += (between.match(/\n/g) || []).length
-    cursor = match.index + match[0].length
-    const countText = String(match[1]).replace('+', '')
-    const payload = match[2] || ''
+  IMAGE_TAG_RE.lastIndex = 0
+  while ((match = IMAGE_TAG_RE.exec(text))) {
+    const tag = match[0]
+    const srcMatch = /src\s*=\s*"\s*(dp:[^"]*)/i.exec(tag) || /src\s*=\s*'\s*(dp:[^']*)/i.exec(tag)
+    if (!srcMatch) continue
+    const countText = String(/^dp:([0-9]+[+]?),/.exec(srcMatch[1])?.[1] || '').replace('+', '')
     const urlMatch =
-      /showCmt\(\s*'([^']+)'/.exec(payload) ||
-      /showCmt\(\s*"([^"]+)"/.exec(payload) ||
-      /(https?:\/\/[^\s"'\\]+)/.exec(payload)
-    markers.push({
-      paragraph,
+      /showCmt\(\s*'([^']+)'/.exec(tag) ||
+      /showCmt\(\s*"([^"]+)"/.exec(tag) ||
+      /(https?:\/\/[^\s"'\\]+)/.exec(tag)
+    dpTags.push({ index: match.index, length: tag.length })
+    rawMarkers.push({
       count: Number(countText) || 0,
       url: urlMatch ? urlMatch[1] : '',
-      raw: match[0].slice(0, 240),
+      raw: tag.slice(0, 240),
     })
+  }
+  if (!rawMarkers.length) return []
+
+  // 用哨兵替换段评图片，再走和正文一样的清洗流程，保证行结构与正文一致。
+  let marked = ''
+  let cursor = 0
+  let seq = 0
+  for (const tag of dpTags) {
+    marked += text.slice(cursor, tag.index) + sentinel(seq++)
+    cursor = tag.index + tag.length
+  }
+  marked += text.slice(cursor)
+
+  let cleaned = cleanText(marked)
+  if (typeof transform === 'function') cleaned = String(transform(cleaned))
+
+  const lines = cleaned
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const markers = []
+  let paragraph = -1
+  for (const line of lines) {
+    const ids = [...line.matchAll(SENTINEL_RE)].map((item) => Number(item[1]))
+    if (!ids.length) {
+      paragraph += 1
+      continue
+    }
+    const textOnly = line.replace(SENTINEL_RE, '').trim()
+    if (textOnly) paragraph += 1
+    // 只有标记、没有正文的行：开头的归章节名，夹在中间的归上一段。
+    const target = paragraph < 0 ? -1 : paragraph
+    for (const id of ids) {
+      const marker = rawMarkers[id]
+      if (marker) markers.push({ ...marker, paragraph: target })
+    }
   }
   return markers
 }

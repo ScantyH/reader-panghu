@@ -13,6 +13,7 @@ import { join } from 'node:path'
 
 const SUITES = [
   'test-reader3',
+  'test-comments',
   'test-extras',
   'test-cache',
   'test-sync',

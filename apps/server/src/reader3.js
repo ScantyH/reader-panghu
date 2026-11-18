@@ -296,7 +296,9 @@ async function primeBook(book) {
     if (!target) return fail('缺少章节地址')
     try {
       const raw = await withRuntime(origin, (runtime) => runtime.content(target))
-      const parsed = extractDpMarkers(raw)
+      const parsed = extractDpMarkers(raw, {
+        transform: (text) => applyReplaceRules(text, store.listReplaceRules()),
+      })
       cacheDpMarkers(book.bookUrl, target, parsed)
       const markers = parsed.map(({ paragraph, count }) => ({ paragraph, count }))
       return ok({ markers, cards: [] })
@@ -319,7 +321,9 @@ async function primeBook(book) {
       let markerUrl = dpMarkerCache.get(dpCacheKey(book.bookUrl, target, paragraph))?.url || ''
       if (!markerUrl) {
         const raw = await withRuntime(origin, (runtime) => runtime.content(target))
-        const parsed = extractDpMarkers(raw)
+        const parsed = extractDpMarkers(raw, {
+          transform: (text) => applyReplaceRules(text, store.listReplaceRules()),
+        })
         cacheDpMarkers(book.bookUrl, target, parsed)
         markerUrl = parsed.find((item) => Number(item.paragraph) === paragraph)?.url || ''
       }
