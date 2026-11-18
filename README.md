@@ -4,6 +4,10 @@
 
 <h1 align="center">胖虎阅读</h1>
 
+<p align="center">
+  <a href="https://github.com/ScantyH/reader-panghu/actions/workflows/docker-publish.yml"><img src="https://github.com/ScantyH/reader-panghu/actions/workflows/docker-publish.yml/badge.svg" alt="Publish Docker image"></a>
+</p>
+
 <p align="center">自建小说阅读服务 · 阅读 3 书源 · 本地书籍 · 多设备同步</p>
 
 ---
@@ -95,6 +99,23 @@ docker run -d -p 18080:18080 -v $PWD/data:/app/data reader-panghu:latest
 开发模式见上面的「快速开始」。
 
 > 数据目录里包含用户、账号密码、书源、书籍和阅读设置，升级镜像不会改动它，请定期备份 `./data`。极空间 NAS 的自动部署脚本见 `scripts/deploy-nas.mjs`。
+
+### 更新到最新版本
+
+每次 GitHub Release 都会自动构建并推送 `latest` 和对应版本号标签（同时支持 `linux/amd64` / `linux/arm64`）。
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+或者：
+
+```bash
+docker pull ghcr.io/scantyh/reader-panghu:latest
+docker rm -f reader-panghu
+# 再执行上面的 docker run 命令
+```
 
 ## 测试
 
