@@ -287,7 +287,6 @@ onMounted(load)
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="5" height="14" rx="1.6" /><rect x="12" y="6.5" width="8" height="2.2" rx="1.1" /><rect x="12" y="11" width="8" height="2.2" rx="1.1" /><rect x="12" y="15.5" width="5" height="2.2" rx="1.1" /></svg>
         </button>
       </div>
-      <button class="ghost" @click="router.push('/settings/shelf')">设置</button>
     </div>
 
     <div v-if="!recentOnly" class="group-tabs">

@@ -132,7 +132,7 @@ onMounted(load)
       </div>
 
       <h3 style="font-size: 14px; margin: 0 0 8px">简介</h3>
-      <p v-if="!editingIntro" style="font-size: 14px; line-height: 1.8; color: var(--color-text-secondary)">
+      <p v-if="!editingIntro" class="book-intro">
         {{ book.intro || '（没有简介）' }}
       </p>
       <div v-else>

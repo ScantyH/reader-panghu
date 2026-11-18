@@ -1940,16 +1940,27 @@ watch(chapterTitle, () => {
   }
 
   .rail-left {
-    left: 12px;
+    left: 8px;
+    bottom: 10px;
+    padding: 6px 8px;
     margin: 0;
   }
 
   .rail-right {
-    right: 12px;
-    margin: 0;
-    max-width: 52vw;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    left: 8px;
+    right: 8px;
+    bottom: 62px;
+    padding: 6px 6px;
+    gap: 2px;
+    max-width: none;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .rail-right::-webkit-scrollbar {
+    display: none;
   }
 
   .rail-left .rail-btn i {
