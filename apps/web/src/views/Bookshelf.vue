@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf } from '../api.js'
@@ -20,6 +20,8 @@ const infoBook = ref(null)
 const selectMode = ref(route.query.manage === '1')
 const selected = ref([])
 const moveTarget = ref('0')
+/** 封面加载失败的书，回退成书名占位，避免显示破图 */
+const brokenCovers = reactive(new Set())
 let pressTimer = 0
 
 // 从设置里的「批量管理」进来时带 ?manage=1；点底栏「书架」回到普通模式
@@ -327,7 +329,13 @@ onMounted(load)
         @contextmenu.prevent="actionBook = book"
       >
         <div class="shelf-cover">
-          <img v-if="coverOf(book)" :src="coverOf(book)" :alt="book.name" loading="lazy" />
+          <img
+            v-if="coverOf(book) && !brokenCovers.has(book.bookUrl)"
+            :src="coverOf(book)"
+            :alt="book.name"
+            loading="lazy"
+            @error="brokenCovers.add(book.bookUrl)"
+          />
           <div v-else class="placeholder">{{ book.name }}</div>
           <div v-if="progressOf(book)" class="progress"><i :style="{ width: progressOf(book) + '%' }" /></div>
           <span v-if="unreadCount(book)" class="unread-badge">{{ unreadCount(book) }}</span>
@@ -356,7 +364,12 @@ onMounted(load)
         <div class="sheet-handle" />
         <div class="info-head">
           <div class="info-cover">
-            <img v-if="coverOf(infoBook)" :src="coverOf(infoBook)" :alt="infoBook.name" />
+            <img
+              v-if="coverOf(infoBook) && !brokenCovers.has(infoBook.bookUrl)"
+              :src="coverOf(infoBook)"
+              :alt="infoBook.name"
+              @error="brokenCovers.add(infoBook.bookUrl)"
+            />
             <div v-else class="placeholder">{{ infoBook.name }}</div>
           </div>
           <div class="info-meta">

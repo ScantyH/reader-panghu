@@ -12,6 +12,7 @@ const emit = defineEmits(['close', 'save'])
 const draft = ref({ ...props.book })
 const coverInput = ref(null)
 const busy = ref(false)
+const coverFailed = ref(false)
 
 const coverUrl = computed(() => coverOf(draft.value))
 
@@ -47,7 +48,7 @@ function submit() {
 
       <div class="row" style="align-items: flex-start; gap: 16px; margin-bottom: 16px">
         <div class="cover" style="width: 108px; flex: none">
-          <img v-if="coverUrl" :src="coverUrl" :alt="draft.name" />
+          <img v-if="coverUrl && !coverFailed" :src="coverUrl" :alt="draft.name" @error="coverFailed = true" />
           <div v-else class="placeholder">无封面</div>
         </div>
         <div style="flex: 1">

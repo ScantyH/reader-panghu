@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api } from '../api.js'
+import { api, coverOf } from '../api.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -10,6 +10,8 @@ const groups = ref([])
 const loading = ref(true)
 const editingIntro = ref(false)
 const introDraft = ref('')
+const coverFailed = ref(false)
+const coverUrl = computed(() => coverOf(book.value))
 
 const decodeUrl = (value) => {
   try {
@@ -36,6 +38,7 @@ async function load() {
     const bookUrl = decodeUrl(String(route.params.id || ''))
     const shelf = await api.bookshelf()
     book.value = shelf.find((item) => item.bookUrl === bookUrl) || null
+    coverFailed.value = false
     if (!book.value) window.__toast?.('这本书不在书架里')
     groups.value = await api.groups().catch(() => [])
   } catch (error) {
@@ -102,7 +105,7 @@ onMounted(load)
     <template v-else>
       <div class="row" style="gap: 18px; align-items: flex-start; margin-bottom: 20px">
         <div class="cover" style="width: 116px; flex: none">
-          <img v-if="book.coverUrl" :src="book.coverUrl" :alt="book.name" />
+          <img v-if="coverUrl && !coverFailed" :src="coverUrl" :alt="book.name" @error="coverFailed = true" />
           <div v-else class="placeholder">{{ book.name }}</div>
         </div>
         <div style="flex: 1; min-width: 0">

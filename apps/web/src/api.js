@@ -213,5 +213,8 @@ export const coverOf = (book) => {
   if (book.customCoverUrl) return book.customCoverUrl
   const url = book.coverUrl || ''
   if (!url) return ''
-  return `${BASE}/cover?path=${encodeURIComponent(url)}`
+  // <img> 不带 x-auth-token 请求头，必须把 token 放进 query，否则只靠 Cookie 时容易 401。
+  const token = getToken()
+  const suffix = token ? `&token=${encodeURIComponent(token)}` : ''
+  return `${BASE}/cover?path=${encodeURIComponent(url)}${suffix}`
 }
