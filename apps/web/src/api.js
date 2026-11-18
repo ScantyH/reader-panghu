@@ -98,6 +98,7 @@ export const api = {
   sourceBundleLimit: () => request('/getSourceBundleLimit'),
   importSources: (sources, name) => request('/importBookSources', { method: 'POST', body: { sources, name } }),
   setSourceKey: (bookSourceUrl, key) => request('/setSourceKey', { method: 'POST', body: { bookSourceUrl, key } }),
+  reorderSources: (urls) => request('/reorderBookSources', { method: 'POST', body: { urls } }),
   saveSources: (sources, bundle) => request('/saveBookSources', { method: 'POST', body: bundle ? { sources, bundle } : sources }),
   renameBundle: (from, to) => request('/renameBundle', { method: 'POST', body: { from, to } }),
   mergeBundles: (names, into) => request('/mergeBundles', { method: 'POST', body: { names, into } }),

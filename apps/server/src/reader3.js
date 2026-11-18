@@ -556,9 +556,7 @@ async function primeBook(book) {
         if (source.html || source.searchUrl) row.searchableCount += 1
       }
     }
-    return ok(
-      [...rows.values()].sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name), 'zh-Hans-CN')),
-    )
+    return ok([...rows.values()])
   })
 
   app.get('/reader3/getSourceBundleLimit', async () => ok({ limit: SOURCE_BUNDLE_LIMIT }))
@@ -650,6 +648,16 @@ async function primeBook(book) {
     return ok({ saved: true, count: store.saveSources(prepared), bundle: bundle || null })
   })
 
+  app.post('/reader3/reorderBookSources', async (req) => {
+    const blocked = editSourcesBlocked(req)
+    if (blocked) return fail(blocked)
+    const urls = Array.isArray(req.body?.urls) ? req.body.urls.map((url) => String(url)) : []
+    if (!urls.length) return fail('缺少排序列表')
+    const known = new Set(store.listSources().map((source) => source.bookSourceUrl))
+    store.saveSourceOrder(urls.filter((url) => known.has(url)))
+    return ok({ reordered: urls.length })
+  })
+
   app.post('/reader3/deleteBookSource', async (req) => {
     const blocked = editSourcesBlocked(req)
     if (blocked) return fail(blocked)
@@ -717,17 +725,8 @@ async function primeBook(book) {
     // 串行跑 2000+ 个源要一小时，这里改成有限并发；NAS 是弱机器，默认 6 路
     const SEARCH_CONCURRENCY = Math.max(1, Number(process.env.SEARCH_CONCURRENCY || 6))
     const SEARCH_TIMEOUT_MS = Math.max(2000, Number(process.env.SEARCH_TIMEOUT_MS || 8000))
-    // 按历史成功率排序：成功的排前面，从未成功的排后面
-    const sourceScore = (source) => {
-      const stats = source._stats || {}
-      const ok = Number(stats.ok || 0)
-      const fail = Number(stats.fail || 0)
-      const total = ok + fail
-      const rate = total ? ok / total : 0.5
-      return rate * 1000 + Math.min(ok, 200) + (stats.lastOk ? 1 : 0)
-    }
-    const ranked = [...sources].sort((a, b) => sourceScore(b) - sourceScore(a))
-    const targets = ranked.slice(0, maxSources)
+    // 搜索顺序与书源列表一致：手动排序 > WebView 优先 > 导入顺序
+    const targets = sources.slice(0, maxSources)
     const results = []
     let cursor = 0
     let aborted = false

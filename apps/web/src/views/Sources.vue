@@ -47,7 +47,7 @@ const bundles = computed(() => {
     row.count += 1
     if (source.enabled !== false) row.enabledCount += 1
   }
-  return [...map.values()].sort((a, b) => b.count - a.count)
+  return [...map.values()]
 })
 
 /** 给批次改名（备注） */
@@ -100,6 +100,28 @@ async function toggleBundle(bundle, enabled) {
     await api.setBundleEnabled(bundle.name, enabled)
     await load()
     window.__toast?.(enabled ? '已启用「' + bundle.name + '」' : '已关闭「' + bundle.name + '」')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+/** 整批上移 / 下移：按批次块重排，搜索顺序也跟着变 */
+async function moveBundle(bundle, delta) {
+  const names = bundles.value.map((item) => item.name)
+  const index = names.indexOf(bundle.name)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= names.length) return
+  ;[names[index], names[target]] = [names[target], names[index]]
+  const urls = []
+  for (const name of names) {
+    for (const source of sources.value) {
+      if (String(source._bundle || '未归类') === name) urls.push(source.bookSourceUrl)
+    }
+  }
+  try {
+    await api.reorderSources(urls)
+    await load()
+    window.__toast?.('批次顺序已保存')
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -203,6 +225,40 @@ async function toggle(source) {
     const next = source.enabled === false
     await api.setSourceEnabled(source.bookSourceUrl, next)
     source.enabled = next
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+/** 保存书源顺序：搜索“全部书源”时也按这个顺序跑 */
+async function persistSourceOrder(list) {
+  await api.reorderSources(list.map((item) => item.bookSourceUrl))
+  await load()
+}
+
+async function moveSource(source, delta) {
+  const list = [...sources.value]
+  const index = list.findIndex((item) => item.bookSourceUrl === source.bookSourceUrl)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= list.length) return
+  ;[list[index], list[target]] = [list[target], list[index]]
+  try {
+    await persistSourceOrder(list)
+    window.__toast?.('书源顺序已保存，搜索会按新顺序优先')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+async function pinSource(source) {
+  const list = [...sources.value]
+  const index = list.findIndex((item) => item.bookSourceUrl === source.bookSourceUrl)
+  if (index <= 0) return
+  const [item] = list.splice(index, 1)
+  list.unshift(item)
+  try {
+    await persistSourceOrder(list)
+    window.__toast?.(`已把「${source.bookSourceName}」置顶，全部书源搜索会先搜它`)
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -337,7 +393,7 @@ onMounted(load)
     <!-- 管理 -->
     <section v-if="tab === 'manage'">
       <p class="muted" style="font-size: 13px; margin: 0 0 10px">
-        按导入批次汇总，共 {{ bundles.length }}/{{ bundleLimit }} 个批次。每次导入都会新建一个批次；勾选多个批次后可汇总成一个。展开批次后，WebView 书源可点「密钥」填写书源密钥（只保存在服务端，不回显明文）。
+        按导入批次汇总，共 {{ bundles.length }}/{{ bundleLimit }} 个批次。每次导入都会新建一个批次；勾选多个批次后可汇总成一个。展开批次后可用 ↑ ↓ / 置顶调整书源顺序，「全部书源」搜索会按这个顺序优先搜索；WebView 书源可点「密钥」填写书源密钥（只保存在服务端，不回显明文）。
       </p>
 
       <!-- 导入汇总：按批次展示，iOS 风格开关 -->
@@ -368,6 +424,8 @@ onMounted(load)
             />
             <span class="switch-track"><span class="switch-thumb" /></span>
           </label>
+          <button class="ghost" title="批次上移" @click="moveBundle(bundle, -1)">↑</button>
+          <button class="ghost" title="批次下移" @click="moveBundle(bundle, 1)">↓</button>
           <button class="ghost" title="重命名" @click="renameBundle(bundle)">备注</button>
           <button class="ghost bundle-toggle" @click="expanded = expanded === bundle.name ? '' : bundle.name">
             {{ expanded === bundle.name ? '收起' : '详情' }}
@@ -400,6 +458,9 @@ onMounted(load)
                 {{ source.bookSourceUrl }}
               </div>
             </div>
+            <button class="ghost" title="上移（搜索顺序）" @click="moveSource(source, -1)">↑</button>
+            <button class="ghost" title="下移（搜索顺序）" @click="moveSource(source, 1)">↓</button>
+            <button class="ghost" title="置顶，全部书源搜索时最先搜它" @click="pinSource(source)">置顶</button>
             <button v-if="source.html" class="ghost" @click="editSourceKey(source)">密钥</button>
             <button class="ghost" @click="toggle(source)">{{ source.enabled === false ? '启用' : '禁用' }}</button>
             <button class="ghost" @click="editing = JSON.stringify(source, null, 2)">编辑</button>

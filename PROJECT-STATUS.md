@@ -5,10 +5,10 @@
 ## 一条命令复现全部结论
 
 ```bash
-pnpm verify     # 36 项静态校验 + 24 个测试套件，退出码即结论
+pnpm verify     # 36 项静态校验 + 25 个测试套件，退出码即结论
 ```
 
-最近一次运行结果：`36/36 static checks passed`、`24/24 套件通过`。
+最近一次运行结果：`36/36 static checks passed`、`25/25 套件通过`。
 
 ## 已实测通过
 
@@ -29,6 +29,7 @@ pnpm verify     # 36 项静态校验 + 24 个测试套件，退出码即结论
 | 子账号配额、功能开关、删除用户并清理数据 | `test-permissions` |
 | 书源批次：每次导入新建、默认上限 100、勾选汇总、按批次搜索 | `test-bundles` |
 | 正文卡片（神评论/本章说）：PNG/SVG 内联渲染、图片代理；书源密钥只存服务端 | `test-cards` |
+| 书源排序：默认 WebView 优先、手动排序持久化、搜索按排序顺序 | `test-order` |
 | Docker 构建输入自洽 | `check-docker`（36 项） |
 | 真实起点自建源端到端 | `probe-source.js`（手工，需真实书源） |
 
