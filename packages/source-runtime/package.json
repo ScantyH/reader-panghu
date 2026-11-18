@@ -1,6 +1,6 @@
 {
   "name": "@reader-panghu/source-runtime",
-  "version": "0.9.28",
+  "version": "0.9.29",
   "description": "Server-side runtime for WebView book sources: executes a source HTML bundle in a DOM sandbox and implements the FlutterJSBridge/Http/Cookie/Cache contract over Node",
   "type": "module",
   "main": "src/index.js",

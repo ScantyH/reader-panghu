@@ -114,7 +114,6 @@ watch(
 )
 
 const book = ref(null)
-let pendingRestore = null
 const chapters = ref([])
 const current = ref(0)
 const content = ref('')
@@ -402,9 +401,7 @@ async function loadBook() {
       bookSourceUrl: book.value.origin,
     })
     current.value = Number(book.value.durChapterIndex || 0)
-    // 打开书：先按服务端进度定位，再把「当前章 + 章节内位置」交给 loadChapter 还原
-    pendingRestore = { index: current.value, position: Number(book.value.durChapterPos || 0) }
-    await loadChapter(current.value, { fromRemote: true })
+    await loadChapter(current.value)
     loadNotes()
     loadBookmarks()
   } catch (error) {
@@ -412,35 +409,26 @@ async function loadBook() {
   }
 }
 
-async function loadChapter(index, { fromRemote = false } = {}) {
+async function loadChapter(index) {
   if (!chapters.value.length) return
   stopTts()
   const target = Math.max(0, Math.min(index, chapters.value.length - 1))
   loading.value = true
   turnDirection.value = target > current.value ? 'next' : target < current.value ? 'prev' : ''
-  if (fromRemote) suppressSyncUntil = Date.now() + 2000
   try {
-    const text = await api.content({
+    content.value = await api.content({
       bookUrl: book.value.bookUrl,
       index: target,
       convert: prefs.value.convert || undefined,
     })
-    content.value = text
     current.value = target
     searchHits.value = []
     loadParagraphComments()
     warmCache(target)
+    api.saveProgress(book.value.bookUrl, target, 0, chapters.value[target]?.title || '').catch(() => {})
     await nextTick()
-    const restore = pendingRestore && Number(pendingRestore.index) === target ? pendingRestore : null
-    pendingRestore = null
-    if (restore && Number(restore.position) > 0) {
-      scrollToCharOffset(Number(restore.position))
-    } else {
-      window.scrollTo({ top: 0 })
-      updateScroll()
-    }
-    // 用户自己翻章：立刻把新章节写进服务端，另一端马上能看到。
-    if (!fromRemote) saveProgressNow({ force: true })
+    window.scrollTo({ top: 0 })
+    updateScroll()
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
