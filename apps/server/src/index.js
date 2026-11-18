@@ -172,7 +172,14 @@ await app.register(multipart, { limits: { fileSize: 200 * 1024 * 1024 } })
 
 app.setErrorHandler((error, _request, reply) => {
   const status = error instanceof SourceError ? 502 : error.statusCode || 500
-  reply.code(status).send({ error: error.message, code: error.code || 'ERROR' })
+  // 前端统一按 /reader3 契约处理：即使 HTTP 状态非 200 也必须有 isSuccess/errorMsg，
+  // 否则 api.request 会把错误对象当成成功数据返回。
+  reply.code(status).send({
+    isSuccess: false,
+    errorMsg: error.message || '服务内部错误',
+    error: error.message || '服务内部错误',
+    code: error.code || 'ERROR',
+  })
 })
 
 registerReader3(app, { store, dataDir: DATA_DIR, options: { timeoutMs: SOURCE_TIMEOUT_MS } })

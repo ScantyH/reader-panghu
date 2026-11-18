@@ -5,10 +5,10 @@
 ## 一条命令复现全部结论
 
 ```bash
-pnpm verify     # 28 项静态校验 + 20 个测试套件，退出码即结论
+pnpm verify     # 36 项静态校验 + 21 个测试套件，退出码即结论
 ```
 
-最近一次运行结果：`28/28 static checks passed`、`20/20 套件通过`。
+最近一次运行结果：`36/36 static checks passed`、`21/21 套件通过`。
 
 ## 已实测通过
 
@@ -26,7 +26,8 @@ pnpm verify     # 28 项静态校验 + 20 个测试套件，退出码即结论
 | 连载新章节检查（目录对比、幂等） | `test-updates` |
 | Legado 客户端链路（订阅→搜索→详情→目录→正文） | `test-legado-client` |
 | 登录会话重启后仍有效（SQLite 持久化） | `test-auth-persist` |
-| Docker 构建输入自洽 | `check-docker`（28 项） |
+| 子账号配额、功能开关、删除用户并清理数据 | `test-permissions` |
+| Docker 构建输入自洽 | `check-docker`（36 项） |
 | 真实起点自建源端到端 | `probe-source.js`（手工，需真实书源） |
 
 所有套件使用仓库内合成样本，空数据库冷启动即可全绿，不依赖私有书源或密钥。
@@ -52,6 +53,16 @@ reader-panghu   nas   8ada83c0742c   473MB
 
 构建方式：极空间 Compose 不支持 `build:`，改为在 NAS 上跑一个挂载 `/var/run/docker.sock` 的 `docker:27-cli` 容器执行 `docker build`。
 期间修复了一个真实问题：Dockerfile 顶部的 `# syntax=docker/dockerfile:1` 会让 BuildKit 去 Docker Hub 拉前端镜像，在受限网络下直接超时，已移除。
+
+## 镜像瘦身（2026-11-18）
+
+Dockerfile 改为两阶段构建：builder 装全量依赖并打包前端，runtime 只保留服务端生产依赖（`--filter @reader-panghu/server... --prod`），装完删除 pnpm store 与缓存；同时给构建环境加 `--dns-result-order=ipv4first`，避免 NAS 上 IPv6 不可达导致 `pnpm install` 超时。
+
+```
+reader-panghu   nas   a7bff192f812   About a minute ago   219MB
+```
+
+从 `473MB` 降到 `219MB`（约 -54%）。用该镜像单独起容器做自检：`/api/health` 返回 ok，`/` 返回 200 text/html。NAS 上仍用宿主机挂载源码 + 容器内构建的部署方式，镜像只提供 Node/pnpm 运行时。
 
 ## 常驻部署（2026-11-16）
 

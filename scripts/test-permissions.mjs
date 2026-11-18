@@ -180,7 +180,8 @@ try {
   const subSources = (await call('/reader3/getBookSources', { token: sub.token })).data || []
   check('子账号能看到管理员分配的源', subSources.some((source) => source.bookSourceUrl === 'https://admin.example'))
 
-  await call('/reader3/register', { method: 'POST', body: { username: 'sub2', password: 'secret123' } })
+  const sub2 = (await call('/reader3/register', { method: 'POST', body: { username: 'sub2', password: 'secret123' } })).data
+  await call('/reader3/saveBook', { method: 'POST', token: sub2.token, body: { name: 'sub2-book', bookUrl: 'local://sub2-book', origin: 'local' } })
   const reordered = await call('/reader3/reorderUsers', {
     method: 'POST',
     token: admin.token,
@@ -188,6 +189,19 @@ try {
   })
   const ordered = ((await call('/reader3/getUserList', { token: admin.token })).data || []).map((user) => user.username)
   check('子账号可手动排序且管理员仍最前', reordered.isSuccess === true && ordered.join(',') === 'admin,sub2,reader,sub1', ordered.join(','))
+
+  const deleteDefault = await call('/reader3/deleteUser', { method: 'POST', token: admin.token, body: { username: 'reader' } })
+  check('默认账号不可删除', deleteDefault.isSuccess === false, deleteDefault.errorMsg)
+  const deleteSelf = await call('/reader3/deleteUser', { method: 'POST', token: admin.token, body: { username: 'admin' } })
+  check('不能删除自己', deleteSelf.isSuccess === false, deleteSelf.errorMsg)
+  const deleted = await call('/reader3/deleteUser', { method: 'POST', token: admin.token, body: { username: 'sub2' } })
+  const afterDelete = ((await call('/reader3/getUserList', { token: admin.token })).data || []).map((user) => user.username)
+  const deletedLogin = await call('/reader3/login', { method: 'POST', body: { username: 'sub2', password: 'secret123' } })
+  check(
+    '删除子账号同时清理会话与数据',
+    deleted.isSuccess === true && !afterDelete.includes('sub2') && deletedLogin.isSuccess === false,
+    `${deleted.errorMsg} users=${afterDelete.join(',')} login=${deletedLogin.errorMsg}`,
+  )
 
   await call('/reader3/saveBookGroup', { method: 'POST', token: admin.token, body: { groupId: 101, groupName: 'A 组' } })
   await call('/reader3/saveBookGroup', { method: 'POST', token: admin.token, body: { groupId: 102, groupName: 'B 组' } })

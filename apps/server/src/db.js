@@ -590,6 +590,42 @@ class Store {
     return order
   }
 
+  /**
+   * 删除子账号及其全部数据（书、书源、RSS、分组、书签、替换规则、配置、会话）。
+   * 默认账号永远保留；返回是否真的删掉了。
+   */
+  deleteUser(userId) {
+    const id = Number(userId)
+    if (!id || id === DEFAULT_USER_ID) return false
+    if (!this.getUserById(id)) return false
+    const books = this.db.prepare('SELECT book_url FROM books WHERE user_id = ?').all(id)
+    this.db.exec('BEGIN')
+    try {
+      for (const row of books) {
+        this.db.prepare('DELETE FROM chapters WHERE book_url = ?').run(row.book_url)
+        this.db.prepare('DELETE FROM chapter_text WHERE book_url = ?').run(row.book_url)
+      }
+      for (const table of [
+        'books',
+        'book_sources',
+        'rss_sources',
+        'book_groups',
+        'bookmarks',
+        'replace_rules',
+        'user_config',
+        'sessions',
+      ]) {
+        this.db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(id)
+      }
+      const result = this.db.prepare('DELETE FROM users WHERE id = ?').run(id)
+      this.db.exec('COMMIT')
+      return result.changes > 0
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
   getUser(userId = currentUserId()) {
     return this.db
       .prepare(
