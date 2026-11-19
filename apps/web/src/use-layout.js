@@ -27,7 +27,11 @@ export function setDesktopNavLayout(value) {
 }
 
 export function toggleSidebarExpanded() {
-  sidebarExpanded.value = !sidebarExpanded.value
+  setSidebarExpanded(!sidebarExpanded.value)
+}
+
+export function setSidebarExpanded(value) {
+  sidebarExpanded.value = Boolean(value)
   try {
     localStorage.setItem(EXPANDED_KEY, sidebarExpanded.value ? '1' : '0')
   } catch {

@@ -1841,3 +1841,21 @@
 @media (max-width: 900px) {
   .app.nav-left .app-main { width: auto; margin-left: 0; padding-left: 0; padding-right: 0; }
 }
+
+/* ─── v1.0.9 布局修正 ─── */
+.layout-options { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.layout-option { padding: 8px; gap: 5px; border-radius: 10px; }
+.layout-preview { height: 52px; }
+.layout-option-label { font-size: 13px; }
+.layout-preview-left.expanded .lp-side { width: 26%; }
+.layout-preview-left.collapsed .lp-side { width: 12%; }
+.layout-preview-left.collapsed .lp-grid { left: 17%; }
+.side-toggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+.app.nav-left .settings-layout { max-width: 1080px; margin: 0 auto; }
+.app.nav-left .mode-cover { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+@media (max-width: 900px) {
+  .app.nav-left .settings-layout { max-width: none; margin: 0; }
+}
+@media (max-width: 640px) { .layout-options { grid-template-columns: 1fr; } }
+.layout-options { display: flex; flex-wrap: wrap; gap: 10px; }
+.layout-option { width: 160px; flex: none; }

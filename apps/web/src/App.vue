@@ -160,10 +160,6 @@ onBeforeUnmount(() => {
       <button class="side-toggle" :title="sidebarExpanded ? '收起导航详细内容' : '展开导航详细内容'" @click="toggleSidebarExpanded">
         {{ sidebarExpanded ? '‹' : '›' }}
       </button>
-      <div class="side-brand">
-        <img class="app-logo" src="/brand/logo-128.png" alt="胖虎阅读" />
-        <span v-if="sidebarExpanded">胖虎阅读</span>
-      </div>
       <nav class="side-nav-links">
         <router-link v-for="item in NAV" :key="item.to" :to="item.to" :title="item.label">
           <span class="side-nav-icon">{{ item.icon }}</span>
