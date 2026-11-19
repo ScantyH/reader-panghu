@@ -211,7 +211,13 @@ export const api = {
 
   warehouse: (path = '') => request('/warehouse' + (path ? '?path=' + encodeURIComponent(path) : '')),
   warehouseMkdir: (path, name) => request('/warehouse/mkdir', { method: 'POST', body: { path, name } }),
-  warehouseImport: (path) => request('/warehouse/import', { method: 'POST', body: { path } }),
+  warehousePreview: (path) => request('/warehouse/preview', { method: 'POST', body: { path } }),
+  warehouseImport: (payload) =>
+    request('/warehouse/import', {
+      method: 'POST',
+      body: typeof payload === 'string' ? { path: payload } : payload,
+    }),
+  warehouseImportBatch: (paths, group) => request('/warehouse/importBatch', { method: 'POST', body: { paths, group } }),
   warehouseDelete: (path) => request('/warehouse/delete', { method: 'POST', body: { path } }),
   warehouseReorder: (path, names) => request('/warehouse/reorder', { method: 'POST', body: { path, names } }),
   warehouseUpload: (path, file) => {

@@ -20,6 +20,17 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.1.4',
+    date: '2026-11-19',
+    items: [
+      '修复设置分类切换后高亮丢失的问题',
+      '书仓已导入书籍显示「已导入书架」并变暗，未导入书籍高亮',
+      '书仓导入弹窗自动识别 TXT 书名/作者，可修改分类、分组和简介',
+      '书仓支持全选或勾选多本批量导入到指定书架分组',
+      '书仓只允许在根目录创建分类，分类文件夹内不能再建子分类',
+    ],
+  },
+  {
     version: '1.1.3',
     date: '2026-11-19',
     items: [
@@ -216,6 +227,10 @@ async function toggleRole(user) {
 function chooseLayout(value) {
   setDesktopNavLayout(value)
   window.__toast?.(value === 'left' ? '已切换为左侧导航布局' : '已切换为底部胶囊布局')
+}
+
+function goSection(id) {
+  if (section.value !== id) router.push('/settings/' + id)
 }
 
 /** 头像压缩到 256px 再上传，避免大图写进数据库 */
@@ -447,16 +462,17 @@ onMounted(load)
 
     <div class="settings-layout">
       <nav class="settings-nav" aria-label="设置分类">
-        <router-link
+        <button
           v-for="item in SECTIONS"
           :key="item.id"
-          :to="'/settings/' + item.id"
           class="settings-nav-item"
           :class="{ active: section === item.id }"
+          :aria-current="section === item.id ? 'page' : undefined"
+          @click="goSection(item.id)"
         >
           <span class="settings-nav-icon">{{ item.icon }}</span>
           <span>{{ item.label }}</span>
-        </router-link>
+        </button>
       </nav>
 
       <section class="settings-panel">
