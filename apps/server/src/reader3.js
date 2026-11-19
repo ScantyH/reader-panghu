@@ -378,10 +378,12 @@ async function primeBook(book) {
       }
       const apiUrl = new URL(markerUrl)
       apiUrl.pathname = apiUrl.pathname.replace(/\/qddp\/?$/, '/qddp/api')
+      const offset = Math.max(0, Number(req.body?.offset) || 0)
+      const limit = Math.max(1, Math.min(20, Number(req.body?.limit) || 10))
       apiUrl.searchParams.set('tab', 'all')
-      apiUrl.searchParams.set('pg', '1')
-      apiUrl.searchParams.set('pz', '50')
-      apiUrl.searchParams.set('offset', '0')
+      apiUrl.searchParams.set('pg', String(Math.floor(offset / limit) + 1))
+      apiUrl.searchParams.set('pz', String(limit))
+      apiUrl.searchParams.set('offset', String(offset))
       // 起点类书源的 /qddp/api 需要 k/did/ts/sign 签名；直接 fetch 会 401。
       // 优先调用书源自己的 qget()，由书源运行时带上密钥、设备指纹、Cookie 和签名。
       let payload = null
@@ -400,22 +402,41 @@ async function primeBook(book) {
         qgetError = error.message
       }
       if (!payload) {
-        const response = await fetch(apiUrl, {
-          headers: {
-            'user-agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-            referer: `${origin}/`,
-            accept: 'application/json, text/plain, */*',
-          },
-          signal: AbortSignal.timeout(20000),
-        })
-        if (!response.ok) return fail(`段评接口返回 HTTP ${response.status}（${markerHost}）${qgetError ? `：${qgetError}` : ''}`)
-        payload = await response.json()
+        try {
+          const response = await fetch(apiUrl, {
+            headers: {
+              'user-agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+              referer: `${origin}/`,
+              accept: 'application/json, text/plain, */*',
+            },
+            signal: AbortSignal.timeout(20000),
+          })
+          if (response.ok) payload = await response.json()
+        } catch {
+          /* 下面统一走 HTML 面板兜底 */
+        }
+      }
+      if (!payload) {
+        // 有些段落的 /qddp/api 仍会 401，但书源自己的面板 HTML 能正常出数据。
+        // 用书源的 qdPanelHtml() 取整页面板，前端用 iframe 显示，保证评论可见。
+        try {
+          const panelHtml = await withRuntime(origin, async (runtime) => {
+            if (typeof runtime.window?.qdPanelHtml !== 'function') return ''
+            return String((await runtime.window.qdPanelHtml(markerUrl)) || '')
+          })
+          if (panelHtml && panelHtml.includes('__QD_BOOT__')) {
+            return ok({ html: panelHtml.slice(0, 1024 * 1024), comments: [], total: 0, offset: 0, limit, hasMore: false })
+          }
+        } catch {
+          /* ignore */
+        }
+        return fail(`段评接口返回 401（${markerHost}）${qgetError ? `：${qgetError}` : ''}`)
       }
       const data = payload?.Data || payload?.data || {}
       const list = data.DataList || data.data || data.list || []
       const total = Number(data.TotalCount || data.total || list.length)
-      const comments = list.slice(0, 50).map((item) => ({
+      const comments = list.slice(0, limit).map((item) => ({
         id: String(item.Id || item.id || ''),
         user: String(item.UserName || item.userName || '书友'),
         content: String(item.Content || item.content || ''),
@@ -937,6 +958,16 @@ async function primeBook(book) {
 
   app.get('/reader3/getUserConfig', async () => ok(store.getUserConfig()))
   app.post('/reader3/saveUserConfig', async (req) => ok(store.saveUserConfig(req.body || {})))
+
+  /** 当前用户头像：data URL，限制大小，避免把大图塞进数据库 */
+  app.post('/reader3/setAvatar', async (req) => {
+    const avatar = String(req.body?.avatar || '')
+    if (avatar && !/^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(avatar)) return fail('头像格式不支持')
+    if (avatar.length > 600 * 1024) return fail('头像太大，请换一张小图')
+    if (!req.userId) return fail('NEED_LOGIN')
+    store.setUserAvatar(req.userId, avatar)
+    return ok({ avatar })
+  })
 
   /* ------------------------------------------------------------------ cover */
 

@@ -23,9 +23,11 @@ const current = computed(() => SECTIONS.find((item) => item.id === section.value
 const adminUsers = computed(() => users.value.filter((user) => user.role === 'admin'))
 const orderedUsers = computed(() => [...adminUsers.value, ...subUsers.value])
 
-const me = ref({ username: '', role: 'user', authEnabled: false, allowWebdav: true, allowWarehouse: true })
+const me = ref({ username: '', role: 'user', avatar: '', authEnabled: false, allowWebdav: true, allowWarehouse: true })
 const users = ref([])
 const subUsers = ref([])
+const avatarInput = ref(null)
+const avatarBusy = ref(false)
 const health = ref(null)
 const groupList = ref([])
 const oldPassword = ref('')
@@ -146,14 +148,56 @@ function cancelPassword() {
 }
 
 async function toggleRole(user) {
-  const next = user.role === 'admin' ? 'user' : 'admin'
-  if (!confirm(`把「${user.username}」设为${next === 'admin' ? '管理员' : '普通用户'}？`)) return
+  if (user.role === 'admin') return
+  if (!confirm(`把「${user.username}」设为管理员？`)) return
   try {
-    await api.setUserRole({ username: user.username, role: next })
+    await api.setUserRole({ username: user.username, role: 'admin' })
     await load()
     window.__toast?.('角色已更新')
   } catch (error) {
     window.__toast?.(error.message)
+  }
+}
+
+/** 头像压缩到 256px 再上传，避免大图写进数据库 */
+async function uploadAvatar(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file || !file.type.startsWith('image/')) return
+  avatarBusy.value = true
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(new Error('读取图片失败'))
+      reader.readAsDataURL(file)
+    })
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('图片解析失败'))
+      img.src = dataUrl
+    })
+    const size = 256
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const context = canvas.getContext('2d')
+    context.fillStyle = '#fff'
+    context.fillRect(0, 0, size, size)
+    const scale = Math.max(size / image.width, size / image.height)
+    const width = image.width * scale
+    const height = image.height * scale
+    context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height)
+    const avatar = canvas.toDataURL('image/jpeg', 0.85)
+    await api.setAvatar(avatar)
+    me.value.avatar = avatar
+    window.dispatchEvent(new Event('rp-user-updated'))
+    window.__toast?.('头像已更新')
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    avatarBusy.value = false
   }
 }
 
@@ -366,6 +410,17 @@ onMounted(load)
         <template v-if="section === 'account'">
           <div class="settings-card">
             <div class="settings-card-title">账号信息</div>
+            <div class="settings-avatar-row">
+              <button class="settings-avatar" :disabled="avatarBusy" title="点击更换头像" @click="avatarInput.click()">
+                <img v-if="me.avatar" :src="me.avatar" alt="头像" />
+                <span v-else>👤</span>
+              </button>
+              <div>
+                <div style="font-weight: 600">{{ me.username || '未登录' }}</div>
+                <div class="muted" style="font-size: 12px">{{ avatarBusy ? '上传中…' : '点击头像更换，支持 JPG/PNG/WebP' }}</div>
+              </div>
+              <input ref="avatarInput" type="file" accept="image/*" hidden @change="uploadAvatar" />
+            </div>
             <div class="settings-kv"><span>用户名</span><b>{{ me.username || '—' }}</b></div>
             <div class="settings-kv"><span>角色</span><span class="badge accent">{{ isAdmin() ? '管理员' : '普通用户' }}</span></div>
             <div class="settings-kv">
@@ -392,16 +447,12 @@ onMounted(load)
               <div
                 class="settings-row"
                 :data-sort-id="user.role === 'admin' ? undefined : user.username"
-                :class="{ dragging: user.role !== 'admin' && userDraggingId === user.username }"
+                :class="{ dragging: user.role !== 'admin' && userDraggingId === user.username, pinned: user.role === 'admin' }"
               >
-                <span
-                  v-if="user.role !== 'admin'"
-                  class="sort-handle"
-                  title="长按拖动排序"
-                  @pointerdown.prevent="startUserDrag($event, user.username)"
-                  @pointerup="cancelUserDrag"
-                >≡</span>
-                <div class="settings-row-icon">👤</div>
+                <div class="settings-row-icon">
+                  <img v-if="user.avatar" :src="user.avatar" alt="" class="settings-user-avatar" />
+                  <span v-else>👤</span>
+                </div>
                 <div class="settings-row-main">
                   <div class="settings-row-title">
                     {{ user.username }}
@@ -409,6 +460,7 @@ onMounted(load)
                       {{ user.role === 'admin' ? '管理员' : '普通用户' }}
                     </span>
                     <span v-if="user.current" class="badge" style="margin-left: 6px">当前</span>
+                    <span v-if="user.role === 'admin'" class="badge pinned-badge" style="margin-left: 6px">📌 已置顶</span>
                   </div>
                   <div class="settings-row-desc">
                     <template v-if="user.role === 'admin'">不受配额与功能开关限制</template>
@@ -422,8 +474,16 @@ onMounted(load)
                 <button v-if="user.role !== 'admin'" class="ghost" @click="editUser(user)">
                   {{ editingUser === user.username ? '收起' : '权限' }}
                 </button>
-                <button class="ghost" @click="toggleRole(user)">{{ user.role === 'admin' ? '降为普通' : '设为管理员' }}</button>
-                <button class="ghost" @click="removeUser(user)">删除</button>
+                <button v-if="user.role !== 'admin'" class="ghost" @click="toggleRole(user)">设为管理员</button>
+                <button v-if="user.role !== 'admin'" class="ghost" @click="removeUser(user)">删除</button>
+                <span
+                  v-if="user.role !== 'admin'"
+                  class="sort-handle"
+                  title="长按拖动排序"
+                  @pointerdown.prevent="startUserDrag($event, user.username)"
+                  @pointerup="cancelUserDrag"
+                >≡</span>
+                <span v-else class="sort-handle pinned-handle" title="管理员固定在顶部">📌</span>
               </div>
 
               <div v-if="editingUser === user.username" class="settings-user-editor">

@@ -1,10 +1,10 @@
-# 胖虎阅读 · 默认部署配置
+# 胖虎阅读 默认部署配置
 #
-# 直接使用 GitHub 上发布的镜像（无需本地构建）：
+# 镜像不含任何用户数据；所有账号、书源、书籍、阅读设置都保存在
+# 下方 volumes 挂载的宿主机数据目录里。请改成你自己的目录。
+#
 #   docker compose up -d
 #
-# 数据、账号、书源、书籍和阅读设置都保存在 ./data 目录，请定期备份；
-# 升级镜像不会影响这个目录。
 services:
   reader-panghu:
     image: ghcr.io/scantyh/reader-panghu:latest
@@ -15,12 +15,13 @@ services:
     environment:
       PORT: "18080"
       DATA_DIR: /app/data
-      # 首次启动时创建管理员。不设置的话，打开网页注册的第一个账号会成为管理员。
+      # 首次启动时创建管理员；不设置的话，第一个注册的账号会成为管理员。
       # ADMIN_USERNAME: "admin"
       # ADMIN_PASSWORD: "change-me"
-      # 用公网域名访问时建议填上，生成阅读3 书源会用它做地址
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       SOURCE_TIMEOUT_MS: "45000"
       LOG_LEVEL: info
     volumes:
+      # 必须挂载！容器里的 /app/data 删除后所有用户数据都会丢失。
+      # 例如：- /volume1/docker/reader-panghu:/app/data
       - ./data:/app/data

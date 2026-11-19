@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, setToken } from './api.js'
 
@@ -38,12 +38,17 @@ const isReader = () => route.name === 'reader'
 const isLogin = () => route.name === 'login'
 const authUser = ref('')
 const authOn = ref(false)
+const authAvatar = ref('')
+const authRole = ref('')
+const userInfoOpen = ref(false)
 
 async function loadAuth() {
   try {
     const info = await api.getUserInfo()
     authOn.value = Boolean(info?.authEnabled)
     authUser.value = info?.username || ''
+    authAvatar.value = info?.avatar || ''
+    authRole.value = info?.role || ''
   } catch {
     authOn.value = true
     authUser.value = ''
@@ -73,7 +78,13 @@ const NAV = [
   { to: '/backup', label: '备份', icon: '💾' },
   { to: '/settings', label: '设置', icon: '⚙️' },
 ]
-onMounted(loadAuth)
+onMounted(() => {
+  loadAuth()
+  window.addEventListener('rp-user-updated', loadAuth)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('rp-user-updated', loadAuth)
+})
 </script>
 
 <template>
@@ -105,8 +116,26 @@ onMounted(loadAuth)
       <div v-else class="spacer" />
       <span class="badge version-badge" :title="'系统版本 ' + appVersion">{{ appVersion }}</span>
       <div v-if="authUser" class="header-user">
+        <button class="header-avatar" title="用户信息" @click.stop="userInfoOpen = !userInfoOpen">
+          <img v-if="authAvatar" :src="authAvatar" alt="" />
+          <span v-else>👤</span>
+        </button>
         <span class="header-user-name">{{ authUser }}</span>
         <button class="header-user-logout" @click="logout">退出</button>
+        <div v-if="userInfoOpen" class="user-popover" @click.stop>
+          <div class="user-popover-head">
+            <button class="header-avatar large" @click="router.push('/settings/account'); userInfoOpen = false">
+              <img v-if="authAvatar" :src="authAvatar" alt="" />
+              <span v-else>👤</span>
+            </button>
+            <div>
+              <strong>{{ authUser }}</strong>
+              <div class="muted" style="font-size: 12px">{{ authRole === 'admin' ? '管理员' : '普通用户' }}</div>
+            </div>
+          </div>
+          <button class="ghost" style="width: 100%; margin-top: 8px" @click="router.push('/settings/account'); userInfoOpen = false">账号设置</button>
+          <button class="ghost" style="width: 100%; margin-top: 4px" @click="logout">退出登录</button>
+        </div>
       </div>
     </header>
 

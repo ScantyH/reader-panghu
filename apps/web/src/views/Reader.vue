@@ -149,6 +149,10 @@ const dpPanelLoading = ref(false)
 const dpPanelTitle = ref('')
 const dpComments = ref([])
 const dpPanelTotal = ref(0)
+const dpPanelHtml = ref('')
+const dpPanelHasMore = ref(false)
+const dpPanelLoadingMore = ref(false)
+const dpPanelMarker = ref(null)
 
 const turnDirection = ref('')
 const caching = ref(false)
@@ -637,28 +641,57 @@ async function openDp() {
 async function openDpComment(marker) {
   if (!marker || dpPanelLoading.value) return
   showDpPanel.value = true
-  dpPanelLoading.value = true
-  dpPanelError.value = ''
-  dpComments.value = []
-  dpPanelTotal.value = 0
+  dpPanelMarker.value = marker
   dpPanelTitle.value =
     Number(marker.paragraph) === -1
       ? `章节名 · ${marker.count} 条段评`
       : `第 ${Number(marker.paragraph) + 1} 段 · ${marker.count} 条段评`
+  await loadDpComments(0)
+}
+
+async function loadDpComments(offset) {
+  const marker = dpPanelMarker.value
+  if (!marker) return
+  if (offset === 0) {
+    dpPanelLoading.value = true
+    dpPanelError.value = ''
+    dpComments.value = []
+    dpPanelHtml.value = ''
+    dpPanelTotal.value = 0
+    dpPanelHasMore.value = false
+  } else {
+    dpPanelLoadingMore.value = true
+  }
   try {
     const result = await api.paragraphCommentPanel({
       bookUrl: props.bookUrl,
       index: current.value,
       paragraph: marker.paragraph,
+      offset,
+      limit: offset === 0 ? 10 : 6,
     })
-    dpComments.value = result.comments || []
+    if (result.html) {
+      dpPanelHtml.value = result.html
+      dpPanelHasMore.value = false
+      return
+    }
+    dpComments.value = offset === 0 ? result.comments || [] : [...dpComments.value, ...(result.comments || [])]
     dpPanelTotal.value = Number(result.total || dpComments.value.length)
+    dpPanelHasMore.value = Boolean(result.hasMore)
     if (!dpComments.value.length) dpPanelError.value = '没有取到段评内容'
   } catch (error) {
-    dpPanelError.value = error.message
+    if (offset === 0) dpPanelError.value = error.message
   } finally {
     dpPanelLoading.value = false
+    dpPanelLoadingMore.value = false
   }
+}
+
+function onDpPanelScroll(event) {
+  if (!dpPanelHasMore.value || dpPanelLoadingMore.value || dpPanelLoading.value) return
+  const el = event.target
+  if (!el || el.scrollTop + el.clientHeight < el.scrollHeight - 80) return
+  loadDpComments(dpComments.value.length)
 }
 
 function formatCommentTime(value) {
@@ -1291,20 +1324,31 @@ watch(chapterTitle, () => {
           <button class="ghost" @click="showDpPanel = false">关闭</button>
         </div>
         <div v-if="dpPanelLoading" class="muted" style="padding: 24px 0">正在加载段评…</div>
-        <div v-else-if="dpPanelError && !dpComments.length" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
+        <div v-else-if="dpPanelError && !dpComments.length && !dpPanelHtml" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
         <template v-else>
-          <div class="dp-comment-summary">共 {{ dpPanelTotal }} 条 · 显示前 {{ dpComments.length }} 条</div>
-          <div class="dp-comment-list">
-            <div v-for="(comment, index) in dpComments" :key="comment.id || index" class="dp-comment-item">
-              <div class="dp-comment-meta">
-                <strong>{{ comment.user }}</strong>
-                <span>{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
+          <iframe
+            v-if="dpPanelHtml"
+            class="dp-panel-iframe"
+            :srcdoc="dpPanelHtml"
+            sandbox="allow-scripts allow-forms allow-popups"
+            title="段评面板"
+          />
+          <template v-else>
+            <div class="dp-comment-summary">共 {{ dpPanelTotal }} 条 · 已显示 {{ dpComments.length }} 条</div>
+            <div class="dp-comment-list" @scroll.passive="onDpPanelScroll">
+              <div v-for="(comment, index) in dpComments" :key="comment.id || index" class="dp-comment-item">
+                <div class="dp-comment-meta">
+                  <strong>{{ comment.user }}</strong>
+                  <span>{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
+                </div>
+                <div v-if="comment.quote" class="dp-comment-quote">{{ comment.quote }}</div>
+                <p class="dp-comment-content">{{ comment.content }}</p>
+                <div class="dp-comment-like">👍 {{ comment.agree }}</div>
               </div>
-              <div v-if="comment.quote" class="dp-comment-quote">{{ comment.quote }}</div>
-              <p class="dp-comment-content">{{ comment.content }}</p>
-              <div class="dp-comment-like">👍 {{ comment.agree }}</div>
+              <div v-if="dpPanelLoadingMore" class="muted" style="padding: 10px 0; text-align: center">正在加载更多…</div>
+              <div v-else-if="!dpPanelHasMore && dpComments.length" class="muted" style="padding: 10px 0; text-align: center">没有更多了</div>
             </div>
-          </div>
+          </template>
         </template>
       </div>
     </div>
@@ -1613,6 +1657,14 @@ watch(chapterTitle, () => {
   font-size: 12px;
   opacity: 0.55;
   padding: 8px 0;
+}
+
+.dp-panel-iframe {
+  width: 100%;
+  height: 68vh;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
 }
 
 .dp-comment-list {

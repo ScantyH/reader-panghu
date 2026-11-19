@@ -172,6 +172,7 @@ export function registerAuth(app, { store }) {
       return ok({
         username: user?.username ?? 'reader',
         role: user?.role ?? 'admin',
+        avatar: user?.avatar ?? '',
         secure: false,
         authEnabled: false,
         ...perms,
@@ -183,6 +184,7 @@ export function registerAuth(app, { store }) {
     return ok({
       username: user?.username ?? '',
       role: user?.role ?? 'user',
+      avatar: user?.avatar ?? '',
       secure: true,
       authEnabled: true,
       ...perms,

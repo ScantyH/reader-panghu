@@ -68,6 +68,7 @@ export function registerPortability(app, { store }) {
       username: user.username,
       hasPassword: Boolean(user.password),
       role: user.role || 'user',
+      avatar: user.avatar || '',
       createdAt: user.created_at,
       current: user.id === req.userId,
       note: user.note || '',
@@ -124,6 +125,8 @@ export function registerPortability(app, { store }) {
     const user = store.findUserByName(username)
     if (!user) return fail('用户不存在')
     if (user.id === 1) return fail('默认账号不可改角色')
+    const current = store.getUserById(user.id)
+    if (current?.role === 'admin' && role !== 'admin') return fail('管理员不能降为普通用户')
     store.setUserRole(user.id, role)
     return ok({ username, role })
   })

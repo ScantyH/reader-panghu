@@ -45,7 +45,13 @@ export function registerWarehouse(app, { store, dataDir }) {
         files.push({ name: entry.name, path: childRel, size: statSync(join(target, entry.name)).size })
       }
     }
-    categories.sort((a, b) => a.name.localeCompare(b.name))
+    categories.sort((a, b) => {
+      const order = store.getWarehouseOrder()[rel] || []
+      const ai = order.indexOf(a.path)
+      const bi = order.indexOf(b.path)
+      if (ai !== -1 || bi !== -1) return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi)
+      return a.name.localeCompare(b.name)
+    })
     files.sort((a, b) => a.name.localeCompare(b.name))
     return { path: rel, categories, files }
   }
@@ -92,6 +98,19 @@ export function registerWarehouse(app, { store, dataDir }) {
     } catch (error) {
       return fail(error.message)
     }
+  })
+
+  app.post('/reader3/warehouse/reorder', async (req) => {
+    const blocked = warehouseBlocked(req)
+    if (blocked) return fail(blocked)
+    const { target, rel } = safePath(String(req.body?.path || ''))
+    if (!existsSync(target)) return fail('目录不存在')
+    const names = Array.isArray(req.body?.names) ? req.body.names.map((name) => String(name)) : []
+    if (!names.length) return fail('缺少排序列表')
+    const order = store.getWarehouseOrder()
+    order[rel] = names
+    store.saveWarehouseOrder(order)
+    return ok({ path: rel, names })
   })
 
   app.post('/reader3/warehouse/mkdir', async (req) => {

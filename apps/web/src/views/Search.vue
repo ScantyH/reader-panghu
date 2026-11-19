@@ -35,7 +35,7 @@ const selectedStats = computed(() => {
   }
 })
 const scopeLabel = computed(() => {
-  if (!selectedBundles.value.length) return '全部书源'
+  if (!selectedBundles.value.length) return '选择书源'
   if (selectedBundles.value.length === bundles.value.length) return `全部书源（${bundles.value.length} 个汇总）`
   return selectedBundles.value.join('、')
 })
@@ -53,11 +53,12 @@ async function loadBundles() {
       return
     }
     if (bundles.value.length === 1) selectedBundles.value = [bundles.value[0].name]
-    else openScope(false)
   } catch (error) {
     window.__toast?.(error.message)
   }
 }
+
+const allSelected = computed(() => bundles.value.length > 0 && draftBundles.value.length === bundles.value.length)
 
 function openScope(pendingSearch = false) {
   pickerPendingSearch.value = pendingSearch
@@ -72,7 +73,7 @@ function toggleDraft(name) {
 }
 
 function selectAllDraft() {
-  draftBundles.value = bundles.value.map((bundle) => bundle.name)
+  draftBundles.value = allSelected.value ? [] : bundles.value.map((bundle) => bundle.name)
 }
 
 function clearDraft() {
@@ -155,7 +156,7 @@ onMounted(async () => {
   if (q) {
     keyword.value = q
     if (selectedBundles.value.length === 1) search()
-    else pickerPendingSearch.value = true
+    else openScope(true)
   }
 })
 </script>
@@ -214,7 +215,9 @@ onMounted(async () => {
           </label>
         </div>
         <div class="row" style="gap: 8px; margin-top: 14px; flex-wrap: wrap">
-          <button class="ghost" @click="selectAllDraft">全选</button>
+          <button class="ghost select-all-btn" :class="{ active: allSelected }" @click="selectAllDraft">
+            {{ allSelected ? '已全选' : '全选' }}
+          </button>
           <button class="ghost" @click="clearDraft">清空</button>
           <div class="spacer" />
           <button class="ghost" @click="showScope = false">取消</button>
@@ -228,6 +231,12 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.select-all-btn.active {
+  color: #fff;
+  background: var(--color-danger, #c0392b);
+  border-color: var(--color-danger, #c0392b);
+}
+
 .result-source-badge {
   position: absolute;
   left: 6px;

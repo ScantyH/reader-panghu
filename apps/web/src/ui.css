@@ -1617,3 +1617,63 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ─── 用户头像 / 用户信息弹层 ─── */
+.header-user { position: relative; }
+.header-avatar {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--color-border-light);
+  border-radius: 50%;
+  background: var(--color-bg-elevated);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  flex: none;
+}
+.header-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.header-avatar.large { width: 44px; height: 44px; }
+.user-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 80;
+  width: 220px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-light);
+  box-shadow: var(--shadow-lg);
+}
+.user-popover-head { display: flex; align-items: center; gap: 10px; }
+
+.settings-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 14px;
+  border-bottom: 1px solid var(--color-border-light);
+  margin-bottom: 8px;
+}
+.settings-avatar {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-sunken);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  flex: none;
+  font-size: 24px;
+}
+.settings-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.settings-user-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; display: block; }
+.pinned-badge { background: var(--color-primary-bg, #fdf3e6); color: var(--color-primary); }
+.sort-handle.pinned-handle { cursor: default; opacity: 0.7; }

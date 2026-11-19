@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { api } from '../api.js'
+import { useSortable } from '../use-sortable.js'
 
 const currentPath = ref('')
 const data = ref({ categories: [], files: [] })
@@ -21,6 +22,31 @@ async function load(path = currentPath.value) {
     loading.value = false
   }
 }
+
+function moveCategory(from, to) {
+  const list = [...data.value.categories]
+  const [item] = list.splice(from, 1)
+  list.splice(to, 0, item)
+  data.value = { ...data.value, categories: list }
+}
+
+const {
+  start: startCategoryDrag,
+  cancel: cancelCategoryDrag,
+  draggingId: categoryDraggingId,
+} = useSortable({
+  getIds: () => data.value.categories.map((category) => category.path),
+  move: moveCategory,
+  onCommit: async () => {
+    try {
+      await api.warehouseReorder(currentPath.value, data.value.categories.map((category) => category.name))
+      window.__toast?.('分类顺序已保存')
+    } catch (error) {
+      window.__toast?.(error.message)
+      await load()
+    }
+  },
+})
 
 async function createCategory() {
   const name = newCategory.value.trim()
@@ -110,13 +136,25 @@ onMounted(() => load(''))
     </div>
 
     <div v-else class="list">
-      <div v-for="category in data.categories" :key="category.path" class="list-item">
+      <div
+        v-for="category in data.categories"
+        :key="category.path"
+        class="list-item"
+        :class="{ dragging: categoryDraggingId === category.path }"
+        :data-sort-id="category.path"
+      >
         <span>📁</span>
         <button class="ghost" style="flex: 1; text-align: left; border: none" @click="load(category.path)">
           {{ category.name }}
         </button>
         <span class="badge">{{ category.bookCount }} 本</span>
         <button class="ghost" @click="remove(category.path)">删除</button>
+        <span
+          class="sort-handle"
+          title="长按拖动分类排序"
+          @pointerdown.prevent="startCategoryDrag($event, category.path)"
+          @pointerup="cancelCategoryDrag"
+        >≡</span>
       </div>
       <div v-for="file in data.files" :key="file.path" class="list-item">
         <span>📄</span>

@@ -197,6 +197,7 @@ export const api = {
   // bookmarks
   getUserConfig: () => request('/getUserConfig'),
   saveUserConfig: (config) => request('/saveUserConfig', { method: 'POST', body: config }),
+  setAvatar: (avatar) => request('/setAvatar', { method: 'POST', body: { avatar } }),
 
   rssSources: () => request('/getRssSources'),
   saveRssSource: (source) => request('/saveRssSource', { method: 'POST', body: source }),
@@ -211,6 +212,7 @@ export const api = {
   warehouseMkdir: (path, name) => request('/warehouse/mkdir', { method: 'POST', body: { path, name } }),
   warehouseImport: (path) => request('/warehouse/import', { method: 'POST', body: { path } }),
   warehouseDelete: (path) => request('/warehouse/delete', { method: 'POST', body: { path } }),
+  warehouseReorder: (path, names) => request('/warehouse/reorder', { method: 'POST', body: { path, names } }),
   warehouseUpload: (path, file) => {
     const form = new FormData()
     form.append('file', file)
