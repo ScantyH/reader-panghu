@@ -138,7 +138,6 @@ onBeforeUnmount(() => {
           <span v-else>👤</span>
         </button>
         <span class="header-user-name">{{ authUser }}</span>
-        <button class="header-user-logout" @click="logout">退出</button>
         <div v-if="userInfoOpen" class="user-popover" @click.stop>
           <div class="user-popover-head">
             <button class="header-avatar large" @click="router.push('/settings/account'); userInfoOpen = false">

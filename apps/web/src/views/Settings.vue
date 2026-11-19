@@ -11,14 +11,23 @@ const router = useRouter()
 const SECTIONS = [
   { id: 'account', label: '账号管理', icon: '👤', desc: '账号信息、密码与用户' },
   { id: 'layout', label: '布局设定', icon: '🎨', desc: '选择桌面导航与显示布局' },
-  { id: 'shelf', label: '书架设置', icon: '🗂️', desc: '批量、分组、缓存与更新' },
-  { id: 'books', label: '书籍管理', icon: '📚', desc: '导入本地书、书仓与阅读工具' },
+  { id: 'shelf', label: '书架设置', icon: '🗂️', desc: '批量管理与分组' },
+  { id: 'books', label: '书籍管理', icon: '📚', desc: '导入、书仓、缓存与阅读工具' },
   { id: 'data', label: '数据管理', icon: '📈', desc: '阅读统计、备份与 WebDAV' },
   { id: 'system', label: '系统', icon: '⚙️', desc: '运行状态' },
   { id: 'about', label: '关于', icon: 'ℹ️', desc: '应用信息、更新日志与版本' },
 ]
 
 const CHANGELOG = [
+  {
+    version: '1.1.2',
+    date: '2026-11-19',
+    items: [
+      '账号头像与下方「用户名」标签左对齐',
+      '缓存与更新从书架设置移入书籍管理',
+      '完成桌面/移动端、两种导航布局与全部功能回归测试',
+    ],
+  },
   {
     version: '1.1.1',
     date: '2026-11-19',
@@ -624,6 +633,27 @@ onMounted(load)
               </div>
             </router-link>
           </div>
+          <div class="settings-card">
+            <div class="settings-card-title">缓存与更新</div>
+            <button class="settings-row" :disabled="updateBusy" @click="checkUpdates">
+              <div class="settings-row-icon">🔄</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">检查更新</div>
+                <div class="settings-row-desc">检查书架中连载书的新章节</div>
+              </div>
+              <span class="settings-row-meta">{{ updateBusy ? '检查中…' : '执行' }}</span>
+            </button>
+            <button class="settings-row" :disabled="cacheBusy" @click="refreshCache">
+              <div class="settings-row-icon">⚡</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">刷新缓存</div>
+                <div class="settings-row-desc">重新缓存最近阅读的前 5 本</div>
+              </div>
+              <span class="settings-row-meta">{{ cacheBusy ? '刷新中…' : '执行' }}</span>
+            </button>
+          </div>
+
+          <p v-if="shelfStatus" class="settings-status">{{ shelfStatus }}</p>
         </template>
 
         <template v-else-if="section === 'layout'">
@@ -702,27 +732,6 @@ onMounted(load)
             </div>
           </div>
 
-          <div class="settings-card">
-            <div class="settings-card-title">缓存与更新</div>
-            <button class="settings-row" :disabled="updateBusy" @click="checkUpdates">
-              <div class="settings-row-icon">🔄</div>
-              <div class="settings-row-main">
-                <div class="settings-row-title">检查更新</div>
-                <div class="settings-row-desc">检查书架中连载书的新章节</div>
-              </div>
-              <span class="settings-row-meta">{{ updateBusy ? '检查中…' : '执行' }}</span>
-            </button>
-            <button class="settings-row" :disabled="cacheBusy" @click="refreshCache">
-              <div class="settings-row-icon">⚡</div>
-              <div class="settings-row-main">
-                <div class="settings-row-title">刷新缓存</div>
-                <div class="settings-row-desc">重新缓存最近阅读的前 5 本</div>
-              </div>
-              <span class="settings-row-meta">{{ cacheBusy ? '刷新中…' : '执行' }}</span>
-            </button>
-          </div>
-
-          <p v-if="shelfStatus" class="settings-status">{{ shelfStatus }}</p>
         </template>
 
         <!-- 数据 -->
