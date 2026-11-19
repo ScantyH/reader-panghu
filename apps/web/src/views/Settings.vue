@@ -10,15 +10,25 @@ const router = useRouter()
 
 const SECTIONS = [
   { id: 'account', label: '账号管理', icon: '👤', desc: '账号信息、密码与用户' },
+  { id: 'layout', label: '布局设定', icon: '🎨', desc: '选择桌面导航与显示布局' },
+  { id: 'shelf', label: '书架设置', icon: '🗂️', desc: '批量、分组、缓存与更新' },
   { id: 'books', label: '书籍管理', icon: '📚', desc: '导入本地书、书仓与阅读工具' },
-  { id: 'shelf', label: '书架管理', icon: '🗂️', desc: '缓存、更新与书架数据' },
-  { id: 'layout', label: '布局设定', icon: '🎨', desc: '桌面导航与显示布局' },
   { id: 'data', label: '数据管理', icon: '📈', desc: '阅读统计、备份与 WebDAV' },
   { id: 'system', label: '系统', icon: '⚙️', desc: '运行状态' },
   { id: 'about', label: '关于', icon: 'ℹ️', desc: '应用信息、更新日志与版本' },
 ]
 
 const CHANGELOG = [
+  {
+    version: '1.1.1',
+    date: '2026-11-19',
+    items: [
+      '优化更新日志排版，与关于信息统一对齐与字号',
+      '设置分类顺序调整为：账号、布局设定、书架设置、书籍管理',
+      '批量管理书架与分组管理移入书架设置；账号头像与文字对齐',
+      '布局设定去掉重复标题，重做布局预览图标与说明文字',
+    ],
+  },
   {
     version: '1.1.0',
     date: '2026-11-19',
@@ -581,6 +591,78 @@ onMounted(load)
               </div>
               <span class="settings-row-meta">{{ importBusy ? '导入中…' : '选择文件' }}</span>
             </button>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">阅读工具</div>
+            <router-link v-if="me.allowWarehouse" class="settings-row link" to="/warehouse">
+              <div class="settings-row-icon">🗄️</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">书仓</div>
+                <div class="settings-row-desc">服务端目录即分类，可上传、导入书架</div>
+              </div>
+            </router-link>
+            <router-link class="settings-row link" to="/bookmarks">
+              <div class="settings-row-icon">🔖</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">书签</div>
+                <div class="settings-row-desc">按书查看已保存的阅读位置</div>
+              </div>
+            </router-link>
+            <router-link class="settings-row link" to="/cache">
+              <div class="settings-row-icon">⬇️</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">缓存管理</div>
+                <div class="settings-row-desc">查看与清理已缓存的章节</div>
+              </div>
+            </router-link>
+            <router-link class="settings-row link" to="/replace">
+              <div class="settings-row-icon">✏️</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">替换规则</div>
+                <div class="settings-row-desc">正文清洗与错字替换</div>
+              </div>
+            </router-link>
+          </div>
+        </template>
+
+        <template v-else-if="section === 'layout'">
+          <div class="settings-card layout-settings-card">
+            <div class="layout-settings-body">
+              <p class="layout-hint">请选择自己喜欢的布局方式，移动端默认使用液态玻璃胶囊导航。</p>
+              <div class="layout-options">
+                <button class="layout-option" :class="{ active: desktopNavLayout === 'bottom' }" @click="chooseLayout('bottom')">
+                  <span class="layout-preview layout-preview-bottom">
+                    <span class="lp-window">
+                      <i class="lp-bar" />
+                      <i class="lp-line wide" />
+                      <i class="lp-line" />
+                      <i class="lp-line short" />
+                    </span>
+                    <span class="lp-dock"><i /><i /><i /><i /></span>
+                  </span>
+                  <span class="layout-option-label">底部胶囊</span>
+                </button>
+                <button class="layout-option" :class="{ active: desktopNavLayout === 'left' }" @click="chooseLayout('left')">
+                  <span class="layout-preview layout-preview-left">
+                    <span class="lp-rail"><i /><i /><i /><i /></span>
+                    <span class="lp-window">
+                      <i class="lp-bar" />
+                      <i class="lp-line wide" />
+                      <i class="lp-line" />
+                      <i class="lp-line short" />
+                    </span>
+                  </span>
+                  <span class="layout-option-label">左侧导航</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="section === 'shelf'">
+          <div class="settings-card">
+            <div class="settings-card-title">批量与分组</div>
             <button class="settings-row" @click="goBatch">
               <div class="settings-row-icon">☑️</div>
               <div class="settings-row-main">
@@ -620,63 +702,6 @@ onMounted(load)
             </div>
           </div>
 
-          <div class="settings-card">
-            <div class="settings-card-title">阅读工具</div>
-            <router-link v-if="me.allowWarehouse" class="settings-row link" to="/warehouse">
-              <div class="settings-row-icon">🗄️</div>
-              <div class="settings-row-main">
-                <div class="settings-row-title">书仓</div>
-                <div class="settings-row-desc">服务端目录即分类，可上传、导入书架</div>
-              </div>
-            </router-link>
-            <router-link class="settings-row link" to="/bookmarks">
-              <div class="settings-row-icon">🔖</div>
-              <div class="settings-row-main">
-                <div class="settings-row-title">书签</div>
-                <div class="settings-row-desc">按书查看已保存的阅读位置</div>
-              </div>
-            </router-link>
-            <router-link class="settings-row link" to="/cache">
-              <div class="settings-row-icon">⬇️</div>
-              <div class="settings-row-main">
-                <div class="settings-row-title">缓存管理</div>
-                <div class="settings-row-desc">查看与清理已缓存的章节</div>
-              </div>
-            </router-link>
-            <router-link class="settings-row link" to="/replace">
-              <div class="settings-row-icon">✏️</div>
-              <div class="settings-row-main">
-                <div class="settings-row-title">替换规则</div>
-                <div class="settings-row-desc">正文清洗与错字替换</div>
-              </div>
-            </router-link>
-          </div>
-        </template>
-
-        <template v-else-if="section === 'layout'">
-          <div class="settings-card">
-            <div class="settings-card-title">桌面布局</div>
-            <p class="settings-row-desc" style="padding: 0 0 10px">移动端固定使用底部导航；桌面端可在这里切换。</p>
-            <div class="layout-options">
-              <button class="layout-option" :class="{ active: desktopNavLayout === 'bottom' }" @click="chooseLayout('bottom')">
-                <span class="layout-preview layout-preview-bottom">
-                  <i class="lp-content" />
-                  <i class="lp-pill" />
-                </span>
-                <span class="layout-option-label">底部胶囊</span>
-              </button>
-              <button class="layout-option" :class="{ active: desktopNavLayout === 'left' }" @click="chooseLayout('left')">
-                <span class="layout-preview layout-preview-left expanded">
-                  <i class="lp-side" />
-                  <i class="lp-grid" />
-                </span>
-                <span class="layout-option-label">左侧导航</span>
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="section === 'shelf'">
           <div class="settings-card">
             <div class="settings-card-title">缓存与更新</div>
             <button class="settings-row" :disabled="updateBusy" @click="checkUpdates">
