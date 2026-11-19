@@ -433,23 +433,25 @@ async function primeBook(book) {
           })
           if (panelHtml && panelHtml.includes('__QD_BOOT__')) {
             try {
-              const bootMatch = /window\.__QD_BOOT__=(\{[\s\S]*?\});<\/script>/.exec(panelHtml)
-              if (bootMatch) {
-                const boot = JSON.parse(bootMatch[1])
-                const raw = boot?.page?.Data?.DataList || boot?.page?.data || []
-                const total = Number(boot?.counts?.all || raw.length || 0)
-                const comments = raw.slice(0, limit).map((item) => ({
-                  id: String(item.Id || item.id || ''),
-                  user: String(item.UserName || item.userName || '书友'),
-                  content: String(item.Content || item.content || ''),
-                  quote: String(item.RefferContent || item.quote || ''),
-                  agree: Number(item.AgreeAmount || item.agree || 0),
-                  ip: String(item.IpLocation || ''),
-                  time: Number(item.CreateTime || 0),
-                }))
-                if (comments.length) return ok({ comments, total, offset: 0, limit, hasMore: comments.length < total })
-              }
-            } catch {}
+              const bootStart = panelHtml.indexOf('window.__QD_BOOT__=')
+              const bootEnd = bootStart >= 0 ? panelHtml.indexOf(';window.', bootStart) : -1
+              const bootText = bootStart >= 0 && bootEnd > bootStart ? panelHtml.slice(bootStart + 'window.__QD_BOOT__='.length, bootEnd) : ''
+              const boot = bootText ? JSON.parse(bootText) : null
+              const raw = boot?.page?.Data?.DataList || boot?.page?.data || []
+              const total = Number(boot?.counts?.all || boot?.page?.total || raw.length || 0)
+              const comments = raw.slice(0, limit).map((item) => ({
+                id: String(item.Id || item.id || ''),
+                user: String(item.UserName || item.userName || '书友'),
+                content: String(item.Content || item.content || ''),
+                quote: String(item.RefferContent || item.quote || ''),
+                agree: Number(item.AgreeAmount || item.agree || 0),
+                ip: String(item.IpLocation || ''),
+                time: Number(item.CreateTime || 0),
+              }))
+              if (comments.length) return ok({ comments, total, offset: 0, limit, hasMore: false })
+            } catch {
+              /* 解析失败再退回 HTML */
+            }
             return ok({ html: panelHtml.slice(0, 1024 * 1024), comments: [], total: 0, offset: 0, limit, hasMore: false })
           }
         } catch {
