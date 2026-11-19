@@ -231,6 +231,8 @@ export class WebviewSourceRuntime {
       this.cache.set('qdAuthKey', this.key)
       this.cache.set('qdAuthToken', createHash('md5').update(`${this.key}|${Date.now()}`).digest('hex'))
       this.cache.set('LoginInfo', JSON.stringify({ 书源密钥: this.key, key: this.key }))
+      // 起点类书源用 pyqdDid 做设备指纹；每次请求都随机生成会很快触发设备数上限
+      this.cache.set('pyqdDid', this.deviceId)
     }
 
     // All inline scripts must run as ONE unit: sources declare helper classes

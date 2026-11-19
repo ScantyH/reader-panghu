@@ -382,17 +382,36 @@ async function primeBook(book) {
       apiUrl.searchParams.set('pg', '1')
       apiUrl.searchParams.set('pz', '50')
       apiUrl.searchParams.set('offset', '0')
-      const response = await fetch(apiUrl, {
-        headers: {
-          'user-agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-          referer: `${origin}/`,
-          accept: 'application/json, text/plain, */*',
-        },
-        signal: AbortSignal.timeout(20000),
-      })
-      if (!response.ok) return fail(`段评接口返回 HTTP ${response.status}（${markerHost}）`)
-      const payload = await response.json()
+      // 起点类书源的 /qddp/api 需要 k/did/ts/sign 签名；直接 fetch 会 401。
+      // 优先调用书源自己的 qget()，由书源运行时带上密钥、设备指纹、Cookie 和签名。
+      let payload = null
+      let qgetError = ''
+      try {
+        const signed = await withRuntime(origin, async (runtime) => {
+          if (typeof runtime.window?.qget !== 'function') return null
+          const result = await runtime.window.qget(apiUrl.toString())
+          if (result?.statusCode && Number(result.statusCode) >= 400) {
+            throw new Error(`HTTP ${result.statusCode}`)
+          }
+          return result?.data ?? null
+        })
+        if (signed) payload = JSON.parse(String(signed))
+      } catch (error) {
+        qgetError = error.message
+      }
+      if (!payload) {
+        const response = await fetch(apiUrl, {
+          headers: {
+            'user-agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+            referer: `${origin}/`,
+            accept: 'application/json, text/plain, */*',
+          },
+          signal: AbortSignal.timeout(20000),
+        })
+        if (!response.ok) return fail(`段评接口返回 HTTP ${response.status}（${markerHost}）${qgetError ? `：${qgetError}` : ''}`)
+        payload = await response.json()
+      }
       const data = payload?.Data || payload?.data || {}
       const list = data.DataList || data.data || data.list || []
       const total = Number(data.TotalCount || data.total || list.length)
