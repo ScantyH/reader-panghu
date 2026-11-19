@@ -818,7 +818,7 @@ const warmCache = (index) => {
   if (!origin || /^local:\/\/(txt|epub|docx|mobi|pdf)(\/|$)/i.test(origin) || cacheWarmed) return
   cacheWarmed = true
   api
-    .cacheBook(book.value.bookUrl, 50, false, index)
+    .cacheBook(book.value.bookUrl, 10, false, index)
     .then((result) => {
       if (result?.cached) window.__toast?.(`已从第 ${index + 1} 章起缓存 ${result.cached} 章`)
     })

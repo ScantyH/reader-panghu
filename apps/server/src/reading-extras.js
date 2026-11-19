@@ -69,50 +69,57 @@ export function registerReadingExtras(app, { store, dataDir, options = {} }) {
    * 只搜索、不落库，避免污染书架。
    */
   app.post('/reader3/getAvailableBookSource', async (req) => {
-    const { name, author, origin, resultLimit = 8 } = req.body || {}
+    const { name, author, origin, resultLimit = 8, bundles } = req.body || {}
     const title = String(name || '').trim()
     if (!title) return fail('缺少书名')
     if (/^local:\/\//i.test(String(origin || ''))) return fail('本地书籍不需要换源')
 
-    const candidates = store
+    const bundleSet = new Set(Array.isArray(bundles) ? bundles.map((name) => String(name)) : [])
+    let candidates = store
       .listSources()
       .filter((source) => source.enabled !== false && source.bookSourceUrl !== origin)
       .filter((source) => source.html || source.searchUrl)
-      .slice(0, 20)
+    if (bundleSet.size) candidates = candidates.filter((source) => bundleSet.has(String(source._bundle || '未归类')))
 
+    const limit = Math.max(1, Math.min(30, Number(resultLimit) || 8))
     const books = []
-    for (const source of candidates) {
-      if (books.length >= resultLimit) break
-      try {
-        const runtime = makeRuntime(source)
-        await runtime.init()
+    let cursor = 0
+    const worker = async () => {
+      while (books.length < limit) {
+        const index = cursor++
+        if (index >= candidates.length) return
+        const source = candidates[index]
         try {
-          const found = await Promise.race([
-            runtime.search(title, 1),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('搜索超时')), 12000)),
-          ])
-          for (const book of Array.isArray(found) ? found : []) {
-            // 同名优先，作者能对上更可信
-            if (String(book.name || '').trim() !== title) continue
-            if (author && book.author && !book.author.includes(String(author)) && !String(author).includes(book.author)) continue
-            books.push({
-              name: book.name,
-              author: book.author,
-              bookUrl: book.bookUrl,
-              tocUrl: book.tocUrl || '',
-              origin: source.bookSourceUrl,
-              originName: source.bookSourceName,
-              coverUrl: book.coverUrl,
-            })
-            if (books.length >= resultLimit) break
+          const runtime = makeRuntime(source)
+          await runtime.init()
+          try {
+            const found = await Promise.race([
+              runtime.search(title, 1),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('搜索超时')), 10000)),
+            ])
+            for (const book of Array.isArray(found) ? found : []) {
+              if (String(book.name || '').trim() !== title) continue
+              if (author && book.author && !book.author.includes(String(author)) && !String(author).includes(book.author)) continue
+              books.push({
+                name: book.name,
+                author: book.author,
+                bookUrl: book.bookUrl,
+                tocUrl: book.tocUrl || '',
+                origin: source.bookSourceUrl,
+                originName: source.bookSourceName,
+                coverUrl: book.coverUrl,
+              })
+              if (books.length >= limit) break
+            }
+          } finally {
+            runtime.dispose()
           }
-        } finally {
-          runtime.dispose()
+        } catch {
+          // 单个源失败不影响其它源
         }
-      } catch {
-        // 单个源失败不影响其它源
       }
     }
+    await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, worker))
     return ok({ books })
   })
 

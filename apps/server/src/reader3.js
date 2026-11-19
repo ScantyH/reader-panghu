@@ -304,7 +304,13 @@ async function primeBook(book) {
     if (!target) return fail('缺少目录地址')
     if (!refresh && book) {
       const cached = store.getChapters(book.bookUrl, book.origin)
-      if (cached?.length) return ok(cached)
+      if (cached?.length) {
+        const latest = cached.at(-1)?.title || ''
+        if (Number(book.totalChapterNum || 0) !== cached.length || (latest && book.latestChapterTitle !== latest)) {
+          store.saveBook({ ...book, totalChapterNum: cached.length, latestChapterTitle: latest })
+        }
+        return ok(cached)
+      }
     }
     const chapters = await withRuntime(origin, (runtime) => runtime.chapter(target))
     // 卷名/分组信息一并返回，前端据此做缩进
@@ -317,7 +323,7 @@ async function primeBook(book) {
     }))
     if (book && list.length) {
       store.saveChapters(book.bookUrl, book.origin, list)
-      store.saveBook({ ...book, totalChapterNum: list.length })
+      store.saveBook({ ...book, totalChapterNum: list.length, latestChapterTitle: list.at(-1)?.title || book.latestChapterTitle || '' })
     }
     return ok(list)
   })
@@ -518,7 +524,8 @@ async function primeBook(book) {
       return { info: nextInfo, chapters: nextChapters }
     })
     const source = store.getSource(sourceUrl)
-    const next = toBook({ ...info, bookUrl: String(newUrl ?? bookUrl) }, source, existing)
+    const stableBookUrl = existing?.bookUrl || String(newUrl ?? bookUrl)
+    const next = toBook({ ...info, bookUrl: stableBookUrl }, source, existing)
     if (chapters.length) {
       const matched = oldTitle ? chapters.findIndex((chapter) => chapter.title === oldTitle) : -1
       const target = matched >= 0 ? matched : Math.min(Math.max(0, oldIndex), chapters.length - 1)
@@ -861,6 +868,11 @@ async function primeBook(book) {
     const group = req.query?.bookSourceGroup ? String(req.query.bookSourceGroup) : ''
     const sourceUrl = req.query?.bookSourceUrl ? String(req.query.bookSourceUrl) : ''
     const bundle = req.query?.bookSourceBundle ? String(req.query.bookSourceBundle) : ''
+    const bundleList = String(req.query?.bookSourceBundles || '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean)
+    const bundleSet = new Set(bundleList)
 
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -879,6 +891,7 @@ async function primeBook(book) {
       } else {
         const sources = enabledSources().filter((source) => {
           if (sourceUrl) return source.bookSourceUrl === sourceUrl
+          if (bundleSet.size) return bundleSet.has(String(source._bundle || '未归类'))
           if (bundle) return String(source._bundle || '未归类') === bundle
           if (group) return source.bookSourceGroup === group
           return true

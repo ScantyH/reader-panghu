@@ -15,6 +15,9 @@ const loading = ref(false)
 const editing = ref(null)
 const actionBook = ref(null)
 const sourceBook = ref(null)
+const sourceBundles = ref([])
+const sourceDraft = ref([])
+const sourceStage = ref('choose')
 const sourceCandidates = ref([])
 const sourceLoading = ref(false)
 const sourceSwitching = ref('')
@@ -100,35 +103,86 @@ function runAction(action) {
   if (!book) return
   if (action === 'edit') editing.value = { ...book }
   else if (action === 'cache') cache(book)
+  else if (action === 'clearCache') clearBookCache(book)
   else if (action === 'source') openSourcePicker(book)
   else if (action === 'delete') remove(book)
 }
 
 const isLocalBook = (book) => /^local:\/\//i.test(String(book?.origin || ''))
 
-/** 封面三个点 → 手动换源：列出其它来源供用户选择 */
+/** 手动清理缓存：书源更新/密钥失效后清掉旧目录和正文，重新打开时重新拉取 */
+async function clearBookCache(book) {
+  if (!confirm(`清理《${book.name}》的目录和正文缓存？`)) return
+  try {
+    await api.deleteBookCache(book.bookUrl)
+    await load()
+    window.__toast?.('已清理缓存，下次打开会重新获取目录和正文')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+/** 封面三个点 → 手动换源：先显示当前来源，再选书源汇总后搜索 */
 async function openSourcePicker(book) {
   if (isLocalBook(book)) {
     window.__toast?.('本地导入的书不需要换源')
     return
   }
   sourceBook.value = book
+  sourceStage.value = 'choose'
   sourceCandidates.value = []
+  sourceBundles.value = []
   sourceLoading.value = true
   try {
-    const result = await api.availableSources({
-      name: book.name || '',
-      author: book.author || '',
-      origin: book.origin || '',
-      resultLimit: 10,
-    })
-    sourceCandidates.value = result.books || []
-    if (!sourceCandidates.value.length) window.__toast?.('其它书源里没找到同名书')
+    const list = await api.sourceBundles()
+    sourceBundles.value = list || []
+    // 只有一个书源汇总时默认用它；多个时让用户自己选
+    sourceDraft.value = sourceBundles.value.length === 1 ? [sourceBundles.value[0].name] : []
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
     sourceLoading.value = false
   }
+}
+
+function toggleSourceDraft(name) {
+  sourceDraft.value = sourceDraft.value.includes(name)
+    ? sourceDraft.value.filter((item) => item !== name)
+    : [...sourceDraft.value, name]
+}
+
+function selectAllSources() {
+  sourceDraft.value = sourceBundles.value.map((bundle) => bundle.name)
+}
+
+function clearSourceDraft() {
+  sourceDraft.value = []
+}
+
+async function searchSelectedSources() {
+  if (!sourceDraft.value.length || sourceLoading.value) return
+  sourceStage.value = 'results'
+  sourceLoading.value = true
+  sourceCandidates.value = []
+  try {
+    const result = await api.availableSources({
+      name: sourceBook.value.name || '',
+      author: sourceBook.value.author || '',
+      origin: sourceBook.value.origin || '',
+      bundles: sourceDraft.value,
+      resultLimit: 10,
+    })
+    sourceCandidates.value = result.books || []
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    sourceLoading.value = false
+  }
+}
+
+function backToSourceChoice() {
+  sourceStage.value = 'choose'
+  sourceCandidates.value = []
 }
 
 async function switchToSource(candidate) {
@@ -191,10 +245,39 @@ async function load() {
     const [shelf, groupList] = await Promise.all([api.bookshelf(), api.groups()])
     books.value = shelf
     groups.value = groupList
+    void fillMissingChapterCounts(shelf)
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
     loading.value = false
+  }
+}
+
+let fillingChapters = false
+/** 老书如果还是 0 章，进入书架时后台补拉一次目录，最多同时补 5 本 */
+async function fillMissingChapterCounts(list) {
+  if (fillingChapters) return
+  const targets = list.filter((book) => !isLocalBook(book) && Number(book.totalChapterNum || 0) === 0).slice(0, 5)
+  if (!targets.length) return
+  fillingChapters = true
+  try {
+    for (const book of targets) {
+      try {
+        const chapters = await api.chapterList({ bookUrl: book.bookUrl, tocUrl: book.tocUrl, bookSourceUrl: book.origin })
+        if (!chapters.length) continue
+        const updated = await api.saveBook({
+          ...book,
+          totalChapterNum: chapters.length,
+          latestChapterTitle: chapters.at(-1)?.title || book.latestChapterTitle || '',
+        })
+        Object.assign(book, updated)
+        books.value = [...books.value]
+      } catch {
+        /* 目录失败时保持原状，打开书还会再试 */
+      }
+    }
+  } finally {
+    fillingChapters = false
   }
 }
 
@@ -389,6 +472,7 @@ onMounted(load)
           />
           <div v-else class="placeholder">{{ book.name }}</div>
           <div v-if="progressOf(book)" class="progress"><i :style="{ width: progressOf(book) + '%' }" /></div>
+          <span class="shelf-source-badge">{{ isLocalBook(book) ? '本地导入' : (book.originName || '书源') }}</span>
           <span v-if="unreadCount(book)" class="unread-badge">{{ unreadCount(book) }}</span>
           <button class="card-more" title="更多操作" aria-label="更多操作" @click.stop="actionBook = book">
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -456,29 +540,62 @@ onMounted(load)
         </div>
         <button class="action-sheet-item" @click="runAction('edit')">✏️ 编辑信息与封面</button>
         <button class="action-sheet-item" @click="runAction('cache')">⬇️ 缓存前 20 章</button>
+        <button class="action-sheet-item" @click="runAction('clearCache')">🧹 手动清理缓存</button>
         <button v-if="!isLocalBook(actionBook)" class="action-sheet-item" @click="runAction('source')">⇄ 换源</button>
         <button class="action-sheet-item danger" @click="runAction('delete')">🗑️ 从书架删除</button>
       </div>
     </div>
 
-    <!-- 手动换源：只列出其它可用来源，由用户选择 -->
+    <!-- 手动换源：先显示当前来源，再让用户选择书源汇总后搜索 -->
     <div v-if="sourceBook" class="sheet-backdrop" @click.self="sourceBook = null">
       <div class="sheet">
         <div class="sheet-handle" />
-        <h2 style="margin: 0 0 12px">换源 · {{ sourceBook.name }}</h2>
-        <div v-if="sourceLoading" class="muted">正在其它书源里搜索同名书…</div>
-        <div v-else-if="!sourceCandidates.length" class="muted" style="font-size: 13px">没有找到其它来源。</div>
-        <div v-else class="list">
-          <div v-for="candidate in sourceCandidates" :key="candidate.origin + candidate.bookUrl" class="list-item">
-            <div style="flex: 1; min-width: 0">
-              <strong style="font-size: 14px">{{ candidate.originName }}</strong>
-              <div class="muted" style="font-size: 12px">{{ candidate.author || '未知作者' }}</div>
-            </div>
-            <button class="primary" :disabled="Boolean(sourceSwitching)" @click="switchToSource(candidate)">
-              {{ sourceSwitching === candidate.origin + '|' + candidate.bookUrl ? '切换中…' : '切到此处' }}
+        <h2 style="margin: 0 0 10px">换源 · {{ sourceBook.name }}</h2>
+        <div class="source-current">
+          <div class="muted" style="font-size: 12px">当前来源</div>
+          <strong>{{ sourceBook.originName || '未知来源' }}</strong>
+          <div class="muted source-current-url">{{ sourceBook.origin }}</div>
+        </div>
+
+        <template v-if="sourceStage === 'choose'">
+          <p class="muted" style="font-size: 13px; margin: 12px 0 8px">选择要搜索的书源汇总，可单选、多选或全选。</p>
+          <div v-if="sourceLoading" class="muted">正在读取书源目录…</div>
+          <div v-else class="list" style="max-height: 40vh; overflow: auto">
+            <label v-for="bundle in sourceBundles" :key="bundle.name" class="list-item" style="cursor: pointer">
+              <input type="checkbox" :checked="sourceDraft.includes(bundle.name)" style="width: auto" @change="toggleSourceDraft(bundle.name)" />
+              <span style="flex: 1; min-width: 0">
+                <strong>{{ bundle.name }}</strong>
+                <span class="muted" style="font-size: 12px; margin-left: 6px">{{ bundle.count }} 个源 · 已启用 {{ bundle.enabledCount }}</span>
+              </span>
+            </label>
+          </div>
+          <div class="row" style="gap: 8px; margin-top: 14px; flex-wrap: wrap">
+            <button class="ghost" @click="selectAllSources">全选</button>
+            <button class="ghost" @click="clearSourceDraft">清空</button>
+            <div class="spacer" />
+            <button class="ghost" @click="sourceBook = null">取消</button>
+            <button class="primary" :disabled="!sourceDraft.length || sourceLoading" @click="searchSelectedSources">
+              搜索选中书源（{{ sourceDraft.length }}）
             </button>
           </div>
-        </div>
+        </template>
+
+        <template v-else>
+          <button class="ghost" style="margin: 8px 0" @click="backToSourceChoice">← 重新选书源</button>
+          <div v-if="sourceLoading" class="muted">正在选中的书源里搜索同名书…</div>
+          <div v-else-if="!sourceCandidates.length" class="muted" style="font-size: 13px">选中的书源里没有找到同名书。</div>
+          <div v-else class="list">
+            <div v-for="candidate in sourceCandidates" :key="candidate.origin + candidate.bookUrl" class="list-item">
+              <div style="flex: 1; min-width: 0">
+                <strong style="font-size: 14px">{{ candidate.originName }}</strong>
+                <div class="muted" style="font-size: 12px">{{ candidate.author || '未知作者' }}</div>
+              </div>
+              <button class="primary" :disabled="Boolean(sourceSwitching)" @click="switchToSource(candidate)">
+                {{ sourceSwitching === candidate.origin + '|' + candidate.bookUrl ? '切换中…' : '切到此处' }}
+              </button>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
