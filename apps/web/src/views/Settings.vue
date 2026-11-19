@@ -10,10 +10,35 @@ const router = useRouter()
 
 const SECTIONS = [
   { id: 'account', label: '账号管理', icon: '👤', desc: '账号信息、密码与用户' },
-  { id: 'shelf', label: '书架管理', icon: '📚', desc: '导入、分组、缓存与工具' },
+  { id: 'books', label: '书籍管理', icon: '📚', desc: '导入本地书、书仓与阅读工具' },
+  { id: 'shelf', label: '书架管理', icon: '🗂️', desc: '缓存、更新与书架数据' },
+  { id: 'layout', label: '布局设定', icon: '🎨', desc: '桌面导航与显示布局' },
   { id: 'data', label: '数据管理', icon: '📈', desc: '阅读统计、备份与 WebDAV' },
   { id: 'system', label: '系统', icon: '⚙️', desc: '运行状态' },
-  { id: 'about', label: '关于', icon: 'ℹ️', desc: '应用信息与版本' },
+  { id: 'about', label: '关于', icon: 'ℹ️', desc: '应用信息、更新日志与版本' },
+]
+
+const CHANGELOG = [
+  {
+    version: '1.1.0',
+    date: '2026-11-19',
+    items: [
+      '新增书籍管理、布局设定两个设置分类',
+      '网络小说每 24 小时随机检查 18 次；发现新章节后书架显示「有更新」角标',
+      '进入阅读后自动清除该书的更新角标，正文仍按需加载',
+      '关于页新增版本更新日志',
+    ],
+  },
+  {
+    version: '1.0.10',
+    date: '2026-11-19',
+    items: ['左侧导航固定展开', '设置/搜索/书源页面统一宽度', '三种书架模式固定卡片尺寸'],
+  },
+  {
+    version: '1.0.9',
+    date: '2026-11-19',
+    items: ['布局选择卡片改紧凑', '左侧页面边距与封面尺寸修正', '去掉侧栏重复品牌'],
+  },
 ]
 
 const section = computed(() => {
@@ -537,28 +562,8 @@ onMounted(load)
           </div>
         </template>
 
-        <!-- 书架 -->
-        <template v-else-if="section === 'shelf'">
-          <div class="settings-card">
-            <div class="settings-card-title">桌面布局</div>
-            <p class="settings-row-desc" style="padding: 0 0 10px">移动端固定使用底部导航；桌面端可在这里切换。</p>
-            <div class="layout-options">
-              <button class="layout-option" :class="{ active: desktopNavLayout === 'bottom' }" @click="chooseLayout('bottom')">
-                <span class="layout-preview layout-preview-bottom">
-                  <i class="lp-content" />
-                  <i class="lp-pill" />
-                </span>
-                <span class="layout-option-label">底部胶囊</span>
-              </button>
-              <button class="layout-option" :class="{ active: desktopNavLayout === 'left' }" @click="chooseLayout('left')">
-                <span class="layout-preview layout-preview-left expanded">
-                  <i class="lp-side" />
-                  <i class="lp-grid" />
-                </span>
-                <span class="layout-option-label">左侧导航</span>
-              </button>
-            </div>
-          </div>
+        <!-- 书籍管理 -->
+        <template v-else-if="section === 'books'">
           <div class="settings-card">
             <div class="settings-card-title">导入与管理</div>
             <input
@@ -646,7 +651,32 @@ onMounted(load)
               </div>
             </router-link>
           </div>
+        </template>
 
+        <template v-else-if="section === 'layout'">
+          <div class="settings-card">
+            <div class="settings-card-title">桌面布局</div>
+            <p class="settings-row-desc" style="padding: 0 0 10px">移动端固定使用底部导航；桌面端可在这里切换。</p>
+            <div class="layout-options">
+              <button class="layout-option" :class="{ active: desktopNavLayout === 'bottom' }" @click="chooseLayout('bottom')">
+                <span class="layout-preview layout-preview-bottom">
+                  <i class="lp-content" />
+                  <i class="lp-pill" />
+                </span>
+                <span class="layout-option-label">底部胶囊</span>
+              </button>
+              <button class="layout-option" :class="{ active: desktopNavLayout === 'left' }" @click="chooseLayout('left')">
+                <span class="layout-preview layout-preview-left expanded">
+                  <i class="lp-side" />
+                  <i class="lp-grid" />
+                </span>
+                <span class="layout-option-label">左侧导航</span>
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="section === 'shelf'">
           <div class="settings-card">
             <div class="settings-card-title">缓存与更新</div>
             <button class="settings-row" :disabled="updateBusy" @click="checkUpdates">
@@ -715,6 +745,18 @@ onMounted(load)
             <div class="settings-kv"><span>应用</span><b>胖虎阅读</b></div>
             <div class="settings-kv"><span>版本</span><b>{{ appVersion }}</b></div>
             <div class="settings-kv"><span>说明</span><span>自建小说阅读服务 · 阅读 3 书源 · 本地书籍</span></div>
+          </div>
+          <div class="settings-card">
+            <div class="settings-card-title">更新日志</div>
+            <div v-for="release in CHANGELOG" :key="release.version" class="changelog-item">
+              <div class="changelog-head">
+                <strong>v{{ release.version }}</strong>
+                <span>{{ release.date }}</span>
+              </div>
+              <ul class="changelog-list">
+                <li v-for="item in release.items" :key="item">{{ item }}</li>
+              </ul>
+            </div>
           </div>
         </template>
       </section>

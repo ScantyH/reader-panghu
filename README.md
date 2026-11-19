@@ -60,7 +60,7 @@ PORT=18080 DATA_DIR=./data node apps/server/src/index.js
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 启动时创建/提权管理员 | 无 |
 | `SOURCE_TIMEOUT_MS` | 书源请求超时 | `30000` |
 | `RSS_REFRESH_MINUTES` | RSS 刷新间隔 | `30` |
-| `CHAPTER_CHECK_INTERVAL_HOURS` | 章节更新检查间隔，0 关闭 | `24` |
+| `CHAPTER_CHECK_RUNS_PER_DAY` | 每 24 小时随机检查章节更新的次数，0 关闭 | `18` |
 
 ## 部署
 

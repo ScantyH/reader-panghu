@@ -125,32 +125,72 @@ export function registerReadingExtras(app, { store, dataDir, options = {} }) {
 
   /* ------------------------------------------------------- 定时检查章节更新 */
 
-  // 每天跑一次，避免频繁请求书源
-  const intervalHours = Number(process.env.CHAPTER_CHECK_INTERVAL_HOURS ?? 24)
-  if (intervalHours > 0) {
-    const timer = setInterval(async () => {
+  // 每 24 小时随机跑 18 次，避开固定整点，减少书源集中请求
+  const runsPerDay = Math.max(0, Math.floor(Number(process.env.CHAPTER_CHECK_RUNS_PER_DAY ?? 18)))
+  let autoCheckRunning = false
+
+  const autoCheck = async () => {
+    const books = store
+      .listBooks()
+      .filter((book) => !/^local:\/\/(txt|epub|docx|mobi|pdf)$/.test(String(book.origin || '')))
+      .slice(0, 20)
+    for (const book of books) {
+      const runtime = makeRuntime(store.getSource(book.origin) || {})
       try {
-        const books = store.listBooks().filter((book) => !/^local:\/\/(txt|epub|docx|mobi|pdf)$/.test(String(book.origin || '')))
-        for (const book of books.slice(0, 20)) {
+        await runtime.init()
+        const chapters = await runtime.chapter(book.tocUrl || book.bookUrl)
+        const list = Array.isArray(chapters) ? chapters : []
+        if (!list.length) continue
+        const before = Number(book.totalChapterNum || 0)
+        if (list.length > before) {
+          store.saveBook({
+            ...book,
+            totalChapterNum: list.length,
+            latestChapterTitle: list.at(-1)?.name || list.at(-1)?.title || book.latestChapterTitle || '',
+            hasUpdate: true,
+            newChapterCount: list.length - before,
+            lastCheckTime: Date.now(),
+          })
+          app.log.info(`[chapter-check] ${book.name} 新增 ${list.length - before} 章`)
+        } else {
+          store.saveBook({ ...book, lastCheckTime: Date.now() })
+        }
+      } catch {
+        /* 单本失败跳过 */
+      } finally {
+        try {
+          runtime.dispose()
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
+  const scheduleRandomChecks = () => {
+    if (!runsPerDay) return
+    const now = Date.now()
+    const day = 24 * 60 * 60 * 1000
+    const points = Array.from({ length: runsPerDay }, () => now + Math.floor(Math.random() * day)).sort((a, b) => a - b)
+    points.forEach((at, index) => {
+      const timer = setTimeout(async () => {
+        if (!autoCheckRunning) {
+          autoCheckRunning = true
           try {
-            const runtime = makeRuntime(store.getSource(book.origin) || {})
-            await runtime.init()
-            const chapters = await runtime.chapter(book.tocUrl || book.bookUrl)
-            runtime.dispose()
-            if (Array.isArray(chapters) && chapters.length > Number(book.totalChapterNum || 0)) {
-              store.saveBook({ ...book, totalChapterNum: chapters.length, latestChapterTitle: chapters.at(-1)?.title || '' })
-            }
-          } catch {
-            /* 单本失败跳过 */
+            await autoCheck()
+          } catch (error) {
+            app.log.warn(`[chapter-check] ${error.message}`)
+          } finally {
+            autoCheckRunning = false
           }
         }
-      } catch (error) {
-        app.log.warn(`[chapter-check] ${error.message}`)
-      }
-    }, intervalHours * 60 * 60 * 1000)
-    timer.unref?.()
-    app.log.info(`[chapter-check] 每 ${intervalHours} 小时检查一次`)
+        if (index === points.length - 1) scheduleRandomChecks()
+      }, Math.max(1000, at - now))
+      timer.unref?.()
+    })
+    app.log.info(`[chapter-check] 未来 24 小时随机检查 ${runsPerDay} 次`)
   }
+  scheduleRandomChecks()
 
   /* --------------------------------------------------------- WebDAV 浏览 */
 

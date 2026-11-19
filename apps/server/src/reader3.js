@@ -83,6 +83,30 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     delete runtime.key
     return { ...source, _runtime: runtime, hasKey: Boolean(key), keyHint: key ? key.slice(-4) : '', keyCheck: source._keyCheck || null }
   }
+  // 网页与 App 订阅同一条 SSE 流：任一设备写入进度，其它在线设备立刻收到，
+  // 不必等轮询；断线时客户端自己降级为定时查询。
+  const progressClients = new Set()
+
+  const progressPayload = (book) => ({
+    bookUrl: book.bookUrl,
+    index: Number(book.durChapterIndex || 0),
+    position: Number(book.durChapterPos || 0),
+    chapterTitle: book.durChapterTitle || '',
+    updatedAt: Number(book.durChapterTime || 0),
+    device: book.lastDevice || '',
+  })
+
+  const broadcastProgress = (userId, payload) => {
+    const frame = `data: ${JSON.stringify(payload)}\n\n`
+    for (const client of progressClients) {
+      if (client.userId !== userId) continue
+      try {
+        client.res.write(frame)
+      } catch {
+        progressClients.delete(client)
+      }
+    }
+  }
 
   /** Build a runtime for one stored source, or throw a readable error. */
   function runtimeFor(bookSourceUrl) {
@@ -162,6 +186,8 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     totalChapterNum: existing?.totalChapterNum ?? 0,
     customCoverUrl: existing?.customCoverUrl ?? '',
     lastCheckTime: existing?.lastCheckTime ?? 0,
+    hasUpdate: Boolean(existing?.hasUpdate),
+    newChapterCount: Number(existing?.newChapterCount || 0),
   })
 
   /* ------------------------------------------------------------------ shelf */
@@ -277,12 +303,59 @@ async function primeBook(book) {
 
   /** Server-authoritative progress: the stored row always keeps the newest write. */
   app.post('/reader3/saveBookProgress', async (req) => {
-    const { bookUrl, index, position, clientUpdatedAt, chapterTitle } = req.body || {}
-    const updated = store.saveProgress({ bookUrl: String(bookUrl ?? ''), index, position, clientUpdatedAt, chapterTitle })
+    const { bookUrl, index, position, clientUpdatedAt, chapterTitle, device, clientId } = req.body || {}
+    const updated = store.saveProgress({
+      bookUrl: String(bookUrl ?? ''),
+      index,
+      position,
+      clientUpdatedAt,
+      chapterTitle,
+      device,
+    })
     if (!updated) return fail('书籍不存在')
-    // The client adopts this timestamp; a rejected stale write still returns the
-    // server's authoritative one, which is what "backend latest wins" means here.
-    return ok(String(updated.durChapterTime))
+    // 被拒的旧写入也要返回服务端权威值，客户端据此直接纠正本地位置。
+    const accepted = updated.progressAccepted !== false
+    const payload = progressPayload(updated)
+    // clientId 只用于让写入方忽略自己的回声，不落库。
+    if (accepted) broadcastProgress(req.userId ?? 1, { ...payload, clientId: String(clientId || '') })
+    return ok({ accepted, ...payload })
+  })
+
+  /** 轻量读取单本进度：App 前台回来、切书时只拉这一条。 */
+  app.get('/reader3/getBookProgress', async (req) => {
+    const bookUrl = String(req.query?.bookUrl || '')
+    if (!bookUrl) return fail('缺少 bookUrl')
+    const book = store.getBook(bookUrl)
+    if (!book) return fail('书籍不存在')
+    return ok(progressPayload(book))
+  })
+
+  /** 进度推送流（SSE）：客户端断线会自动重连，心跳保持连接不被代理掐断。 */
+  app.get('/reader3/progressSSE', (req, reply) => {
+    reply.hijack()
+    const res = reply.raw
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    })
+    res.write(': connected\n\n')
+    const client = { res, userId: req.userId ?? 1 }
+    progressClients.add(client)
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(': ping\n\n')
+      } catch {
+        clearInterval(heartbeat)
+        progressClients.delete(client)
+      }
+    }, 25000)
+    heartbeat.unref?.()
+    req.raw.on('close', () => {
+      clearInterval(heartbeat)
+      progressClients.delete(client)
+    })
   })
 
   /* -------------------------------------------------------------- book data */
@@ -609,6 +682,22 @@ async function primeBook(book) {
 
   app.get('/reader3/getBookSources', async () => ok(store.listSources().map(sanitizeSource)))
 
+  /** 轻量书源列表：不带 html / 规则正文，手机端列表专用。 */
+  app.get('/reader3/getBookSourceList', async () =>
+    ok(
+      store.listSources().map((source) => ({
+        bookSourceUrl: String(source.bookSourceUrl || ''),
+        bookSourceName: String(source.bookSourceName || '未命名书源'),
+        bookSourceGroup: String(source.bookSourceGroup || ''),
+        bundle: String(source._bundle || ''),
+        enabled: source.enabled !== false,
+        type: source.html ? 'webview' : 'rule',
+        invalid: Boolean(source.invalid),
+        hasKey: Boolean(source._runtime?.key),
+      })),
+    ),
+  )
+
   app.post('/reader3/getBookSource', async (req) => {
     const source = store.getSource(String(req.body?.bookSourceUrl ?? ''))
     return source ? ok(sanitizeSource(source)) : fail('书源不存在')
@@ -666,7 +755,9 @@ async function primeBook(book) {
         if (source.html || source.searchUrl) row.searchableCount += 1
       }
     }
-    return ok([...rows.values()])
+    return ok(
+      [...rows.values()],
+    )
   })
 
   app.get('/reader3/getSourceBundleLimit', async () => ok({ limit: SOURCE_BUNDLE_LIMIT }))
@@ -732,7 +823,6 @@ async function primeBook(book) {
     return ok({ bundle, count: prepared.length, bundles: names.size + 1 })
   })
 
-  /** 给某个批次改名（备注） */
   app.post('/reader3/renameBundle', async (req) => {
     const blocked = editSourcesBlocked(req)
     if (blocked) return fail(blocked)
@@ -1128,6 +1218,8 @@ const cacheKey = (book) => `${book.origin || ''}|${book.bookUrl}`
         ...book,
         totalChapterNum: chapters.length,
         latestChapterTitle: chapters[chapters.length - 1].title,
+        hasUpdate: true,
+        newChapterCount: chapters.length - before,
         lastCheckTime: Date.now(),
       })
       return { bookUrl: book.bookUrl, name: book.name, before, after: chapters.length }
@@ -1188,6 +1280,14 @@ const cacheKey = (book) => `${book.origin || ''}|${book.bookUrl}`
     return ok({ started: true, total: books.length })
   })
 
+  /** 进入阅读后清掉“有更新”角标 */
+  app.post('/reader3/clearBookUpdate', async (req) => {
+    const bookUrl = String(req.body?.bookUrl || '')
+    const book = store.getBook(bookUrl)
+    if (!book) return fail('书籍不存在')
+    return ok(store.saveBook({ ...book, hasUpdate: false, newChapterCount: 0 }))
+  })
+
   app.log.info(`[reader3] registered · sources=${store.listSources().length} books=${store.listBooks().length}`)
 }
 
@@ -1200,3 +1300,5 @@ function parseRewrites(raw) {
     return []
   }
 }
+
+

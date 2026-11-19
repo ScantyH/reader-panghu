@@ -116,6 +116,7 @@ export const api = {
     request('/cacheBook', { method: 'POST', body: { bookUrl, count, refresh, start } }),
   checkChapterUpdates: () => request('/checkChapterUpdates', { method: 'POST', body: { limit: 30 } }),
   chapterUpdateStatus: () => request('/getChapterUpdateStatus'),
+  clearBookUpdate: (bookUrl) => request('/clearBookUpdate', { method: 'POST', body: { bookUrl } }),
   groups: () => request('/getBookGroups'),
   saveBookGroup: (group) => request('/saveBookGroup', { method: 'POST', body: group }),
   deleteBookGroup: (groupId) => request('/deleteBookGroup', { method: 'POST', body: { groupId } }),

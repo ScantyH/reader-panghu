@@ -399,6 +399,11 @@ async function loadBook() {
       router.replace('/bookshelf')
       return
     }
+    if (book.value.hasUpdate) {
+      book.value.hasUpdate = false
+      book.value.newChapterCount = 0
+      api.clearBookUpdate(book.value.bookUrl).catch(() => {})
+    }
     chapters.value = await api.chapterList({
       bookUrl: book.value.bookUrl,
       tocUrl: book.value.tocUrl,

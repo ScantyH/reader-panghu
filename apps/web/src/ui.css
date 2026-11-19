@@ -1878,3 +1878,26 @@
   .app.nav-left .app-main,
   .app.nav-left .app-main.nav-constrained { width: auto; max-width: none; margin: 0; }
 }
+
+.update-badge {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  z-index: 3;
+  max-width: calc(100% - 44px);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.changelog-item { padding: 10px 0; border-top: 1px solid var(--color-border-light); }
+.changelog-item:first-of-type { border-top: 0; }
+.changelog-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.changelog-head strong { font-size: 13px; }
+.changelog-head span { font-size: 11.5px; color: var(--color-text-secondary); }
+.changelog-list { margin: 6px 0 0; padding-left: 18px; color: var(--color-text-secondary); font-size: 12.5px; line-height: 1.8; }

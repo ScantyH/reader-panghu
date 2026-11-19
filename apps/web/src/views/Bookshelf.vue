@@ -529,6 +529,9 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
           <div v-else class="placeholder">{{ book.name }}</div>
           <div v-if="progressOf(book)" class="progress"><i :style="{ width: progressOf(book) + '%' }" /></div>
           <span class="shelf-source-badge">{{ isLocalBook(book) ? '本地导入' : (book.originName || '书源') }}</span>
+          <span v-if="book.hasUpdate" class="update-badge">
+            有更新{{ Number(book.newChapterCount || 0) > 0 ? ` +${book.newChapterCount}` : '' }}
+          </span>
           <span v-if="unreadCount(book)" class="unread-badge">{{ unreadCount(book) }}</span>
           <button class="card-more" title="更多操作" aria-label="更多操作" @click.stop="actionBook = book">
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
