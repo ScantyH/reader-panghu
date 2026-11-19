@@ -1782,7 +1782,7 @@
   transition: margin-left 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .app.nav-left.side-collapsed .app-main { margin-left: 72px; }
-.app.nav-left .mode-cover { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.app.nav-left .mode-cover { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .mode-cover .shelf-cover-title,
 .mode-cover .shelf-cover-author,
 .mode-cover .shelf-card-progress { display: none; }
