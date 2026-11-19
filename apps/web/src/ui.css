@@ -1859,3 +1859,22 @@
 @media (max-width: 640px) { .layout-options { grid-template-columns: 1fr; } }
 .layout-options { display: flex; flex-wrap: wrap; gap: 10px; }
 .layout-option { width: 160px; flex: none; }
+
+/* ─── v1.0.10 布局统一修正 ─── */
+.side-nav { width: 236px; padding-top: 16px; }
+.side-toggle { display: none !important; }
+.side-nav-label { display: inline; }
+.app.nav-left .app-main { width: calc(100% - 236px); margin: 0 0 0 236px; }
+.app.nav-left .app-main.nav-constrained { max-width: 1120px; margin-right: 0; }
+.app.nav-left .settings-layout { max-width: none; margin: 0; }
+.layout-options { display: flex; flex-wrap: wrap; gap: 10px; }
+.layout-option { width: 160px; flex: none; }
+@media (min-width: 1101px) {
+  .mode-cover, .app.nav-left .mode-cover { grid-template-columns: repeat(auto-fill, 132px); }
+  .mode-grid, .app.nav-left .mode-grid { grid-template-columns: repeat(auto-fill, 180px); }
+  .mode-list, .app.nav-left .mode-list { grid-template-columns: repeat(auto-fill, 360px); }
+}
+@media (max-width: 900px) {
+  .app.nav-left .app-main,
+  .app.nav-left .app-main.nav-constrained { width: auto; max-width: none; margin: 0; }
+}

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, coverOf, setToken } from './api.js'
-import { desktopNavLayout, sidebarExpanded, toggleSidebarExpanded } from './use-layout.js'
+import { desktopNavLayout } from './use-layout.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -107,7 +107,7 @@ onBeforeUnmount(() => {
 <template>
   <router-view v-if="isReader() || isLogin()" />
 
-  <div v-else class="app" :class="{ 'nav-left': showLeftNav, 'side-collapsed': !sidebarExpanded }">
+  <div v-else class="app" :class="{ 'nav-left': showLeftNav }">
     <header class="app-header">
       <div class="app-title">
         <img class="app-logo" src="/brand/logo-128.png" alt="胖虎阅读" />
@@ -156,17 +156,14 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <aside v-if="showLeftNav" class="side-nav" :class="{ expanded: sidebarExpanded }">
-      <button class="side-toggle" :title="sidebarExpanded ? '收起导航详细内容' : '展开导航详细内容'" @click="toggleSidebarExpanded">
-        {{ sidebarExpanded ? '‹' : '›' }}
-      </button>
+    <aside v-if="showLeftNav" class="side-nav">
       <nav class="side-nav-links">
         <router-link v-for="item in NAV" :key="item.to" :to="item.to" :title="item.label">
           <span class="side-nav-icon">{{ item.icon }}</span>
-          <span v-if="sidebarExpanded" class="side-nav-label">{{ item.label }}</span>
+          <span class="side-nav-label">{{ item.label }}</span>
         </router-link>
       </nav>
-      <div v-if="sidebarExpanded" class="side-nav-detail">
+      <div class="side-nav-detail">
         <div class="side-nav-title">最近阅读</div>
         <router-link v-for="book in sidebarBooks" :key="book.bookUrl" :to="{ path: '/read', query: { book: book.bookUrl } }" class="side-book">
           <img v-if="coverOf(book)" :src="coverOf(book)" alt="" />
@@ -181,7 +178,9 @@ onBeforeUnmount(() => {
     </aside>
 
 
-    <main class="app-main">
+
+
+    <main class="app-main" :class="{ 'nav-constrained': showLeftNav && route.name !== 'bookshelf' }">
       <div v-if="parent" class="page-back">
         <button class="page-back-btn" :title="`返回 ${parent.label}`" @click="goParent">
           <span aria-hidden="true">←</span>

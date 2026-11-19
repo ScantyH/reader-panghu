@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, setToken } from '../api.js'
 import { useSortable } from '../use-sortable.js'
-import { desktopNavLayout, setDesktopNavLayout, sidebarExpanded, setSidebarExpanded } from '../use-layout.js'
+import { desktopNavLayout, setDesktopNavLayout } from '../use-layout.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -160,10 +160,9 @@ async function toggleRole(user) {
   }
 }
 
-function chooseLayout(value, expanded = true) {
+function chooseLayout(value) {
   setDesktopNavLayout(value)
-  if (value === 'left') setSidebarExpanded(expanded)
-  window.__toast?.(value === 'left' ? (expanded ? '已切换为左侧展开布局' : '已切换为左侧折叠布局') : '已切换为底部胶囊布局')
+  window.__toast?.(value === 'left' ? '已切换为左侧导航布局' : '已切换为底部胶囊布局')
 }
 
 /** 头像压缩到 256px 再上传，避免大图写进数据库 */
@@ -551,27 +550,12 @@ onMounted(load)
                 </span>
                 <span class="layout-option-label">底部胶囊</span>
               </button>
-              <button
-                class="layout-option"
-                :class="{ active: desktopNavLayout === 'left' && sidebarExpanded }"
-                @click="chooseLayout('left', true)"
-              >
+              <button class="layout-option" :class="{ active: desktopNavLayout === 'left' }" @click="chooseLayout('left')">
                 <span class="layout-preview layout-preview-left expanded">
                   <i class="lp-side" />
                   <i class="lp-grid" />
                 </span>
-                <span class="layout-option-label">左侧展开</span>
-              </button>
-              <button
-                class="layout-option"
-                :class="{ active: desktopNavLayout === 'left' && !sidebarExpanded }"
-                @click="chooseLayout('left', false)"
-              >
-                <span class="layout-preview layout-preview-left collapsed">
-                  <i class="lp-side" />
-                  <i class="lp-grid" />
-                </span>
-                <span class="layout-option-label">左侧折叠</span>
+                <span class="layout-option-label">左侧导航</span>
               </button>
             </div>
           </div>
