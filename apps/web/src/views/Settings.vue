@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, setToken } from '../api.js'
 import { useSortable } from '../use-sortable.js'
+import { desktopNavLayout, setDesktopNavLayout } from '../use-layout.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -157,6 +158,11 @@ async function toggleRole(user) {
   } catch (error) {
     window.__toast?.(error.message)
   }
+}
+
+function chooseLayout(value) {
+  setDesktopNavLayout(value)
+  window.__toast?.(value === 'left' ? '已切换为左侧导航布局' : '已切换为底部胶囊布局')
 }
 
 /** 头像压缩到 256px 再上传，避免大图写进数据库 */
@@ -533,6 +539,28 @@ onMounted(load)
 
         <!-- 书架 -->
         <template v-else-if="section === 'shelf'">
+          <div class="settings-card">
+            <div class="settings-card-title">桌面布局</div>
+            <p class="settings-row-desc" style="padding: 0 0 10px">移动端固定使用底部导航；桌面端可在这里切换。</p>
+            <div class="layout-options">
+              <button class="layout-option" :class="{ active: desktopNavLayout === 'bottom' }" @click="chooseLayout('bottom')">
+                <span class="layout-preview layout-preview-bottom">
+                  <i class="lp-content" />
+                  <i class="lp-pill" />
+                </span>
+                <span class="layout-option-label">底部胶囊</span>
+                <span class="layout-option-desc">内容居中，导航悬浮在底部</span>
+              </button>
+              <button class="layout-option" :class="{ active: desktopNavLayout === 'left' }" @click="chooseLayout('left')">
+                <span class="layout-preview layout-preview-left">
+                  <i class="lp-side" />
+                  <i class="lp-grid" />
+                </span>
+                <span class="layout-option-label">左侧导航</span>
+                <span class="layout-option-desc">导航移到左侧，书架占满右侧</span>
+              </button>
+            </div>
+          </div>
           <div class="settings-card">
             <div class="settings-card-title">导入与管理</div>
             <input

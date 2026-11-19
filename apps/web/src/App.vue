@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, setToken } from './api.js'
+import { api, coverOf, setToken } from './api.js'
+import { desktopNavLayout, sidebarExpanded, toggleSidebarExpanded } from './use-layout.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,6 +42,19 @@ const authOn = ref(false)
 const authAvatar = ref('')
 const authRole = ref('')
 const userInfoOpen = ref(false)
+const sidebarBooks = ref([])
+const showLeftNav = computed(() => desktopNavLayout.value === 'left')
+
+async function loadSidebarBooks() {
+  try {
+    const list = await api.bookshelf()
+    sidebarBooks.value = [...list]
+      .sort((a, b) => Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0))
+      .slice(0, 3)
+  } catch {
+    sidebarBooks.value = []
+  }
+}
 
 async function loadAuth() {
   try {
@@ -80,17 +94,20 @@ const NAV = [
 ]
 onMounted(() => {
   loadAuth()
+  loadSidebarBooks()
   window.addEventListener('rp-user-updated', loadAuth)
+  window.addEventListener('rp-layout-updated', loadSidebarBooks)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('rp-user-updated', loadAuth)
+  window.removeEventListener('rp-layout-updated', loadSidebarBooks)
 })
 </script>
 
 <template>
   <router-view v-if="isReader() || isLogin()" />
 
-  <div v-else class="app">
+  <div v-else class="app" :class="{ 'nav-left': showLeftNav, 'side-collapsed': !sidebarExpanded }">
     <header class="app-header">
       <div class="app-title">
         <img class="app-logo" src="/brand/logo-128.png" alt="胖虎阅读" />
@@ -138,6 +155,35 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </header>
+
+    <aside v-if="showLeftNav" class="side-nav" :class="{ expanded: sidebarExpanded }">
+      <button class="side-toggle" :title="sidebarExpanded ? '收起导航详细内容' : '展开导航详细内容'" @click="toggleSidebarExpanded">
+        {{ sidebarExpanded ? '‹' : '›' }}
+      </button>
+      <div class="side-brand">
+        <img class="app-logo" src="/brand/logo-128.png" alt="胖虎阅读" />
+        <span v-if="sidebarExpanded">胖虎阅读</span>
+      </div>
+      <nav class="side-nav-links">
+        <router-link v-for="item in NAV" :key="item.to" :to="item.to" :title="item.label">
+          <span class="side-nav-icon">{{ item.icon }}</span>
+          <span v-if="sidebarExpanded" class="side-nav-label">{{ item.label }}</span>
+        </router-link>
+      </nav>
+      <div v-if="sidebarExpanded" class="side-nav-detail">
+        <div class="side-nav-title">最近阅读</div>
+        <router-link v-for="book in sidebarBooks" :key="book.bookUrl" :to="{ path: '/read', query: { book: book.bookUrl } }" class="side-book">
+          <img v-if="coverOf(book)" :src="coverOf(book)" alt="" />
+          <span v-else class="side-book-placeholder">📖</span>
+          <span class="side-book-text">
+            <strong>{{ book.name }}</strong>
+            <small>{{ book.durChapterTitle || '还没开始读' }}</small>
+          </span>
+        </router-link>
+        <div v-if="!sidebarBooks.length" class="side-nav-empty">书架还没有书</div>
+      </div>
+    </aside>
+
 
     <main class="app-main">
       <div v-if="parent" class="page-back">
