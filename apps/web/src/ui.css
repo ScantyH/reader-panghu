@@ -1980,3 +1980,36 @@
 .changelog-list li::marker { color: var(--color-primary); }
 
 .settings-avatar-row { padding: 12px 16px 14px; margin-bottom: 0; }
+
+/* ─── 移动端书架兜底排版（干净发布包不含 APP 专属样式） ─── */
+@media (max-width: 640px) {
+  .page-head.shelf-head { display: none; }
+  .m-continue {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 12px 0 18px;
+    padding: 16px;
+    border: 1px solid var(--color-border-light);
+    border-radius: 16px;
+    background: var(--color-bg-elevated);
+    cursor: pointer;
+  }
+  .m-continue-main { flex: 1; min-width: 0; }
+  .m-continue h2 { margin: 0 0 4px; font-size: 20px; font-weight: 700; }
+  .m-continue .m-author,
+  .m-continue .m-chapter { margin: 4px 0 0; font-size: 12.5px; color: var(--color-text-secondary); }
+  .m-continue .m-bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .m-continue .m-bar i { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--color-bg-sunken); overflow: hidden; }
+  .m-continue .m-bar i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--value, 0%); background: var(--color-primary); }
+  .m-continue .m-bar span { flex: none; font-size: 11.5px; color: var(--color-text-secondary); }
+  .m-continue-btn { margin-top: 12px; padding: 8px 14px; border: 0; border-radius: 999px; background: var(--color-primary); color: #fff; font-size: 12.5px; }
+  .m-continue-cover { width: 86px; height: 116px; flex: none; object-fit: cover; border-radius: 8px; }
+  .m-section-head { display: flex; align-items: center; gap: 8px; margin: 16px 0 10px; }
+  .m-section-head h2 { margin: 0; font-size: 18px; }
+  .m-count { font-size: 12px; color: var(--color-text-secondary); }
+  .m-layout { display: flex; gap: 4px; margin-left: auto; }
+  .m-layout button { width: 30px; height: 30px; padding: 6px; border: 1px solid var(--color-border-light); border-radius: 8px; background: var(--color-bg-elevated); color: var(--color-text-secondary); }
+  .m-layout button.active { border-color: var(--color-primary); color: var(--color-primary); }
+  .m-layout svg { width: 16px; height: 16px; }
+}

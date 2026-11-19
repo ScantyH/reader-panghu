@@ -458,6 +458,8 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
         <img
           v-if="coverOf(continueBook)"
           class="m-continue-cover"
+          width="86"
+          height="116"
           :src="coverOf(continueBook)"
           :alt="continueBook.name"
         />
