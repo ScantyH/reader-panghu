@@ -391,6 +391,12 @@ async function primeBook(book) {
       try {
         const signed = await withRuntime(origin, async (runtime) => {
           if (typeof runtime.window?.qget !== 'function') return null
+          // 先跑一次正文，让书源完成密钥/设备/Cookie 初始化，再请求评论
+          try {
+            await runtime.content(target)
+          } catch {
+            /* 正文失败不阻塞评论尝试 */
+          }
           const result = await runtime.window.qget(apiUrl.toString())
           if (result?.statusCode && Number(result.statusCode) >= 400) {
             throw new Error(`HTTP ${result.statusCode}`)
@@ -445,7 +451,7 @@ async function primeBook(book) {
         ip: String(item.IpLocation || ''),
         time: Number(item.CreateTime || 0),
       }))
-      return ok({ comments, total })
+      return ok({ comments, total, offset, limit, hasMore: offset + comments.length < total })
     } catch (error) {
       return fail(`段评接口请求失败：${error.message}${error.cause?.code ? `（${error.cause.code}）` : ''}${markerHost ? ` ${markerHost}` : ''}`)
     }
