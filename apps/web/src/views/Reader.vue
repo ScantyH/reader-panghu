@@ -989,6 +989,31 @@ async function setDpSort(sort) {
   await loadDpComments(0)
 }
 
+async function refreshDpCounts() {
+  const marker = dpPanelMarker.value
+  if (!marker) return
+  try {
+    const base = {
+      bookUrl: props.bookUrl,
+      index: current.value,
+      paragraph: Number(marker.paragraph),
+      offset: 0,
+      limit: 1,
+    }
+    const [imgResult, audioResult] = await Promise.all([
+      api.paragraphCommentPanel({ ...base, tab: 'img' }),
+      api.paragraphCommentPanel({ ...base, tab: 'audio' }),
+    ])
+    dpCounts.value = {
+      all: dpCounts.value.all || dpPanelTotal.value,
+      img: Number(imgResult?.total || 0),
+      audio: Number(audioResult?.total || 0),
+    }
+  } catch {
+    /* 数量测速失败不影响评论展示 */
+  }
+}
+
 async function toggleReplies(comment) {
   if (!comment?.id || dpReplyBusy.value) return
   const current = dpReplies.value[comment.id]
@@ -1092,6 +1117,10 @@ async function loadDpComments(offset) {
     }
     dpPanelUrl.value = result.panelUrl || ''
     dpPanelHasMore.value = Boolean(result.hasMore)
+    if (offset === 0 && dpPanelTab.value === 'all') {
+      const c = result.counts || {}
+      if (!Number(c.img || c.Img || c.image || c.Image || 0) && !Number(c.audio || c.Audio || 0)) refreshDpCounts()
+    }
     if (!dpComments.value.length) dpPanelError.value = '没有取到段评内容'
   } catch (error) {
     if (offset === 0) dpPanelError.value = error.message
