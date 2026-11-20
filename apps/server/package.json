@@ -1,6 +1,6 @@
 {
   "name": "@reader-panghu/server",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "Unified reading server: source runtime over HTTP, Legado-compatible source generation, bookshelf and progress sync",
   "type": "module",
   "main": "src/index.js",
