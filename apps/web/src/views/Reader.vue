@@ -78,8 +78,8 @@ const DEFAULT_PREFS = {
   letterSpacing: 0,
   fontFamily: '',
   textAlign: 'justify',
-  pageWidth: 820,
-  pagePadding: 24,
+  pageWidth: 780,
+  pagePadding: 36,
   pageTop: 0,
   pageBottom: 0,
   appearance: 'light',
@@ -102,9 +102,10 @@ function loadPrefs() {
     if (saved && typeof saved === 'object') {
       if (saved.paper === 'paper' || saved.paper === 'warm') saved.paper = 'parchment'
       if (saved.appearance === 'system' && !saved.paper) saved.paper = 'parchment'
-      if (!localStorage.getItem('rp_width_820')) {
-        if (Number(saved.pageWidth) === 760) saved.pageWidth = 820
-        localStorage.setItem('rp_width_820', '1')
+      if (!localStorage.getItem('rp_width_780')) {
+        if ([760, 820].includes(Number(saved.pageWidth))) saved.pageWidth = 780
+        if (!saved.pagePadding || [20, 24].includes(Number(saved.pagePadding))) saved.pagePadding = 36
+        localStorage.setItem('rp_width_780', '1')
       }
       return { ...DEFAULT_PREFS, ...saved }
     }
