@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.3.7',
+    date: '2026-11-20',
+    items: ['修复左侧导航从书架切到其他页面时书籍封面闪烁的问题'],
+  },
+  {
     version: '1.3.6',
     date: '2026-11-20',
     items: ['按截图箭头范围统一正文、段评和阅读页弹层为 780px，正文左右留白 36px'],
