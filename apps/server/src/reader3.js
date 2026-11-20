@@ -680,6 +680,64 @@ async function primeBook(book) {
     }
   })
 
+  /** 段评网页代理：把书源页面放到同源 HTTPS 下，保留网页全部交互 */
+  app.get('/reader3/dpPage', async (req, reply) => {
+    const sourceUrl = String(req.query?.url || '')
+    if (!/^https?:\/\//i.test(sourceUrl)) return reply.code(400).send('缺少段评页面地址')
+    try {
+      const response = await fetch(sourceUrl, {
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+          referer: new URL(sourceUrl).origin + '/',
+          accept: 'text/html,application/xhtml+xml',
+        },
+        signal: AbortSignal.timeout(20000),
+      })
+      if (!response.ok) return reply.code(response.status).send('段评页面加载失败')
+      const origin = new URL(sourceUrl).origin
+      const token = Buffer.from(origin).toString('base64url')
+      const prefix = `/reader3/dp/${token}`
+      let html = await response.text()
+      for (const part of ['/qddp/', '/book/', '/img?', '/media?', '/static/']) {
+        html = html.split(part).join(prefix + part)
+      }
+      html = html.split(origin).join(prefix)
+      return reply.type('text/html; charset=utf-8').send(html)
+    } catch (error) {
+      return reply.code(502).send(`段评页面加载失败：${error.message}`)
+    }
+  })
+
+  app.get('/reader3/dp/*', async (req, reply) => {
+    const wildcard = String(req.params['*'] || '')
+    const slash = wildcard.indexOf('/')
+    if (slash <= 0) return reply.code(400).send('无效代理地址')
+    let origin = ''
+    try {
+      origin = Buffer.from(wildcard.slice(0, slash), 'base64url').toString('utf8')
+    } catch {
+      return reply.code(400).send('无效代理地址')
+    }
+    if (!/^https?:\/\//i.test(origin)) return reply.code(400).send('无效代理地址')
+    const rest = wildcard.slice(slash)
+    const query = String(req.raw.url || '').includes('?') ? String(req.raw.url).slice(String(req.raw.url).indexOf('?')) : ''
+    try {
+      const response = await fetch(origin + rest + query, {
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+          referer: origin + '/',
+          accept: req.headers?.accept || '*/*',
+        },
+        signal: AbortSignal.timeout(20000),
+      })
+      const buffer = Buffer.from(await response.arrayBuffer())
+      const type = response.headers.get('content-type') || 'application/octet-stream'
+      return reply.code(response.status).type(type).send(buffer)
+    } catch (error) {
+      return reply.code(502).send(`代理失败：${error.message}`)
+    }
+  })
+
   app.post('/reader3/getBookContent', async (req) => {
     const { bookUrl, chapterUrl, bookSourceUrl, index } = req.body || {}
     const book = bookUrl ? store.getBook(String(bookUrl)) : null

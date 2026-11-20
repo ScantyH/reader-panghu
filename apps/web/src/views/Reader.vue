@@ -193,6 +193,7 @@ const dpComments = ref([])
 const dpPanelTotal = ref(0)
 const dpPanelHtml = ref('')
 const dpPanelUrl = ref('')
+const dpPanelProxyUrl = ref('')
 const dpPanelTab = ref('all')
 const dpPanelSort = ref('default')
 const dpSortOpen = ref(false)
@@ -1031,9 +1032,9 @@ async function refreshDpCounts() {
 
 async function toggleReplies(comment) {
   if (!comment?.id || dpReplyBusy.value) return
-  const current = dpReplies.value[comment.id]
-  if (current?.open) {
-    dpReplies.value = { ...dpReplies.value, [comment.id]: { ...current, open: false } }
+  const state = dpReplies.value[comment.id]
+  if (state?.open) {
+    dpReplies.value = { ...dpReplies.value, [comment.id]: { ...state, open: false } }
     return
   }
   dpReplyBusy.value = comment.id
@@ -1059,11 +1060,11 @@ async function toggleReplies(comment) {
 }
 
 async function loadMoreReplies(comment) {
-  const current = dpReplies.value[comment.id]
-  if (!current || dpReplyBusy.value) return
+  const state = dpReplies.value[comment.id]
+  if (!state || dpReplyBusy.value) return
   dpReplyBusy.value = comment.id
   try {
-    const page = current.page + 1
+    const page = state.page + 1
     const result = await api.commentReplies({
       bookUrl: props.bookUrl,
       index: current.value,
@@ -1076,8 +1077,8 @@ async function loadMoreReplies(comment) {
     dpReplies.value = {
       ...dpReplies.value,
       [comment.id]: {
-        ...current,
-        items: [...current.items, ...(result.replies || [])],
+        ...state,
+        items: [...state.items, ...(result.replies || [])],
         page,
         hasMore: Boolean(result.hasMore),
       },
@@ -1098,6 +1099,7 @@ async function loadDpComments(offset) {
     dpComments.value = []
     dpPanelHtml.value = ''
     dpPanelUrl.value = ''
+    dpPanelProxyUrl.value = ''
     dpReplies.value = {}
     dpPanelTotal.value = 0
     dpPanelHasMore.value = false
@@ -1117,6 +1119,14 @@ async function loadDpComments(offset) {
     if (result.html) {
       dpPanelHtml.value = result.html
       dpPanelUrl.value = result.panelUrl || ''
+      dpPanelProxyUrl.value = result.panelUrl
+        ? (() => {
+            const source = new URL(result.panelUrl)
+            const params = new URLSearchParams(source.search)
+            params.set('url', result.panelUrl)
+            return `/reader3/dpPage?${params.toString()}`
+          })()
+        : ''
       dpPanelHasMore.value = false
       return
     }
@@ -1131,6 +1141,14 @@ async function loadDpComments(offset) {
       }
     }
     dpPanelUrl.value = result.panelUrl || ''
+    dpPanelProxyUrl.value = result.panelUrl
+      ? (() => {
+          const source = new URL(result.panelUrl)
+          const params = new URLSearchParams(source.search)
+          params.set('url', result.panelUrl)
+          return `/reader3/dpPage?${params.toString()}`
+        })()
+      : ''
     dpPanelHasMore.value = Boolean(result.hasMore)
     if (offset === 0 && dpPanelTab.value === 'all') {
       const c = result.counts || {}
@@ -1870,8 +1888,15 @@ watch(chapterTitle, () => {
 
     <!-- 段评面板 -->
     <div v-if="showDpPanel" class="sheet-backdrop" @click.self="showDpPanel = false">
-      <div class="sheet reader-sheet dp-panel-sheet" :style="{ background: theme.bg, color: theme.text }">
+      <div class="sheet reader-sheet dp-panel-sheet" :class="{ 'has-proxy': Boolean(dpPanelProxyUrl) }" :style="{ background: theme.bg, color: theme.text }">
         <div class="sheet-handle" />
+        <iframe
+          v-if="dpPanelProxyUrl"
+          class="dp-proxy-iframe"
+          :src="dpPanelProxyUrl"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          title="段评"
+        />
         <div class="dp-panel-top">
           <div class="dp-panel-brand">
             <button class="dp-theme-toggle" :title="isDark ? '切换浅色' : '切换深色'" @click="toggleDpTheme">

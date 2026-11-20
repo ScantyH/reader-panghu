@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.2.7',
+    date: '2026-11-20',
+    items: ['段评改为同源代理加载书源网页，完整保留网页排序、筛选、回复和动画', '修复点击回复时 reading value 报错', '段评与阅读正文统一 760px 内容宽度'],
+  },
+  {
     version: '1.2.6',
     date: '2026-11-20',
     items: [
