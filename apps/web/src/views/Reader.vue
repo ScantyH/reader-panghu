@@ -1790,7 +1790,7 @@ watch(chapterTitle, () => {
           <button class="ghost" @click="refreshCatalog">刷新目录</button>
         </div>
         <input v-model="catalogFilter" placeholder="搜索章节名" style="margin: 10px 0" />
-        <div class="list" style="max-height: 60vh; overflow: auto">
+        <div class="list catalog-grid" style="max-height: 60vh; overflow: auto">
           <div
             v-for="(item, index) in filteredChapters"
             :key="index"
