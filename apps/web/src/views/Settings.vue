@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.3.8',
+    date: '2026-11-20',
+    items: ['修复书架首次打开时被错误套用窄版内容宽度的问题'],
+  },
+  {
     version: '1.3.7',
     date: '2026-11-20',
     items: ['修复左侧导航从书架切到其他页面时书籍封面闪烁的问题'],

@@ -156,6 +156,7 @@ function updateMobile() {
 }
 
 onMounted(() => {
+  layoutRouteName.value = route.name
   loadAuth()
   loadSidebarBooks()
   updateMobile()
