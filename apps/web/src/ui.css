@@ -2219,3 +2219,13 @@ body.dp-panel-open { overflow: hidden; }
 .rail-left-icon { display: block; width: 19px; height: 19px; margin: 0 auto; fill: none; stroke: currentColor; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
 .reader-shell .rail:not(.rail-right) .rail-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .settings-sheet { border-top-right-radius: 18px !important; }
+
+/* 段评直接以完整大窗打开，加载中不显示底部小窗和白色 iframe */
+.dp-backdrop { align-items: center; }
+.dp-panel-sheet { position: relative; width: min(820px, 96vw) !important; height: 90vh !important; max-height: 90vh !important; padding: 0 !important; overflow: hidden !important; border-radius: 16px !important; animation: none !important; }
+.dp-panel-sheet.dp-loading > :not(.dp-initial-loading) { visibility: hidden; }
+.dp-initial-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--reader-bg, #e9dfc7); color: var(--color-text-secondary); font-size: 14px; }
+.dp-loading-dot { width: 16px; height: 16px; border: 2px solid rgba(127,127,127,.25); border-top-color: var(--color-primary); border-radius: 50%; animation: dp-spin .8s linear infinite; }
+@keyframes dp-spin { to { transform: rotate(360deg); } }
+.dp-proxy-iframe { opacity: 0; background: transparent; transition: opacity .16s ease; }
+.dp-proxy-iframe.ready { opacity: 1; }

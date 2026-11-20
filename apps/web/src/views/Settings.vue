@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.3.2',
+    date: '2026-11-20',
+    items: ['段评直接以完整大窗打开，加载完成前隐藏 iframe，消除白屏和黑屏闪烁'],
+  },
+  {
     version: '1.3.1',
     date: '2026-11-20',
     items: [

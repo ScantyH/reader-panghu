@@ -195,6 +195,7 @@ const dpPanelTotal = ref(0)
 const dpPanelHtml = ref('')
 const dpPanelUrl = ref('')
 const dpPanelProxyUrl = ref('')
+const dpFrameReady = ref(false)
 const dpPanelTab = ref('all')
 const dpPanelSort = ref('default')
 const dpSortOpen = ref(false)
@@ -985,6 +986,14 @@ async function openDpComment(marker) {
   await loadDpComments(0)
 }
 
+function onDpFrameLoad() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      dpFrameReady.value = true
+    })
+  })
+}
+
 async function changeDpTab(tab) {
   if (dpPanelTab.value === tab) return
   dpPanelTab.value = tab
@@ -1106,6 +1115,7 @@ async function loadDpComments(offset) {
     dpPanelHtml.value = ''
     dpPanelUrl.value = ''
     dpPanelProxyUrl.value = ''
+    dpFrameReady.value = false
     dpReplies.value = {}
     dpPanelTotal.value = 0
     dpPanelHasMore.value = false
@@ -1125,6 +1135,7 @@ async function loadDpComments(offset) {
     if (result.html) {
       dpPanelHtml.value = result.html
       dpPanelUrl.value = result.panelUrl || ''
+      dpFrameReady.value = false
       dpPanelProxyUrl.value = result.panelUrl
         ? (() => {
             const source = new URL(result.panelUrl)
@@ -1149,7 +1160,8 @@ async function loadDpComments(offset) {
       }
     }
     dpPanelUrl.value = result.panelUrl || ''
-    dpPanelProxyUrl.value = result.panelUrl
+    dpFrameReady.value = false
+      dpPanelProxyUrl.value = result.panelUrl
       ? (() => {
           const source = new URL(result.panelUrl)
           const params = new URLSearchParams(source.search)
@@ -1909,14 +1921,24 @@ watch(chapterTitle, () => {
     </div>
 
     <!-- 段评面板 -->
-    <div v-if="showDpPanel" class="sheet-backdrop" @click.self="showDpPanel = false">
-      <div class="sheet reader-sheet dp-panel-sheet" :class="{ 'has-proxy': Boolean(dpPanelProxyUrl) }" :style="{ background: theme.bg, color: theme.text }">
+    <div v-if="showDpPanel" class="sheet-backdrop dp-backdrop" @click.self="showDpPanel = false">
+      <div
+        class="sheet reader-sheet dp-panel-sheet"
+        :class="{ 'has-proxy': Boolean(dpPanelProxyUrl), 'dp-loading': !dpPanelProxyUrl && dpPanelLoading }"
+        :style="{ background: theme.bg, color: theme.text }"
+      >
         <div class="sheet-handle" />
+        <div v-if="!dpPanelProxyUrl && dpPanelLoading" class="dp-initial-loading">
+          <span class="dp-loading-dot" />
+          正在加载段评…
+        </div>
         <iframe
           v-if="dpPanelProxyUrl"
           class="dp-proxy-iframe"
+          :class="{ ready: dpFrameReady }"
           :src="dpPanelProxyUrl"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          @load="onDpFrameLoad"
           title="段评"
         />
         <div class="dp-panel-top">
