@@ -2,19 +2,20 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, getToken, isNativeApp, withImageToken } from '../api.js'
+import parchmentBg from '../assets/paper-parchment.jpg'
 
 const props = defineProps({ bookUrl: { type: String, required: true } })
 const router = useRouter()
 
 const PAPER = {
-  parchment: { name: '羊皮纸', bg: '#f3e9d2', text: '#3b2f24' },
+  parchment: { name: '羊皮纸', bg: '#e9dfc7', text: '#3b2f24', image: parchmentBg },
   white: { name: '白纸', bg: '#ffffff', text: '#242424' },
   green: { name: '浅绿', bg: '#e6f0e2', text: '#2c3a2a' },
   gray: { name: '灰调', bg: '#ececec', text: '#2b2b2b' },
   blue: { name: '雾蓝', bg: '#e9f1f7', text: '#24323d' },
   mint: { name: '薄荷', bg: '#e8f4ef', text: '#244038' },
   rose: { name: '藕粉', bg: '#f7ebee', text: '#3d2b30' },
-  sand: { name: '米沙', bg: '#f2eadc', text: '#3a3026' },
+  sand: { name: '沙漠', bg: '#f2eadc', text: '#3a3026' },
   paper: {
     name: '宣纸',
     bg: '#f6f1e4',
@@ -283,7 +284,12 @@ const shellStyle = computed(() => {
     '--reader-half': `${prefs.value.pageWidth / 2}px`,
   }
   if (!isDark.value && prefs.value.paper === 'parchment') {
-    return { ...base, backgroundImage: PARCHMENT_TEXTURE }
+    return {
+      ...base,
+      backgroundImage: `url(${current.image || parchmentBg})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+    }
   }
   if (!isDark.value && current.pattern) {
     return { ...base, backgroundImage: current.pattern, backgroundSize: '10px 10px' }
@@ -1124,6 +1130,8 @@ async function loadDpComments(offset) {
             const source = new URL(result.panelUrl)
             const params = new URLSearchParams(source.search)
             params.set('url', result.panelUrl)
+            params.set('theme', isDark.value ? 'dark' : 'light')
+            params.set('bg', theme.value.bg)
             return `/reader3/dpPage?${params.toString()}`
           })()
         : ''
@@ -1146,6 +1154,8 @@ async function loadDpComments(offset) {
           const source = new URL(result.panelUrl)
           const params = new URLSearchParams(source.search)
           params.set('url', result.panelUrl)
+            params.set('theme', isDark.value ? 'dark' : 'light')
+            params.set('bg', theme.value.bg)
           return `/reader3/dpPage?${params.toString()}`
         })()
       : ''
@@ -1459,12 +1469,24 @@ watch(chapterTitle, () => {
     </div>
 
     <aside class="rail rail-left">
-      <button class="rail-btn" title="返回书架" @click="router.push('/bookshelf')"><span>⌂</span><i>书架</i></button>
-      <button class="rail-btn" title="书源" @click="openReaderSource"><span>⌘</span><i>书源</i></button>
-      <button class="rail-btn" title="目录" @click="showCatalog = true"><span>☰</span><i>目录</i></button>
-      <button class="rail-btn" title="设置" @click="openSettings"><span>⚙</span><i>设置</i></button>
-      <button class="rail-btn" title="顶部" @click="toTop"><span>︿</span><i>顶部</i></button>
-      <button class="rail-btn" title="底部" @click="toBottom"><span>﹀</span><i>底部</i></button>
+      <button class="rail-btn" title="返回书架" @click="router.push('/bookshelf')">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8" /><path d="M5.5 9.5V21h13V9.5" /></svg><i>书架</i>
+      </button>
+      <button class="rail-btn" title="书源" @click="openReaderSource">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4Z" /><path d="M8 4v16" /><path d="M11 8h5" /></svg><i>书源</i>
+      </button>
+      <button class="rail-btn" title="目录" @click="showCatalog = true">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg><i>目录</i>
+      </button>
+      <button class="rail-btn" title="设置" @click="openSettings">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-3v-.1A1.7 1.7 0 0 0 9.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-3h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.12-2.12.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h3v.1A1.7 1.7 0 0 0 14.4 4a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.12 2.12-.06.06A1.7 1.7 0 0 0 19.4 9c.4.5.8.8 1.4 1h.2v3h-.1a1.7 1.7 0 0 0-1.5 2Z" /></svg><i>设置</i>
+      </button>
+      <button class="rail-btn" title="顶部" @click="toTop">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6" /></svg><i>顶部</i>
+      </button>
+      <button class="rail-btn" title="底部" @click="toBottom">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6" /></svg><i>底部</i>
+      </button>
     </aside>
 
     <main
@@ -1581,7 +1603,7 @@ watch(chapterTitle, () => {
               :key="key"
               class="theme-swatch"
               :class="{ active: prefs.paper === key && !isDark }"
-              :style="{ background: paper.bg, color: paper.text }"
+              :style="{ background: paper.image ? `url(${paper.image}) center/cover` : paper.bg, color: paper.text }"
               @click="selectPaper(key)"
             >{{ paper.name }}</button>
           </div>

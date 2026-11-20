@@ -712,6 +712,10 @@ async function primeBook(book) {
       const token = Buffer.from(origin).toString('base64url')
       const prefix = `/reader3/dp/${token}`
       let html = await response.text()
+      const theme = String(req.query?.theme || 'light') === 'dark' ? 'dark' : 'light'
+      const bg = /^(?:#[0-9a-f]{3,8}|rgba?\([^)]*\))$/i.test(String(req.query?.bg || '')) ? String(req.query.bg) : '#e9dfc7'
+      const inject = `<style>body{--bg:${bg} !important;background:${bg} !important;}</style><script>(function(){var t=${JSON.stringify(theme)};try{localStorage.setItem('qd_theme',t);}catch(e){}function apply(){document.body.classList.toggle('dark',t==='dark');var b=document.getElementById('btnTheme');if(b)b.textContent=t==='dark'?'☾':'☀';}if(document.body)apply();else document.addEventListener('DOMContentLoaded',apply);})();</script>`
+      html = html.replace('</head>', `${inject}</head>`)
       for (const part of ['/qddp/', '/book/', '/img?', '/media?', '/static/']) {
         html = html.split(part).join(prefix + part)
       }
