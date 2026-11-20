@@ -518,17 +518,24 @@ async function primeBook(book) {
       try {
         const signed = await withRuntime(origin, async (runtime) => {
           if (typeof runtime.window?.qget !== 'function') return null
-          // 先跑一次正文，让书源完成密钥/设备/Cookie 初始化，再请求评论
+          const request = () => runtime.window.qget(apiUrl.toString())
+          const finish = (result) => {
+            if (result?.statusCode && Number(result.statusCode) >= 400) {
+              throw new Error(`HTTP ${result.statusCode}`)
+            }
+            return result?.data ?? null
+          }
           try {
-            await runtime.content(target)
+            return finish(await request())
           } catch {
-            /* 正文失败不阻塞评论尝试 */
+            // 仅首次失败时再初始化一次正文会话，避免每次段评都多等一次正文请求
+            try {
+              await runtime.content(target)
+            } catch {
+              /* 正文失败不阻塞评论重试 */
+            }
+            return finish(await request())
           }
-          const result = await runtime.window.qget(apiUrl.toString())
-          if (result?.statusCode && Number(result.statusCode) >= 400) {
-            throw new Error(`HTTP ${result.statusCode}`)
-          }
-          return result?.data ?? null
         })
         if (signed) payload = JSON.parse(String(signed))
       } catch (error) {

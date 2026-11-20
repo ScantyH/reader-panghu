@@ -20,6 +20,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.1.8',
+    date: '2026-11-20',
+    items: ['段评请求仅在失败时补一次正文会话，减少首屏等待时间'],
+  },
+  {
     version: '1.1.7',
     date: '2026-11-20',
     items: [
