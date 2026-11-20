@@ -2159,3 +2159,32 @@ button.settings-nav-item { border: 0; background: transparent; font: inherit; te
 .dp-reply-more { align-self: flex-start; border: 0; background: transparent; color: var(--color-primary); font-size: 12px; cursor: pointer; padding: 2px 0; }
 
 body.dp-panel-open { overflow: hidden; }
+
+.dp-panel-top { position: relative; display: flex; align-items: center; justify-content: center; padding: 2px 0 12px; }
+.dp-panel-brand { display: flex; align-items: center; gap: 8px; }
+.dp-brand-mark { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(127,127,127,.12); font-size: 15px; }
+.dp-panel-brand div { display: flex; flex-direction: column; gap: 1px; }
+.dp-panel-brand strong { font-size: 14px; }
+.dp-panel-brand small { font-size: 10.5px; opacity: .5; }
+.dp-refresh { position: absolute; right: 52px; top: 3px; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(127,127,127,.2); background: transparent; color: inherit; cursor: pointer; }
+.dp-close { position: absolute; right: 0; top: 4px; }
+.dp-tabs button b { font-size: 11px; font-weight: 500; opacity: .7; margin-left: 2px; }
+.dp-tabs button.active b { opacity: 1; }
+.dp-sort-row { display: flex; align-items: center; gap: 12px; padding: 8px 0 2px; font-size: 12px; }
+.dp-sort-row > span { color: var(--color-primary); font-weight: 600; }
+.dp-sort-row button { border: 0; background: transparent; color: inherit; opacity: .55; font-size: 12px; cursor: pointer; padding: 2px 0; }
+.dp-sort-row button.active { opacity: 1; color: var(--color-primary); font-weight: 600; }
+.dp-panel-sheet::-webkit-scrollbar { width: 7px; }
+.dp-panel-sheet::-webkit-scrollbar-track { background: transparent; border-radius: 999px; margin: 10px 0; }
+.dp-panel-sheet::-webkit-scrollbar-thumb { background: rgba(127,127,127,.45); border-radius: 999px; }
+.dp-panel-sheet { scrollbar-width: thin; scrollbar-color: rgba(127,127,127,.45) transparent; }
+
+.dp-comment-item { padding: 12px 14px; border-radius: 12px; }
+.dp-comment-avatar { width: 36px; height: 36px; }
+.dp-comment-content { margin-left: 44px; }
+.dp-comment-quote { margin-left: 44px; }
+.dp-comment-images { margin-left: 44px; }
+.dp-comment-audio-row { margin-left: 44px; }
+.dp-reply-toggle { margin-left: 44px; }
+.dp-reply-list { margin-left: 44px; }
+.dp-reply-toggle button { padding: 6px 12px; background: rgba(127,127,127,.06); }

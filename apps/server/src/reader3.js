@@ -598,7 +598,7 @@ async function primeBook(book) {
               const raw = boot?.page?.Data?.DataList || boot?.page?.data || []
               const total = Number(boot?.counts?.all || boot?.page?.total || raw.length || 0)
               const comments = raw.slice(0, limit).map(mapComment)
-              if (comments.length) return ok({ comments, total, offset: 0, limit, hasMore: false, panelUrl })
+              if (comments.length) return ok({ comments, total, offset: 0, limit, hasMore: false, panelUrl, counts: { all: total, img: 0, audio: 0 } })
             } catch {
               /* 解析失败再退回 HTML */
             }
@@ -613,7 +613,15 @@ async function primeBook(book) {
       const list = data.DataList || data.data || data.list || []
       const total = Number(data.TotalCount || data.total || list.length)
       const comments = list.slice(0, limit).map(mapComment)
-      return ok({ comments, total, offset, limit, hasMore: offset + comments.length < total, panelUrl })
+      return ok({
+        comments,
+        total,
+        offset,
+        limit,
+        hasMore: offset + comments.length < total,
+        panelUrl,
+        counts: data.Counts || data.counts || payload.Counts || payload.counts || { all: total, img: 0, audio: 0 },
+      })
     } catch (error) {
       return fail(`段评接口请求失败：${error.message}${error.cause?.code ? `（${error.cause.code}）` : ''}${markerHost ? ` ${markerHost}` : ''}`)
     }

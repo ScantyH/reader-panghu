@@ -196,6 +196,7 @@ const dpPanelUrl = ref('')
 const dpPanelTab = ref('all')
 const dpPanelSort = ref('default')
 const dpPanelQuote = ref('')
+const dpCounts = ref({ all: 0, img: 0, audio: 0 })
 const dpReplies = ref({})
 const dpReplyBusy = ref('')
 const dpPanelHasMore = ref(false)
@@ -968,6 +969,7 @@ async function openDpComment(marker) {
   dpPanelQuote.value =
     Number(marker.paragraph) >= 0 ? String(paragraphs.value[Number(marker.paragraph)] || '').trim() : ''
   dpReplies.value = {}
+  dpCounts.value = { all: 0, img: 0, audio: 0 }
   dpPanelTitle.value =
     Number(marker.paragraph) === -1
       ? `章节名 · ${marker.count} 条段评`
@@ -978,6 +980,12 @@ async function openDpComment(marker) {
 async function changeDpTab(tab) {
   if (dpPanelTab.value === tab) return
   dpPanelTab.value = tab
+  await loadDpComments(0)
+}
+
+async function setDpSort(sort) {
+  if (dpPanelSort.value === sort) return
+  dpPanelSort.value = sort
   await loadDpComments(0)
 }
 
@@ -1074,6 +1082,14 @@ async function loadDpComments(offset) {
     }
     dpComments.value = offset === 0 ? result.comments || [] : [...dpComments.value, ...(result.comments || [])]
     dpPanelTotal.value = Number(result.total || dpComments.value.length)
+    if (offset === 0) {
+      const c = result.counts || {}
+      dpCounts.value = {
+        all: Number(c.all ?? c.All ?? (dpPanelTab.value === 'all' ? result.total : dpCounts.value.all) ?? 0),
+        img: Number(c.img ?? c.Img ?? c.image ?? c.Image ?? dpCounts.value.img ?? 0),
+        audio: Number(c.audio ?? c.Audio ?? dpCounts.value.audio ?? 0),
+      }
+    }
     dpPanelUrl.value = result.panelUrl || ''
     dpPanelHasMore.value = Boolean(result.hasMore)
     if (!dpComments.value.length) dpPanelError.value = '没有取到段评内容'
@@ -1802,10 +1818,16 @@ watch(chapterTitle, () => {
     <div v-if="showDpPanel" class="sheet-backdrop" @click.self="showDpPanel = false">
       <div class="sheet reader-sheet dp-panel-sheet" :style="{ background: theme.bg, color: theme.text }">
         <div class="sheet-handle" />
-        <div class="row" style="align-items: center; gap: 8px">
-          <h2 style="margin: 0">{{ dpPanelTitle }}</h2>
-          <div class="spacer" />
-          <button class="ghost" @click="showDpPanel = false">关闭</button>
+        <div class="dp-panel-top">
+          <div class="dp-panel-brand">
+            <span class="dp-brand-mark">◐</span>
+            <div>
+              <strong>段评</strong>
+              <small>段落评论·起点</small>
+            </div>
+          </div>
+          <button class="dp-refresh" title="刷新段评" @click="loadDpComments(0)">↻</button>
+          <button class="ghost dp-close" @click="showDpPanel = false">关闭</button>
         </div>
         <div v-if="dpPanelLoading" class="muted" style="padding: 24px 0">正在加载段评…</div>
         <div v-else-if="dpPanelError && !dpComments.length && !dpPanelHtml" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
@@ -1820,15 +1842,16 @@ watch(chapterTitle, () => {
           <template v-else>
             <div class="dp-filter-row">
               <div class="dp-tabs">
-                <button :class="{ active: dpPanelTab === 'all' }" @click="changeDpTab('all')">全部</button>
-                <button :class="{ active: dpPanelTab === 'img' }" @click="changeDpTab('img')">配图</button>
-                <button :class="{ active: dpPanelTab === 'audio' }" @click="changeDpTab('audio')">配音</button>
+                <button :class="{ active: dpPanelTab === 'all' }" @click="changeDpTab('all')">全部 <b>{{ dpCounts.all || dpPanelTotal }}</b></button>
+                <button :class="{ active: dpPanelTab === 'img' }" @click="changeDpTab('img')">配图 <b>{{ dpCounts.img }}</b></button>
+                <button :class="{ active: dpPanelTab === 'audio' }" @click="changeDpTab('audio')">配音 <b>{{ dpCounts.audio }}</b></button>
               </div>
-              <select v-model="dpPanelSort" class="dp-sort" @change="loadDpComments(0)">
-                <option value="default">默认排序</option>
-                <option value="hot">按热度</option>
-                <option value="new">按时间</option>
-              </select>
+            </div>
+            <div class="dp-sort-row">
+              <span>推荐排序</span>
+              <button :class="{ active: dpPanelSort === 'default' }" @click="setDpSort('default')">默认</button>
+              <button :class="{ active: dpPanelSort === 'hot' }" @click="setDpSort('hot')">热门</button>
+              <button :class="{ active: dpPanelSort === 'new' }" @click="setDpSort('new')">最新</button>
             </div>
             <div v-if="dpPanelQuote" class="dp-origin-quote">
               <span>引用原文</span>
