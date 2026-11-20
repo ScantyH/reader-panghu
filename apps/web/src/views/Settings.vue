@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.2.9',
+    date: '2026-11-20',
+    items: ['放宽段评网页代理对已保存书源线路的识别，兼容主线路与备用线路'],
+  },
+  {
     version: '1.2.8',
     date: '2026-11-20',
     items: ['修复段评同源代理接口需要登录导致 iframe 401 的问题'],
