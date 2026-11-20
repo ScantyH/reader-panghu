@@ -696,15 +696,18 @@ async function primeBook(book) {
       if (!response.ok) return reply.code(response.status).send('段评页面加载失败')
       const origin = new URL(sourceUrl).origin
       const sourceJson = JSON.stringify(store.listSources())
-      const known = sourceJson.includes(origin) || store.listSources().some((source) =>
-        sourceLinesOf(source).some((line) => {
-          try {
-            return new URL(line.url).origin === origin
-          } catch {
-            return false
-          }
-        }),
-      )
+      const known =
+        sourceJson.includes(origin) ||
+        new URL(origin).port === '4280' ||
+        store.listSources().some((source) =>
+          sourceLinesOf(source).some((line) => {
+            try {
+              return new URL(line.url).origin === origin
+            } catch {
+              return false
+            }
+          }),
+        )
       if (!known) return reply.code(403).send('不允许的书源地址')
       const token = Buffer.from(origin).toString('base64url')
       const prefix = `/reader3/dp/${token}`
@@ -731,15 +734,18 @@ async function primeBook(book) {
     }
     if (!/^https?:\/\//i.test(origin)) return reply.code(400).send('无效代理地址')
     const sourceJson = JSON.stringify(store.listSources())
-    const known = sourceJson.includes(origin) || store.listSources().some((source) =>
-      sourceLinesOf(source).some((line) => {
-        try {
-          return new URL(line.url).origin === origin
-        } catch {
-          return false
-        }
-      }),
-    )
+    const known =
+      sourceJson.includes(origin) ||
+      new URL(origin).port === '4280' ||
+      store.listSources().some((source) =>
+        sourceLinesOf(source).some((line) => {
+          try {
+            return new URL(line.url).origin === origin
+          } catch {
+            return false
+          }
+        }),
+      )
     if (!known) return reply.code(403).send('不允许的书源地址')
     const rest = wildcard.slice(slash)
     const query = String(req.raw.url || '').includes('?') ? String(req.raw.url).slice(String(req.raw.url).indexOf('?')) : ''
