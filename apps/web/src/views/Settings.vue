@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, setToken } from '../api.js'
 import { useSortable } from '../use-sortable.js'
 import { desktopNavLayout, setDesktopNavLayout } from '../use-layout.js'
+import { CORNER_ITEMS, CORNER_SLOTS, shelfCorners, setCorner } from '../use-shelf-corners.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +20,16 @@ const SECTIONS = [
 ]
 
 const CHANGELOG = [
+  {
+    version: '1.1.10',
+    date: '2026-11-20',
+    items: [
+      '书仓已导入书籍支持移出书架，同时保留删除文件操作',
+      '书架四角角标统一 26px 高度，支持在设置中自由配置显示位置',
+      '新增书籍分组角标，未分组显示「未分组」',
+      '段评改为浅色主题原生 UI，加入全部/配图/配音筛选与排序',
+    ],
+  },
   {
     version: '1.1.9',
     date: '2026-11-20',
@@ -754,6 +765,27 @@ onMounted(load)
         </template>
 
         <template v-else-if="section === 'shelf'">
+          <div class="settings-card">
+            <div class="settings-card-title">书架角标</div>
+            <div class="settings-row" style="display: block">
+              <div class="settings-row-desc" style="margin-bottom: 8px">
+                自由组合四个角标的位置；同一个位置只能放一个角标，选择「隐藏」可关闭。
+              </div>
+              <div v-for="item in CORNER_ITEMS" :key="item.key" class="corner-setting-row">
+                <div class="settings-row-main">
+                  <div class="settings-row-title">{{ item.label }}</div>
+                  <div class="settings-row-desc">{{ item.desc }}</div>
+                </div>
+                <select
+                  :value="shelfCorners[item.key]"
+                  @change="setCorner(item.key, $event.target.value)"
+                >
+                  <option v-for="slot in CORNER_SLOTS" :key="slot.value" :value="slot.value">{{ slot.label }}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <div class="settings-card">
             <div class="settings-card-title">批量与分组</div>
             <button class="settings-row" @click="goBatch">

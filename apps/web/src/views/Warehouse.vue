@@ -211,6 +211,17 @@ async function remove(path) {
   }
 }
 
+async function removeFromShelf(file) {
+  if (!confirm(`从书架移除《${file.name}》？书仓文件会保留。`)) return
+  try {
+    await api.warehouseRemoveFromShelf(file.path)
+    window.__toast?.('已从书架移除')
+    await load()
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 function formatSize(bytes) {
   if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -332,6 +343,7 @@ onMounted(async () => {
           </div>
           <span v-if="file.imported" class="badge imported-badge">已导入书架</span>
           <button v-else class="primary" :disabled="previewBusy" @click="openImport(file)">导入书架</button>
+          <button v-if="file.imported" class="ghost" @click="removeFromShelf(file)">移出书架</button>
           <button class="ghost" @click="remove(file.path)">删除</button>
         </div>
       </div>

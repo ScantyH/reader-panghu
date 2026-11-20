@@ -219,6 +219,17 @@ export function registerWarehouse(app, { store, dataDir }) {
     return ok({ imported, failed, skipped, total: paths.length })
   })
 
+  /** 把已导入的书从书架移除，但保留书仓文件 */
+  app.post('/reader3/warehouse/removeFromShelf', async (req) => {
+    const blocked = warehouseBlocked(req)
+    if (blocked) return fail(blocked)
+    const filePath = String(req.body?.path || '')
+    const book = existingBookFor(filePath)
+    if (!book) return fail('这本书不在书架里')
+    store.deleteBook(book.bookUrl)
+    return ok({ removed: true, bookUrl: book.bookUrl, name: book.name })
+  })
+
   app.post('/reader3/warehouse/upload', async (req) => {
     const blocked = warehouseBlocked(req)
     if (blocked) return fail(blocked)

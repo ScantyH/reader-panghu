@@ -193,6 +193,9 @@ const dpComments = ref([])
 const dpPanelTotal = ref(0)
 const dpPanelHtml = ref('')
 const dpPanelUrl = ref('')
+const dpPanelTab = ref('all')
+const dpPanelSort = ref('default')
+const dpPanelQuote = ref('')
 const dpPanelHasMore = ref(false)
 const dpPanelLoadingMore = ref(false)
 const dpPanelMarker = ref(null)
@@ -958,10 +961,20 @@ async function openDpComment(marker) {
   if (!marker || dpPanelLoading.value) return
   showDpPanel.value = true
   dpPanelMarker.value = marker
+  dpPanelTab.value = 'all'
+  dpPanelSort.value = 'default'
+  dpPanelQuote.value =
+    Number(marker.paragraph) >= 0 ? String(paragraphs.value[Number(marker.paragraph)] || '').trim() : ''
   dpPanelTitle.value =
     Number(marker.paragraph) === -1
       ? `章节名 · ${marker.count} 条段评`
       : `第 ${Number(marker.paragraph) + 1} 段 · ${marker.count} 条段评`
+  await loadDpComments(0)
+}
+
+async function changeDpTab(tab) {
+  if (dpPanelTab.value === tab) return
+  dpPanelTab.value = tab
   await loadDpComments(0)
 }
 
@@ -983,9 +996,11 @@ async function loadDpComments(offset) {
     const result = await api.paragraphCommentPanel({
       bookUrl: props.bookUrl,
       index: current.value,
-      paragraph: marker.paragraph,
+      paragraph: Number(marker.paragraph),
       offset,
       limit: offset === 0 ? 10 : 6,
+      tab: dpPanelTab.value,
+      sort: dpPanelSort.value,
     })
     if (result.html) {
       dpPanelHtml.value = result.html
@@ -1727,20 +1742,29 @@ watch(chapterTitle, () => {
         <div v-else-if="dpPanelError && !dpComments.length && !dpPanelHtml" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
         <template v-else>
           <iframe
-            v-if="dpPanelUrl"
-            class="dp-panel-iframe"
-            :src="dpPanelUrl"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            title="段评面板"
-          />
-          <iframe
-            v-else-if="dpPanelHtml"
+            v-if="dpPanelHtml"
             class="dp-panel-iframe"
             :srcdoc="dpPanelHtml"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             title="段评面板"
           />
           <template v-else>
+            <div class="dp-filter-row">
+              <div class="dp-tabs">
+                <button :class="{ active: dpPanelTab === 'all' }" @click="changeDpTab('all')">全部</button>
+                <button :class="{ active: dpPanelTab === 'img' }" @click="changeDpTab('img')">配图</button>
+                <button :class="{ active: dpPanelTab === 'audio' }" @click="changeDpTab('audio')">配音</button>
+              </div>
+              <select v-model="dpPanelSort" class="dp-sort" @change="loadDpComments(0)">
+                <option value="default">默认排序</option>
+                <option value="hot">按热度</option>
+                <option value="new">按时间</option>
+              </select>
+            </div>
+            <div v-if="dpPanelQuote" class="dp-origin-quote">
+              <span>引用原文</span>
+              <p>{{ dpPanelQuote }}</p>
+            </div>
             <div class="dp-comment-summary">共 {{ dpPanelTotal }} 条 · 已显示 {{ dpComments.length }} 条</div>
             <div class="dp-comment-list" @scroll.passive="onDpPanelScroll">
               <div v-for="(comment, index) in dpComments" :key="comment.id || index" class="dp-comment-item">

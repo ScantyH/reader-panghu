@@ -221,6 +221,7 @@ export const api = {
       body: typeof payload === 'string' ? { path: payload } : payload,
     }),
   warehouseImportBatch: (paths, group) => request('/warehouse/importBatch', { method: 'POST', body: { paths, group } }),
+  warehouseRemoveFromShelf: (path) => request('/warehouse/removeFromShelf', { method: 'POST', body: { path } }),
   warehouseDelete: (path) => request('/warehouse/delete', { method: 'POST', body: { path } }),
   warehouseReorder: (path, names) => request('/warehouse/reorder', { method: 'POST', body: { path, names } }),
   warehouseUpload: (path, file) => {

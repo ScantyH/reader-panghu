@@ -523,10 +523,13 @@ async function primeBook(book) {
       apiUrl.pathname = apiUrl.pathname.replace(/\/qddp\/?$/, '/qddp/api')
       const offset = Math.max(0, Number(req.body?.offset) || 0)
       const limit = Math.max(1, Math.min(20, Number(req.body?.limit) || 10))
-      apiUrl.searchParams.set('tab', 'all')
+      const tab = ['all', 'img', 'audio'].includes(String(req.body?.tab)) ? String(req.body.tab) : 'all'
+      apiUrl.searchParams.set('tab', tab)
       apiUrl.searchParams.set('pg', String(Math.floor(offset / limit) + 1))
       apiUrl.searchParams.set('pz', String(limit))
       apiUrl.searchParams.set('offset', String(offset))
+      if (req.body?.sort === 'new') apiUrl.searchParams.set('sort', '0')
+      else if (req.body?.sort === 'hot') apiUrl.searchParams.set('sort', '1')
       // 起点类书源的 /qddp/api 需要 k/did/ts/sign 签名；直接 fetch 会 401。
       // 优先调用书源自己的 qget()，由书源运行时带上密钥、设备指纹、Cookie 和签名。
       let payload = null
