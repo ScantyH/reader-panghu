@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.1.12',
+    date: '2026-11-20',
+    items: ['整理书籍管理：导入书籍、阅读工具、更新与缓存三类职责更清晰'],
+  },
+  {
     version: '1.1.11',
     date: '2026-11-20',
     items: ['书架四角角标缩小到 20px，和上一版来源角标尺寸一致'],
@@ -663,7 +668,7 @@ onMounted(load)
         <!-- 书籍管理 -->
         <template v-else-if="section === 'books'">
           <div class="settings-card">
-            <div class="settings-card-title">导入与管理</div>
+            <div class="settings-card-title">导入书籍</div>
             <input
               ref="importInput"
               type="file"
@@ -679,29 +684,22 @@ onMounted(load)
               </div>
               <span class="settings-row-meta">{{ importBusy ? '导入中…' : '选择文件' }}</span>
             </button>
-          </div>
-
-          <div class="settings-card">
-            <div class="settings-card-title">阅读工具</div>
             <router-link v-if="me.allowWarehouse" class="settings-row link" to="/warehouse">
               <div class="settings-row-icon">🗄️</div>
               <div class="settings-row-main">
                 <div class="settings-row-title">书仓</div>
-                <div class="settings-row-desc">服务端目录即分类，可上传、导入书架</div>
+                <div class="settings-row-desc">批量上传本地书籍、按分类导入书架</div>
               </div>
             </router-link>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">阅读工具</div>
             <router-link class="settings-row link" to="/bookmarks">
               <div class="settings-row-icon">🔖</div>
               <div class="settings-row-main">
                 <div class="settings-row-title">书签</div>
                 <div class="settings-row-desc">按书查看已保存的阅读位置</div>
-              </div>
-            </router-link>
-            <router-link class="settings-row link" to="/cache">
-              <div class="settings-row-icon">⬇️</div>
-              <div class="settings-row-main">
-                <div class="settings-row-title">缓存管理</div>
-                <div class="settings-row-desc">查看与清理已缓存的章节</div>
               </div>
             </router-link>
             <router-link class="settings-row link" to="/replace">
@@ -712,8 +710,9 @@ onMounted(load)
               </div>
             </router-link>
           </div>
+
           <div class="settings-card">
-            <div class="settings-card-title">缓存与更新</div>
+            <div class="settings-card-title">更新与缓存</div>
             <button class="settings-row" :disabled="updateBusy" @click="checkUpdates">
               <div class="settings-row-icon">🔄</div>
               <div class="settings-row-main">
@@ -730,6 +729,13 @@ onMounted(load)
               </div>
               <span class="settings-row-meta">{{ cacheBusy ? '刷新中…' : '执行' }}</span>
             </button>
+            <router-link class="settings-row link" to="/cache">
+              <div class="settings-row-icon">⬇️</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">缓存管理</div>
+                <div class="settings-row-desc">查看与清理已缓存的章节</div>
+              </div>
+            </router-link>
           </div>
 
           <p v-if="shelfStatus" class="settings-status">{{ shelfStatus }}</p>
