@@ -2127,3 +2127,9 @@ button.settings-nav-item { border: 0; background: transparent; font: inherit; te
 .reader-shell .rail-btn.round[title="上一章"], .reader-shell .rail-btn.round[title="下一章"] { font-size: 23px; }
 
 .corner-more { width: 26px !important; height: 26px !important; min-width: 26px !important; border-radius: 50% !important; }
+
+/* 角标尺寸回收到上一版来源角标的大小 */
+.shelf-corner { height: 20px; }
+.corner-badge { height: 20px; padding: 0 6px; font-size: 10.5px; line-height: 20px; }
+.corner-more { width: 20px !important; height: 20px !important; min-width: 20px !important; }
+.corner-more svg { width: 12px; height: 12px; }

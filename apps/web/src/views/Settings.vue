@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.1.11',
+    date: '2026-11-20',
+    items: ['书架四角角标缩小到 20px，和上一版来源角标尺寸一致'],
+  },
+  {
     version: '1.1.10',
     date: '2026-11-20',
     items: [
