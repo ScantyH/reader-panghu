@@ -6,10 +6,11 @@ import { desktopNavLayout } from './use-layout.js'
 
 const route = useRoute()
 const router = useRouter()
-const layoutRouteName = ref(route.name)
+const isBookshelfPath = () => window.location.pathname.startsWith('/bookshelf')
+const layoutRouteName = ref(isBookshelfPath() ? 'bookshelf' : route.name)
 
 function syncLayoutRoute() {
-  layoutRouteName.value = route.name
+  layoutRouteName.value = isBookshelfPath() ? 'bookshelf' : route.name
 }
 const toast = ref('')
 const headerQuery = ref('')
@@ -156,7 +157,7 @@ function updateMobile() {
 }
 
 onMounted(() => {
-  layoutRouteName.value = route.name
+  layoutRouteName.value = isBookshelfPath() ? 'bookshelf' : route.name
   loadAuth()
   loadSidebarBooks()
   updateMobile()

@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.3.9',
+    date: '2026-11-20',
+    items: ['修复书架页面初始宽度判断错误，彻底消除切换时的封面闪烁'],
+  },
+  {
     version: '1.3.8',
     date: '2026-11-20',
     items: ['修复书架首次打开时被错误套用窄版内容宽度的问题'],
