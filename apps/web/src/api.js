@@ -174,6 +174,7 @@ export const api = {
   chapterNotes: (bookUrl) => request('/getChapterNotes?bookUrl=' + encodeURIComponent(bookUrl)),
   paragraphComments: (payload) => request('/getParagraphComments', { method: 'POST', body: payload }),
   paragraphCommentPanel: (payload) => request('/getParagraphCommentPanel', { method: 'POST', body: payload }),
+  commentReplies: (payload) => request('/getCommentReplies', { method: 'POST', body: payload }),
   saveChapterNote: (payload) => request('/saveChapterNote', { method: 'POST', body: payload }),
   deleteChapterNote: (payload) => request('/deleteChapterNote', { method: 'POST', body: payload }),
   readRemoteSourceFile: (url) => request('/readSourceFile?url=' + encodeURIComponent(url)),

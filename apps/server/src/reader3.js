@@ -481,6 +481,11 @@ async function primeBook(book) {
         images: commentImages(item),
         audio: commentUrl(item.AudioUrl, item.VoiceUrl, item.SoundUrl, item.MediaUrl, item.Audio, item.Voice),
         audioTime: Number(item.AudioTime || item.AudioDuration || item.VoiceTime || item.SoundTime || 0),
+        floor: Number(item.Floor || 0),
+        replyCount: Number(item.ReviewCount || 0),
+        titles: Array.isArray(item.TitleInfoList)
+          ? item.TitleInfoList.map((title) => String(title.TitleName || '')).filter(Boolean).slice(0, 3)
+          : [],
       }
     }
     const target = String(req.body?.chapterUrl || chapters[Number(req.body?.index) || 0]?.url || '')
@@ -611,6 +616,58 @@ async function primeBook(book) {
       return ok({ comments, total, offset, limit, hasMore: offset + comments.length < total, panelUrl })
     } catch (error) {
       return fail(`段评接口请求失败：${error.message}${error.cause?.code ? `（${error.cause.code}）` : ''}${markerHost ? ` ${markerHost}` : ''}`)
+    }
+  })
+
+  app.post('/reader3/getCommentReplies', async (req) => {
+    const book = store.getBook(String(req.body?.bookUrl ?? ''))
+    if (!book) return fail('书籍不存在')
+    const origin = String(req.body?.bookSourceUrl || book.origin || '')
+    const target = String(req.body?.chapterUrl || store.getChapters(book.bookUrl, book.origin)[Number(req.body?.index) || 0]?.url || '')
+    const paragraph = Number(req.body?.paragraph)
+    const rootReviewId = String(req.body?.rootReviewId || '')
+    if (!target || !rootReviewId) return fail('缺少回复参数')
+    try {
+      let markerUrl = dpMarkerCache.get(dpCacheKey(book.bookUrl, target, paragraph))?.url || ''
+      if (!markerUrl) {
+        const raw = await withRuntime(origin, (runtime) => runtime.content(target))
+        const parsed = extractDpMarkers(raw, { transform: (text) => applyReplaceRules(text, store.listReplaceRules()) })
+        cacheDpMarkers(book.bookUrl, target, parsed)
+        markerUrl = parsed.find((item) => Number(item.paragraph) === paragraph)?.url || ''
+      }
+      if (!markerUrl) return fail('这一段没有段评')
+      const page = new URL(markerUrl)
+      const bookId = page.searchParams.get('bookId')
+      const chapterId = page.searchParams.get('chapterId')
+      if (!bookId || !chapterId) return fail('缺少章节标识')
+      const url = new URL(`/book/${bookId}/chapter/${chapterId}/comments/review`, page.origin)
+      url.searchParams.set('paragraphId', String(paragraph + 1))
+      url.searchParams.set('rootReviewId', rootReviewId)
+      url.searchParams.set('pg', String(Math.max(1, Number(req.body?.page) || 1)))
+      url.searchParams.set('pz', String(Math.max(1, Math.min(20, Number(req.body?.limit) || 6))))
+      const source = store.getSource(origin)
+      const key = page.searchParams.get('k') || String(source?._runtime?.key || '')
+      if (key) url.searchParams.set('k', key)
+      const signed = await withRuntime(origin, (runtime) => runtime.window.qget(url.toString()))
+      if (signed?.statusCode >= 400) throw new Error(`HTTP ${signed.statusCode}`)
+      const payload = JSON.parse(String(signed?.data || '{}'))
+      const data = payload?.Data || payload?.data || {}
+      const list = data.DataList || data.data || []
+      const total = Number(data.TotalCount || data.total || list.length)
+      const replies = list.map((item) => ({
+        id: String(item.Id || item.id || ''),
+        user: String(item.UserName || '书友'),
+        avatar: String(item.UserHeadIcon || item.HeadIcon || ''),
+        content: String(item.Content || ''),
+        quote: String(item.RefferContent || ''),
+        agree: Number(item.AgreeAmount || 0),
+        time: Number(item.CreateTime || 0),
+        floor: Number(item.Floor || 0),
+        titles: Array.isArray(item.TitleInfoList) ? item.TitleInfoList.map((title) => String(title.TitleName || '')).filter(Boolean).slice(0, 2) : [],
+      }))
+      return ok({ replies, total, hasMore: Number(req.body?.page || 1) * Number(req.body?.limit || 6) < total })
+    } catch (error) {
+      return fail(`回复加载失败：${error.message}`)
     }
   })
 

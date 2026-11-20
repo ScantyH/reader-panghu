@@ -196,6 +196,8 @@ const dpPanelUrl = ref('')
 const dpPanelTab = ref('all')
 const dpPanelSort = ref('default')
 const dpPanelQuote = ref('')
+const dpReplies = ref({})
+const dpReplyBusy = ref('')
 const dpPanelHasMore = ref(false)
 const dpPanelLoadingMore = ref(false)
 const dpPanelMarker = ref(null)
@@ -965,6 +967,7 @@ async function openDpComment(marker) {
   dpPanelSort.value = 'default'
   dpPanelQuote.value =
     Number(marker.paragraph) >= 0 ? String(paragraphs.value[Number(marker.paragraph)] || '').trim() : ''
+  dpReplies.value = {}
   dpPanelTitle.value =
     Number(marker.paragraph) === -1
       ? `章节名 · ${marker.count} 条段评`
@@ -978,6 +981,66 @@ async function changeDpTab(tab) {
   await loadDpComments(0)
 }
 
+async function toggleReplies(comment) {
+  if (!comment?.id || dpReplyBusy.value) return
+  const current = dpReplies.value[comment.id]
+  if (current?.open) {
+    dpReplies.value = { ...dpReplies.value, [comment.id]: { ...current, open: false } }
+    return
+  }
+  dpReplyBusy.value = comment.id
+  try {
+    const result = await api.commentReplies({
+      bookUrl: props.bookUrl,
+      index: current.value,
+      chapterUrl: chapter.value?.url || '',
+      paragraph: Number(dpPanelMarker.value?.paragraph || 0),
+      rootReviewId: comment.id,
+      page: 1,
+      limit: 6,
+    })
+    dpReplies.value = {
+      ...dpReplies.value,
+      [comment.id]: { open: true, items: result.replies || [], total: result.total || 0, hasMore: Boolean(result.hasMore), page: 1 },
+    }
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    dpReplyBusy.value = ''
+  }
+}
+
+async function loadMoreReplies(comment) {
+  const current = dpReplies.value[comment.id]
+  if (!current || dpReplyBusy.value) return
+  dpReplyBusy.value = comment.id
+  try {
+    const page = current.page + 1
+    const result = await api.commentReplies({
+      bookUrl: props.bookUrl,
+      index: current.value,
+      chapterUrl: chapter.value?.url || '',
+      paragraph: Number(dpPanelMarker.value?.paragraph || 0),
+      rootReviewId: comment.id,
+      page,
+      limit: 6,
+    })
+    dpReplies.value = {
+      ...dpReplies.value,
+      [comment.id]: {
+        ...current,
+        items: [...current.items, ...(result.replies || [])],
+        page,
+        hasMore: Boolean(result.hasMore),
+      },
+    }
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    dpReplyBusy.value = ''
+  }
+}
+
 async function loadDpComments(offset) {
   const marker = dpPanelMarker.value
   if (!marker) return
@@ -987,6 +1050,7 @@ async function loadDpComments(offset) {
     dpComments.value = []
     dpPanelHtml.value = ''
     dpPanelUrl.value = ''
+    dpReplies.value = {}
     dpPanelTotal.value = 0
     dpPanelHasMore.value = false
   } else {
@@ -1253,7 +1317,12 @@ onMounted(() => {
   window.__panghuFlushProgress = () => saveProgressNow({ force: true })
 })
 
+watch(showDpPanel, (open) => {
+  document.body.classList.toggle('dp-panel-open', open)
+})
+
 onBeforeUnmount(() => {
+  document.body.classList.remove('dp-panel-open')
   stopTts()
   flushReading()
   saveProgressNow({ force: true })
@@ -1779,13 +1848,16 @@ watch(chapterTitle, () => {
                   />
                   <span v-else class="dp-comment-avatar placeholder">👤</span>
                   <div class="dp-comment-meta">
-                    <strong>{{ comment.user }}</strong>
-                    <span>{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
+                    <div class="dp-comment-userline">
+                      <strong>{{ comment.user }}</strong>
+                      <span v-for="title in comment.titles || []" :key="title" class="dp-user-title">{{ title }}</span>
+                    </div>
+                    <span>{{ comment.floor ? `第 ${comment.floor} 楼 · ` : '' }}{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
                   </div>
                   <span class="dp-comment-like">👍 {{ comment.agree }}</span>
                 </div>
                 <div v-if="comment.quote" class="dp-comment-quote">{{ comment.quote }}</div>
-                <p class="dp-comment-content">{{ comment.content }}</p>
+                <p v-if="comment.content" class="dp-comment-content">{{ comment.content }}</p>
                 <div v-if="comment.images?.length" class="dp-comment-images">
                   <img
                     v-for="(image, imageIndex) in comment.images"
@@ -1799,6 +1871,31 @@ watch(chapterTitle, () => {
                 <div v-if="comment.audio" class="dp-comment-audio-row">
                   <audio :src="comment.audio" controls preload="none" />
                   <span v-if="comment.audioTime">{{ comment.audioTime }}″</span>
+                </div>
+                <div v-if="comment.replyCount" class="dp-reply-toggle">
+                  <button :disabled="dpReplyBusy === comment.id" @click="toggleReplies(comment)">
+                    💬 {{ dpReplyBusy === comment.id ? '加载中…' : `${dpReplies[comment.id]?.open ? '收起' : '查看'} ${comment.replyCount} 条回复` }}
+                  </button>
+                </div>
+                <div v-if="dpReplies[comment.id]?.open" class="dp-reply-list">
+                  <div v-for="reply in dpReplies[comment.id].items" :key="reply.id" class="dp-reply-item">
+                    <img v-if="reply.avatar" class="dp-reply-avatar" :src="reply.avatar" alt="" referrerpolicy="no-referrer" loading="lazy" />
+                    <span v-else class="dp-reply-avatar placeholder">👤</span>
+                    <div class="dp-reply-main">
+                      <div class="dp-reply-meta">
+                        <strong>{{ reply.user }}</strong>
+                        <span v-if="reply.floor">第 {{ reply.floor }} 楼</span>
+                        <span>{{ formatCommentTime(reply.time) }}</span>
+                      </div>
+                      <p>{{ reply.content }}</p>
+                    </div>
+                  </div>
+                  <button
+                    v-if="dpReplies[comment.id].hasMore"
+                    class="dp-reply-more"
+                    :disabled="dpReplyBusy === comment.id"
+                    @click="loadMoreReplies(comment)"
+                  >展开更多回复</button>
                 </div>
               </div>
               <div v-if="dpPanelLoadingMore" class="muted" style="padding: 10px 0; text-align: center">正在加载更多…</div>
