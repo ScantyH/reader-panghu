@@ -20,6 +20,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.1.5',
+    date: '2026-11-20',
+    items: ['主栏目在设置、书仓、书签等子页面始终保持高亮', '底部胶囊、左侧导航、移动端底部导航统一按栏目归属高亮'],
+  },
+  {
     version: '1.1.4',
     date: '2026-11-19',
     items: [

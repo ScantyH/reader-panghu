@@ -2035,3 +2035,9 @@
 .warehouse-file-check { width: 16px; height: 16px; accent-color: var(--color-primary); flex: none; }
 .warehouse-checked { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-bg-sunken); color: var(--color-text-secondary); font-size: 11px; flex: none; }
 button.settings-nav-item { border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+
+.side-nav-links a.force-active { background: var(--color-primary-bg, #fdf3e6); color: var(--color-primary); }
+.bottom-nav a.force-active { color: var(--color-primary); background: var(--color-primary-bg); font-weight: 600; }
+.m-tab.force-active { color: #111; }
+.m-tab.force-active .m-tab-icon { transform: translateY(-1px) scale(1.05); }
+.m-tab.force-active .m-tab-label { font-weight: 700; }

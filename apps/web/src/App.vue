@@ -45,6 +45,18 @@ const userInfoOpen = ref(false)
 const sidebarBooks = ref([])
 const showLeftNav = computed(() => desktopNavLayout.value === 'left')
 
+/** 子页面归属哪个主栏目，保证在子页面时主栏目标签始终高亮 */
+const activeNav = computed(() => {
+  const path = route.path || ''
+  if (path.startsWith('/settings') || path.startsWith('/warehouse') || path.startsWith('/bookmarks') || path.startsWith('/cache') || path.startsWith('/replace') || path.startsWith('/webdav') || path.startsWith('/users')) return '/settings'
+  if (path.startsWith('/backup')) return NAV.some((item) => item.to === '/backup') ? '/backup' : '/settings'
+  if (path.startsWith('/book/') || path.startsWith('/recent') || path.startsWith('/bookshelf')) return '/bookshelf'
+  if (path.startsWith('/sources') || path.startsWith('/rss')) return '/sources'
+  if (path.startsWith('/search')) return '/search'
+  if (path.startsWith('/stats')) return '/stats'
+  return ''
+})
+
 async function loadSidebarBooks() {
   try {
     const list = await api.bookshelf()
@@ -157,7 +169,7 @@ onBeforeUnmount(() => {
 
     <aside v-if="showLeftNav" class="side-nav">
       <nav class="side-nav-links">
-        <router-link v-for="item in NAV" :key="item.to" :to="item.to" :title="item.label">
+        <router-link v-for="item in NAV" :key="item.to" :to="item.to" :title="item.label" :class="{ 'force-active': activeNav === item.to }">
           <span class="side-nav-icon">{{ item.icon }}</span>
           <span class="side-nav-label">{{ item.label }}</span>
         </router-link>
@@ -194,7 +206,7 @@ onBeforeUnmount(() => {
     </main>
 
     <nav class="bottom-nav">
-      <router-link v-for="item in NAV" :key="item.to" :to="item.to">
+      <router-link v-for="item in NAV" :key="item.to" :to="item.to" :class="{ 'force-active': activeNav === item.to }">
         <span class="icon">{{ item.icon }}</span>
         <span>{{ item.label }}</span>
       </router-link>
