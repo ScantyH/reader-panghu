@@ -2188,3 +2188,26 @@ body.dp-panel-open { overflow: hidden; }
 .dp-reply-toggle { margin-left: 44px; }
 .dp-reply-list { margin-left: 44px; }
 .dp-reply-toggle button { padding: 6px 12px; background: rgba(127,127,127,.06); }
+
+.dp-panel-brand { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.dp-panel-brand strong { font-size: 18px; letter-spacing: .5px; }
+.dp-brand-sub { padding: 3px 9px; border: 1px solid rgba(127,127,127,.25); border-radius: 7px; font-size: 11px; opacity: .65; }
+.dp-theme-toggle { width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(127,127,127,.1); color: inherit; display: grid; place-items: center; cursor: pointer; }
+.dp-theme-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dp-refresh { right: 0; }
+.dp-sort-row { position: relative; padding: 10px 0 4px; }
+.dp-sort-dd { position: relative; display: inline-block; }
+.dp-sort-trigger { border: 0; background: transparent; color: var(--color-primary); font-size: 13px; font-weight: 600; cursor: pointer; padding: 3px 0; }
+.dp-sort-trigger span { font-size: 10px; margin-left: 3px; }
+.dp-sort-menu { position: absolute; left: 0; top: 100%; z-index: 20; min-width: 150px; padding: 6px; border-radius: 10px; background: var(--color-bg-elevated); border: 1px solid var(--color-border-light); box-shadow: var(--shadow-lg); }
+.dp-sort-menu button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; font-size: 13px; cursor: pointer; }
+.dp-sort-menu button:hover { background: var(--color-bg-hover); }
+.dp-sort-menu button.active { color: var(--color-primary); font-weight: 600; }
+.dp-comment-foot { display: flex; align-items: center; gap: 16px; margin: 8px 0 0 44px; font-size: 12px; opacity: .62; }
+.dp-reply-context { padding: 9px 11px; margin-bottom: 4px; border-left: 3px solid var(--color-primary); border-radius: 8px; background: rgba(127,127,127,.07); }
+.dp-reply-context span { font-size: 11px; color: var(--color-primary); font-weight: 600; }
+.dp-reply-context p { margin: 3px 0; font-size: 12.5px; line-height: 1.6; opacity: .75; }
+.dp-reply-context small { font-size: 11.5px; opacity: .55; }
+
+.rail-icon-svg { display: block; width: 18px; height: 18px; margin: 0 auto; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.reader-shell .rail-btn.round { display: grid; place-items: center; line-height: 1; }

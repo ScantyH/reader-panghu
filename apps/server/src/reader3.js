@@ -476,6 +476,7 @@ async function primeBook(book) {
         content: content.replace(/<img[^>]*>/gi, '').trim(),
         quote: String(item.RefferContent || item.quote || ''),
         agree: Number(item.AgreeAmount || item.agree || 0),
+        disagree: Number(item.OpposeAmount || item.disagree || 0),
         ip: String(item.IpLocation || ''),
         time: Number(item.CreateTime || 0),
         images: commentImages(item),

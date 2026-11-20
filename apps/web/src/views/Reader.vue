@@ -195,6 +195,7 @@ const dpPanelHtml = ref('')
 const dpPanelUrl = ref('')
 const dpPanelTab = ref('all')
 const dpPanelSort = ref('default')
+const dpSortOpen = ref(false)
 const dpPanelQuote = ref('')
 const dpCounts = ref({ all: 0, img: 0, audio: 0 })
 const dpReplies = ref({})
@@ -984,9 +985,23 @@ async function changeDpTab(tab) {
 }
 
 async function setDpSort(sort) {
+  dpSortOpen.value = false
   if (dpPanelSort.value === sort) return
   dpPanelSort.value = sort
   await loadDpComments(0)
+}
+
+const dpSortLabel = computed(
+  () => ({ default: '推荐排序', hot: '按热度', new: '按时间', floor: '按楼层' })[dpPanelSort.value] || '推荐排序',
+)
+const dpDisplayComments = computed(() =>
+  dpPanelSort.value === 'floor'
+    ? [...dpComments.value].sort((a, b) => Number(a.floor || 0) - Number(b.floor || 0))
+    : dpComments.value,
+)
+
+function toggleDpTheme() {
+  prefs.value.appearance = isDark.value ? 'light' : 'dark'
 }
 
 async function refreshDpCounts() {
@@ -1478,17 +1493,27 @@ watch(chapterTitle, () => {
 
     <aside class="rail rail-right">
       <button class="rail-btn round" title="加书签" @click="addBookmark">🔖</button>
-      <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">⌕</button>
+      <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
+      </button>
       <button class="rail-btn round" title="笔记" @click="showNotes = true; loadNotes()">✎</button>
       <button class="rail-btn round" title="段评" @click="openDp">💬</button>
-      <button class="rail-btn round" :title="caching ? '缓存中…' : '缓存 50 章'" @click="cacheChapter">⤓</button>
-      <button class="rail-btn round" title="刷新本章" @click="loadChapter(current)">↻</button>
+      <button class="rail-btn round" :title="caching ? '缓存中…' : '缓存 50 章'" @click="cacheChapter">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11" /><path d="m7.5 10 4.5 4.5 4.5-4.5" /><path d="M4 19h16" /></svg>
+      </button>
+      <button class="rail-btn round" title="刷新本章" @click="loadChapter(current)">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.2" /><path d="M20 4v7h-7" /></svg>
+      </button>
       <button class="rail-btn round" title="简繁" @click="setConvert(prefs.convert === 'tw' ? 'cn' : 'tw')">文</button>
       <button class="rail-btn round" :title="tts.playing ? '停止朗读' : '朗读'" @click="tts.playing ? stopTts() : startTts()">🎧</button>
       <div class="rail-progress">{{ progress }}%</div>
       <div class="rail-page">{{ current + 1 }}/{{ chapters.length }}</div>
-      <button class="rail-btn round" title="上一章" @click="turnPrev">‹</button>
-      <button class="rail-btn round" title="下一章" @click="turnNext">›</button>
+      <button class="rail-btn round" title="上一章" @click="turnPrev">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7" /></svg>
+      </button>
+      <button class="rail-btn round" title="下一章" @click="turnNext">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5 7 7-7 7" /></svg>
+      </button>
     </aside>
 
     <!-- 正文搜索条 -->
@@ -1849,14 +1874,19 @@ watch(chapterTitle, () => {
         <div class="sheet-handle" />
         <div class="dp-panel-top">
           <div class="dp-panel-brand">
-            <span class="dp-brand-mark">◐</span>
-            <div>
-              <strong>段评</strong>
-              <small>段落评论·起点</small>
-            </div>
+            <button class="dp-theme-toggle" :title="isDark ? '切换浅色' : '切换深色'" @click="toggleDpTheme">
+              <svg v-if="!isDark" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 15.2A8.2 8.2 0 0 1 8.8 4a8.4 8.4 0 1 0 11.2 11.2Z" />
+              </svg>
+            </button>
+            <strong>段评</strong>
+            <span class="dp-brand-sub">段落评论·起点</span>
           </div>
           <button class="dp-refresh" title="刷新段评" @click="loadDpComments(0)">↻</button>
-          <button class="ghost dp-close" @click="showDpPanel = false">关闭</button>
         </div>
         <div v-if="dpPanelLoading" class="muted" style="padding: 24px 0">正在加载段评…</div>
         <div v-else-if="dpPanelError && !dpComments.length && !dpPanelHtml" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
@@ -1877,10 +1907,17 @@ watch(chapterTitle, () => {
               </div>
             </div>
             <div class="dp-sort-row">
-              <span>推荐排序</span>
-              <button :class="{ active: dpPanelSort === 'default' }" @click="setDpSort('default')">默认</button>
-              <button :class="{ active: dpPanelSort === 'hot' }" @click="setDpSort('hot')">热门</button>
-              <button :class="{ active: dpPanelSort === 'new' }" @click="setDpSort('new')">最新</button>
+              <div class="dp-sort-dd">
+                <button class="dp-sort-trigger" @click.stop="dpSortOpen = !dpSortOpen">
+                  {{ dpSortLabel }} <span>⌄</span>
+                </button>
+                <div v-if="dpSortOpen" class="dp-sort-menu" @click.stop>
+                  <button :class="{ active: dpPanelSort === 'default' }" @click="setDpSort('default')">推荐排序</button>
+                  <button :class="{ active: dpPanelSort === 'hot' }" @click="setDpSort('hot')">按热度</button>
+                  <button :class="{ active: dpPanelSort === 'new' }" @click="setDpSort('new')">按时间</button>
+                  <button :class="{ active: dpPanelSort === 'floor' }" @click="setDpSort('floor')">按楼层</button>
+                </div>
+              </div>
             </div>
             <div v-if="dpPanelQuote" class="dp-origin-quote">
               <span>引用原文</span>
@@ -1888,7 +1925,7 @@ watch(chapterTitle, () => {
             </div>
             <div class="dp-comment-summary">共 {{ dpPanelTotal }} 条 · 已显示 {{ dpComments.length }} 条</div>
             <div class="dp-comment-list" @scroll.passive="onDpPanelScroll">
-              <div v-for="(comment, index) in dpComments" :key="comment.id || index" class="dp-comment-item">
+              <div v-for="(comment, index) in dpDisplayComments" :key="comment.id || index" class="dp-comment-item">
                 <div class="dp-comment-head">
                   <img
                     v-if="comment.avatar"
@@ -1906,7 +1943,6 @@ watch(chapterTitle, () => {
                     </div>
                     <span>{{ comment.floor ? `第 ${comment.floor} 楼 · ` : '' }}{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
                   </div>
-                  <span class="dp-comment-like">👍 {{ comment.agree }}</span>
                 </div>
                 <div v-if="comment.quote" class="dp-comment-quote">{{ comment.quote }}</div>
                 <p v-if="comment.content" class="dp-comment-content">{{ comment.content }}</p>
@@ -1924,12 +1960,22 @@ watch(chapterTitle, () => {
                   <audio :src="comment.audio" controls preload="none" />
                   <span v-if="comment.audioTime">{{ comment.audioTime }}″</span>
                 </div>
+                <div class="dp-comment-foot">
+                  <span>👍 {{ comment.agree }}</span>
+                  <span>👎 {{ comment.disagree || 0 }}</span>
+                  <span>💬 {{ comment.replyCount || 0 }}</span>
+                </div>
                 <div v-if="comment.replyCount" class="dp-reply-toggle">
                   <button :disabled="dpReplyBusy === comment.id" @click="toggleReplies(comment)">
                     💬 {{ dpReplyBusy === comment.id ? '加载中…' : `${dpReplies[comment.id]?.open ? '收起' : '查看'} ${comment.replyCount} 条回复` }}
                   </button>
                 </div>
                 <div v-if="dpReplies[comment.id]?.open" class="dp-reply-list">
+                  <div class="dp-reply-context">
+                    <span>引用原文</span>
+                    <p>{{ comment.quote || dpPanelQuote }}</p>
+                    <small v-if="comment.content">{{ comment.content }}</small>
+                  </div>
                   <div v-for="reply in dpReplies[comment.id].items" :key="reply.id" class="dp-reply-item">
                     <img v-if="reply.avatar" class="dp-reply-avatar" :src="reply.avatar" alt="" referrerpolicy="no-referrer" loading="lazy" />
                     <span v-else class="dp-reply-avatar placeholder">👤</span>
