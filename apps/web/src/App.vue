@@ -109,11 +109,19 @@ onMounted(() => {
   loadSidebarBooks()
   window.addEventListener('rp-user-updated', loadAuth)
   window.addEventListener('rp-layout-updated', loadSidebarBooks)
+  document.addEventListener('click', closeUserInfo)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('rp-user-updated', loadAuth)
   window.removeEventListener('rp-layout-updated', loadSidebarBooks)
+  document.removeEventListener('click', closeUserInfo)
 })
+
+function closeUserInfo(event) {
+  if (!userInfoOpen.value) return
+  if (event.target?.closest?.('.header-user')) return
+  userInfoOpen.value = false
+}
 </script>
 
 <template>
@@ -145,11 +153,13 @@ onBeforeUnmount(() => {
       <div v-else class="spacer" />
       <span class="badge version-badge" :title="'系统版本 ' + appVersion">{{ appVersion }}</span>
       <div v-if="authUser" class="header-user">
-        <button class="header-avatar" title="用户信息" @click.stop="userInfoOpen = !userInfoOpen">
-          <img v-if="authAvatar" :src="authAvatar" alt="" />
-          <span v-else>👤</span>
+        <button class="header-user-trigger" title="用户信息" @click.stop="userInfoOpen = !userInfoOpen">
+          <span class="header-avatar">
+            <img v-if="authAvatar" :src="authAvatar" alt="" />
+            <span v-else>👤</span>
+          </span>
+          <span class="header-user-name">{{ authUser }}</span>
         </button>
-        <span class="header-user-name">{{ authUser }}</span>
         <div v-if="userInfoOpen" class="user-popover" @click.stop>
           <div class="user-popover-head">
             <button class="header-avatar large" @click="router.push('/settings/account'); userInfoOpen = false">

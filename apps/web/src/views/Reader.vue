@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, withImageToken } from '../api.js'
+import { api, getToken, isNativeApp, withImageToken } from '../api.js'
 
 const props = defineProps({ bookUrl: { type: String, required: true } })
 const router = useRouter()
@@ -11,6 +11,22 @@ const PAPER = {
   white: { name: '白纸', bg: '#ffffff', text: '#242424' },
   green: { name: '浅绿', bg: '#e6f0e2', text: '#2c3a2a' },
   gray: { name: '灰调', bg: '#ececec', text: '#2b2b2b' },
+  blue: { name: '雾蓝', bg: '#e9f1f7', text: '#24323d' },
+  mint: { name: '薄荷', bg: '#e8f4ef', text: '#244038' },
+  rose: { name: '藕粉', bg: '#f7ebee', text: '#3d2b30' },
+  sand: { name: '米沙', bg: '#f2eadc', text: '#3a3026' },
+  paper: {
+    name: '宣纸',
+    bg: '#f6f1e4',
+    text: '#352d23',
+    pattern: 'radial-gradient(circle at 20% 30%, rgba(120,90,50,0.05) 0 1px, transparent 1px)',
+  },
+  bamboo: {
+    name: '竹影',
+    bg: '#eaf1e5',
+    text: '#2b3928',
+    pattern: 'linear-gradient(135deg, rgba(80,120,70,0.06) 25%, transparent 25%, transparent 75%, rgba(80,120,70,0.06) 75%)',
+  },
 }
 const DARK = { name: '夜间', bg: '#121212', text: '#c9c4bb' }
 const APPEARANCE = [
@@ -23,12 +39,20 @@ const FONT_OPTIONS = [
   { value: 'serif', label: '宋体' },
   { value: 'kai', label: '楷体' },
   { value: 'sans', label: '黑体' },
+  { value: 'fangsong', label: '仿宋' },
+  { value: 'noto-serif', label: '思源宋体' },
+  { value: 'lxgw', label: '霞鹜文楷' },
+  { value: 'round', label: '圆体' },
 ]
 const FONT_STACKS = {
   '': '',
   serif: '"Songti SC", "SimSun", "Noto Serif CJK SC", serif',
   kai: '"Kaiti SC", "KaiTi", "STKaiti", serif',
   sans: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
+  fangsong: '"FangSong", "STFangsong", "FangSong_GB2312", serif',
+  'noto-serif': '"Noto Serif CJK SC", "Noto Serif SC", "Source Han Serif SC", serif',
+  lxgw: '"LXGW WenKai", "LXGW WenKai Screen", "Kaiti SC", serif',
+  round: '"YouYuan", "Yuanti SC", "Hiragino Sans GB", sans-serif',
 }
 const ALIGNS = [
   { value: 'justify', label: '两端对齐' },
@@ -63,6 +87,7 @@ const DEFAULT_PREFS = {
   pageMode: 'scroll',
   animation: 'slide',
   showChapterTitle: true,
+  separateAreas: false,
   convert: '',
   ttsRate: 1,
   ttsPitch: 1,
@@ -109,9 +134,21 @@ watch(
     }
     // 设置面板打开期间只预览，写入由 ✓ 触发；面板内快捷切换不受影响
     if (!showSettings.value) localStorage.setItem('readerPrefs', JSON.stringify(value))
+    nextTick(updateRangeFills)
   },
   { deep: true },
 )
+
+/** 原生 range 的已选段填充：保证拉到 100% 时轨道真正铺满 */
+function updateRangeFills() {
+  document.querySelectorAll('.panel-row input[type="range"]').forEach((input) => {
+    const min = Number(input.min || 0)
+    const max = Number(input.max || 100)
+    const value = Number(input.value || 0)
+    const percent = max > min ? ((value - min) / (max - min)) * 100 : 0
+    input.style.setProperty('--range-fill', `${Math.max(0, Math.min(100, percent))}%`)
+  })
+}
 
 const book = ref(null)
 const chapters = ref([])
@@ -126,6 +163,11 @@ const showSearch = ref(false)
 const showNotes = ref(false)
 const showBookmarks = ref(false)
 const showSource = ref(false)
+const showReaderSource = ref(false)
+const readerSourceLines = ref([])
+const readerSourceCurrent = ref('')
+const readerSourceLoading = ref(false)
+const readerSourceBusy = ref(false)
 const showDp = ref(false)
 const showDpPanel = ref(false)
 
@@ -150,6 +192,7 @@ const dpPanelTitle = ref('')
 const dpComments = ref([])
 const dpPanelTotal = ref(0)
 const dpPanelHtml = ref('')
+const dpPanelUrl = ref('')
 const dpPanelHasMore = ref(false)
 const dpPanelLoadingMore = ref(false)
 const dpPanelMarker = ref(null)
@@ -234,6 +277,9 @@ const shellStyle = computed(() => {
   if (!isDark.value && prefs.value.paper === 'parchment') {
     return { ...base, backgroundImage: PARCHMENT_TEXTURE }
   }
+  if (!isDark.value && current.pattern) {
+    return { ...base, backgroundImage: current.pattern, backgroundSize: '10px 10px' }
+  }
   return base
 })
 const pageStyle = computed(() => ({
@@ -291,10 +337,225 @@ function updateScroll() {
     viewport: window.innerHeight,
     pages: Math.max(1, Math.ceil(element.scrollHeight / window.innerHeight)),
   }
+  lastScrollAt = Date.now()
+  scheduleProgressSave()
 }
 
-function onTouchStart(event) {
-  const touch = event.changedTouches?.[0]
+/* ---------------- 阅读进度：章节内字符位置 + 多端双向同步 ----------------
+ * 存的是「章节纯文本内的字符偏移」，与排版无关：手机分页还是电脑滚动，
+ * 换算出来的位置都指向同一句话。任何一端写入，另一端通过 SSE 立刻跟上。
+ */
+const syncDevice = isNativeApp() ? 'app:iphone' : 'web'
+/** 每个标签页一个随机 id：SSE 会把写入也广播回来，靠它忽略自己的回声。 */
+const syncClientId = (() => {
+  try {
+    let id = sessionStorage.getItem('rp_client_id')
+    if (!id) {
+      id = 'c-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+      sessionStorage.setItem('rp_client_id', id)
+    }
+    return id
+  } catch {
+    return 'c-' + Date.now().toString(36)
+  }
+})()
+const PARAGRAPH_ANCHOR = 64
+const pendingRemote = ref(null)
+
+let pendingRestore = null
+let progressTimer = 0
+let remoteTimer = 0
+let lastScrollAt = 0
+let suppressSyncUntil = 0
+let lastKnownUpdatedAt = 0
+let progressSource = null
+let progressPollTimer = 0
+
+function paragraphNodes() {
+  return readingEl.value ? Array.from(readingEl.value.querySelectorAll('p[data-para]')) : []
+}
+
+/** 当前阅读位置 → 章节内字符偏移（0 起，与 Legado 的 durChapterPos 同义）。 */
+function currentCharOffset() {
+  const nodes = paragraphNodes()
+  if (!nodes.length) return 0
+  let cumulative = 0
+  let offset = 0
+  for (let index = 0; index < nodes.length; index += 1) {
+    const length = (paragraphs.value[index] || '').length
+    const rect = nodes[index].getBoundingClientRect()
+    if (rect.bottom > PARAGRAPH_ANCHOR) {
+      const fraction = rect.height > 0 ? Math.min(1, Math.max(0, (PARAGRAPH_ANCHOR - rect.top) / rect.height)) : 0
+      offset = cumulative + Math.round(fraction * length)
+      break
+    }
+    cumulative += length
+    offset = cumulative
+  }
+  return Math.max(0, offset)
+}
+
+/** 字符偏移 → 滚到对应段落的相对位置（打开书时「接着看」）。 */
+function scrollToCharOffset(offset) {
+  const nodes = paragraphNodes()
+  if (!nodes.length) return
+  let cumulative = 0
+  for (let index = 0; index < nodes.length; index += 1) {
+    const length = (paragraphs.value[index] || '').length
+    if (cumulative + length >= offset) {
+      const fraction = length > 0 ? Math.min(1, Math.max(0, (offset - cumulative) / length)) : 0
+      const rect = nodes[index].getBoundingClientRect()
+      const top = rect.top + window.scrollY + fraction * rect.height - PARAGRAPH_ANCHOR
+      window.scrollTo({ top: Math.max(0, top) })
+      updateScroll()
+      return
+    }
+    cumulative += length
+  }
+  window.scrollTo({ top: document.body.scrollHeight })
+  updateScroll()
+}
+
+function saveProgressNow({ force = false } = {}) {
+  if (!book.value || !chapters.value.length) return
+  if (!force && Date.now() < suppressSyncUntil) return
+  const position = currentCharOffset()
+  api
+    .saveProgress(book.value.bookUrl, current.value, position, chapterTitle.value, {
+      device: syncDevice,
+      clientId: syncClientId,
+      clientUpdatedAt: Date.now(),
+    })
+    .then((result) => {
+      if (!result) return
+      if (result.updatedAt) lastKnownUpdatedAt = Number(result.updatedAt)
+      // 服务端认为我们更旧：直接采纳服务端的位置，避免两台设备各写各的。
+      if (result.accepted === false) applyRemoteProgress(result, { quiet: true })
+    })
+    .catch(() => {})
+}
+
+function scheduleProgressSave() {
+  clearTimeout(progressTimer)
+  progressTimer = setTimeout(() => saveProgressNow(), 800)
+}
+
+function applyRemoteProgress(progress, { quiet = false } = {}) {
+  if (!progress || !book.value) return
+  if (String(progress.bookUrl || '') !== String(book.value.bookUrl)) return
+  const targetIndex = Math.max(0, Number(progress.index || 0))
+  const targetPosition = Math.max(0, Number(progress.position || 0))
+  suppressSyncUntil = Date.now() + 2500
+  lastKnownUpdatedAt = Number(progress.updatedAt || Date.now())
+  const label = String(progress.device || '').startsWith('app') ? '手机' : '网页'
+  if (targetIndex !== current.value) {
+    pendingRestore = { index: targetIndex, position: targetPosition }
+    loadChapter(targetIndex, { fromRemote: true })
+    if (!quiet) window.__toast?.(`已同步到${label}端：第 ${targetIndex + 1} 章`)
+  } else {
+    scrollToCharOffset(targetPosition)
+    if (!quiet) window.__toast?.(`已同步到${label}端阅读位置`)
+  }
+}
+
+function handleRemoteProgress(progress) {
+  if (!progress || !book.value) return
+  if (String(progress.bookUrl || '') !== String(book.value.bookUrl)) return
+  if (progress.clientId && String(progress.clientId) === syncClientId) return
+  if (Number(progress.updatedAt || 0) <= lastKnownUpdatedAt) return
+  if (Date.now() - lastScrollAt > 3000) {
+    applyRemoteProgress(progress)
+    return
+  }
+  // 正在滚动：先记下来，停下来几秒后再跟过去，避免打断阅读。
+  pendingRemote.value = progress
+  window.__toast?.('另一端更新了阅读进度，停下来后自动同步')
+  clearTimeout(remoteTimer)
+  remoteTimer = setTimeout(() => {
+    if (pendingRemote.value && Date.now() - lastScrollAt > 2500) {
+      const latest = pendingRemote.value
+      pendingRemote.value = null
+      applyRemoteProgress(latest)
+    }
+  }, 4000)
+}
+
+function subscribeProgress() {
+  if (progressSource || typeof EventSource === 'undefined') return
+  try {
+    const token = getToken()
+    const url = '/reader3/progressSSE' + (token ? `?token=${encodeURIComponent(token)}` : '')
+    progressSource = new EventSource(url)
+    progressSource.onmessage = (event) => {
+      try {
+        handleRemoteProgress(JSON.parse(event.data))
+      } catch {
+        /* 忽略坏帧 */
+      }
+    }
+  } catch {
+    /* 不支持 SSE 时靠轮询 */
+  }
+}
+
+function unsubscribeProgress() {
+  progressSource?.close()
+  progressSource = null
+  clearInterval(progressPollTimer)
+}
+
+/** SSE 被代理掐断时的兜底：每 20 秒查一次当前书的进度。 */
+async function pollProgress() {
+  if (!book.value || document.visibilityState !== 'visible') return
+  try {
+    const progress = await api.getBookProgress(book.value.bookUrl)
+    if (progress) handleRemoteProgress(progress)
+  } catch {
+    /* 轮询失败忽略 */
+  }
+}
+
+
+/* ---------------- 手机阅读器：点按分区 + 浮动控制条 ---------------- */
+const isMobile = ref(false)
+const mobileChrome = ref(true)
+let chromeTimer = 0
+
+function updateMobileLayout() {
+  isMobile.value = window.innerWidth <= 760
+}
+
+function revealChrome({ autoHide = true } = {}) {
+  mobileChrome.value = true
+  clearTimeout(chromeTimer)
+  if (autoHide) chromeTimer = setTimeout(() => (mobileChrome.value = false), 4000)
+}
+
+function toggleChrome() {
+  if (mobileChrome.value) {
+    mobileChrome.value = false
+    clearTimeout(chromeTimer)
+  } else {
+    revealChrome()
+  }
+}
+
+/** 左 28% 上一页/章，右 28% 下一页/章，中间切换控制条 */
+function onReaderTap(event) {
+  if (!isMobile.value) return
+  if (event.target.closest('button, a, input, select, textarea, .reader-panel')) return
+  const width = window.innerWidth
+  if (event.clientX < width * 0.28) turnPrev()
+  else if (event.clientX > width * 0.72) turnNext()
+  else toggleChrome()
+}
+
+function openCatalogPanel() {
+  showCatalog.value = true
+  mobileChrome.value = false
+}
+
+function onTouchStart(event) {  const touch = event.changedTouches?.[0]
   if (!touch) return
   touchStart = { x: touch.clientX, y: touch.clientY, at: Date.now() }
 }
@@ -345,6 +606,7 @@ function savePrefs() {
 function openSettings() {
   settingsSnapshot.value = JSON.stringify(prefs.value)
   showSettings.value = true
+  nextTick(updateRangeFills)
 }
 
 function saveSettings() {
@@ -410,7 +672,9 @@ async function loadBook() {
       bookSourceUrl: book.value.origin,
     })
     current.value = Number(book.value.durChapterIndex || 0)
-    await loadChapter(current.value)
+    // 打开书：先按服务端进度定位，再把「当前章 + 章节内位置」交给 loadChapter 还原
+    pendingRestore = { index: current.value, position: Number(book.value.durChapterPos || 0) }
+    await loadChapter(current.value, { fromRemote: true })
     loadNotes()
     loadBookmarks()
   } catch (error) {
@@ -418,26 +682,35 @@ async function loadBook() {
   }
 }
 
-async function loadChapter(index) {
+async function loadChapter(index, { fromRemote = false } = {}) {
   if (!chapters.value.length) return
   stopTts()
   const target = Math.max(0, Math.min(index, chapters.value.length - 1))
   loading.value = true
   turnDirection.value = target > current.value ? 'next' : target < current.value ? 'prev' : ''
+  if (fromRemote) suppressSyncUntil = Date.now() + 2000
   try {
-    content.value = await api.content({
+    const text = await api.content({
       bookUrl: book.value.bookUrl,
       index: target,
       convert: prefs.value.convert || undefined,
     })
+    content.value = text
     current.value = target
     searchHits.value = []
     loadParagraphComments()
     warmCache(target)
-    api.saveProgress(book.value.bookUrl, target, 0, chapters.value[target]?.title || '').catch(() => {})
     await nextTick()
-    window.scrollTo({ top: 0 })
-    updateScroll()
+    const restore = pendingRestore && Number(pendingRestore.index) === target ? pendingRestore : null
+    pendingRestore = null
+    if (restore && Number(restore.position) > 0) {
+      scrollToCharOffset(Number(restore.position))
+    } else {
+      window.scrollTo({ top: 0 })
+      updateScroll()
+    }
+    // 用户自己翻章：立刻把新章节写进服务端，另一端马上能看到。
+    if (!fromRemote) saveProgressNow({ force: true })
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
@@ -572,6 +845,44 @@ async function removeNote(note) {
 }
 
 /* ---------------- 换源 ---------------- */
+async function openReaderSource() {
+  if (!book.value) return
+  showReaderSource.value = true
+  readerSourceLoading.value = true
+  readerSourceLines.value = []
+  readerSourceCurrent.value = ''
+  try {
+    const result = await api.sourceLines(book.value.origin)
+    readerSourceLines.value = result?.lines || []
+    readerSourceCurrent.value = result?.current || ''
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    readerSourceLoading.value = false
+  }
+}
+
+async function switchReaderLine(line) {
+  if (!book.value || readerSourceBusy.value) return
+  readerSourceBusy.value = true
+  try {
+    await api.setSourceLine(book.value.origin, line)
+    readerSourceCurrent.value = line.url
+    window.__toast?.(`已切换到「${line.name}」`)
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    readerSourceBusy.value = false
+  }
+}
+
+function readerLineClass(line) {
+  if (!line.ok || line.latency < 0) return 'bad'
+  if (line.latency < 300) return 'good'
+  if (line.latency < 900) return 'mid'
+  return 'slow'
+}
+
 async function findSources() {
   if (isLocalBook.value) {
     window.__toast?.('本地导入的书不需要换源')
@@ -662,6 +973,7 @@ async function loadDpComments(offset) {
     dpPanelError.value = ''
     dpComments.value = []
     dpPanelHtml.value = ''
+    dpPanelUrl.value = ''
     dpPanelTotal.value = 0
     dpPanelHasMore.value = false
   } else {
@@ -677,11 +989,13 @@ async function loadDpComments(offset) {
     })
     if (result.html) {
       dpPanelHtml.value = result.html
+      dpPanelUrl.value = result.panelUrl || ''
       dpPanelHasMore.value = false
       return
     }
     dpComments.value = offset === 0 ? result.comments || [] : [...dpComments.value, ...(result.comments || [])]
     dpPanelTotal.value = Number(result.total || dpComments.value.length)
+    dpPanelUrl.value = result.panelUrl || ''
     dpPanelHasMore.value = Boolean(result.hasMore)
     if (!dpComments.value.length) dpPanelError.value = '没有取到段评内容'
   } catch (error) {
@@ -874,7 +1188,12 @@ function selectPaper(key) {
 }
 
 function onVisibility() {
-  if (document.visibilityState === 'visible') updateScroll()
+  if (document.visibilityState === 'visible') {
+    updateScroll()
+    pollProgress()
+  } else {
+    saveProgressNow({ force: true })
+  }
 }
 
 onMounted(() => {
@@ -910,11 +1229,25 @@ onMounted(() => {
 
   updateScroll()
   loadBook()
+  updateMobileLayout()
+  window.addEventListener('resize', updateMobileLayout)
+  revealChrome()
+  subscribeProgress()
+  progressPollTimer = window.setInterval(pollProgress, 20000)
+  // App 切后台前原生会调这个函数，保证最后一段阅读位置不丢
+  window.__panghuFlushProgress = () => saveProgressNow({ force: true })
 })
 
 onBeforeUnmount(() => {
   stopTts()
   flushReading()
+  saveProgressNow({ force: true })
+  unsubscribeProgress()
+  clearTimeout(progressTimer)
+  clearTimeout(remoteTimer)
+  clearTimeout(chromeTimer)
+  window.removeEventListener('resize', updateMobileLayout)
+  delete window.__panghuFlushProgress
   clearInterval(clockTimer)
   clearInterval(readTimer)
   window.removeEventListener('scroll', updateScroll)
@@ -938,12 +1271,34 @@ watch(chapterTitle, () => {
 </script>
 
 <template>
-  <div class="reader-shell" :style="shellStyle">
+  <div class="reader-shell" :class="{ 'separate-areas': prefs.separateAreas }" :style="shellStyle">
     <div class="reader-dim" :style="{ opacity: dimOpacity }" />
+
+    <!-- 手机：浮动顶部栏（返回/书名/目录） -->
+    <div v-if="isMobile" class="m-topbar" :class="{ shown: mobileChrome }">
+      <button class="m-icon" title="返回书架" @click="router.push('/bookshelf')">‹</button>
+      <div class="m-title">
+        <strong>{{ book?.name || '胖虎阅读' }}</strong>
+        <span>{{ chapterTitle }}</span>
+      </div>
+      <button class="m-icon" title="目录" @click="openCatalogPanel">☰</button>
+    </div>
+
+    <!-- 手机：浮动底部控制条（目录/上一章/进度/下一章/设置） -->
+    <div v-if="isMobile" class="m-bottombar" :class="{ shown: mobileChrome }">
+      <button title="目录" @click="openCatalogPanel"><i>☰</i><span>目录</span></button>
+      <button title="上一章" @click="turnPrev"><i>‹</i><span>上一章</span></button>
+      <button class="m-progress" title="目录" @click="openCatalogPanel">
+        <strong>{{ Math.round(progress) }}%</strong>
+        <span>{{ current + 1 }}/{{ chapters.length }}</span>
+      </button>
+      <button title="下一章" @click="turnNext"><i>›</i><span>下一章</span></button>
+      <button title="设置" @click="openSettings"><i>⚙</i><span>设置</span></button>
+    </div>
 
     <aside class="rail rail-left">
       <button class="rail-btn" title="返回书架" @click="router.push('/bookshelf')"><span>⌂</span><i>书架</i></button>
-      <button class="rail-btn" title="书源" @click="router.push('/sources')"><span>⌘</span><i>书源</i></button>
+      <button class="rail-btn" title="书源" @click="openReaderSource"><span>⌘</span><i>书源</i></button>
       <button class="rail-btn" title="目录" @click="showCatalog = true"><span>☰</span><i>目录</i></button>
       <button class="rail-btn" title="设置" @click="openSettings"><span>⚙</span><i>设置</i></button>
       <button class="rail-btn" title="顶部" @click="toTop"><span>︿</span><i>顶部</i></button>
@@ -957,6 +1312,7 @@ watch(chapterTitle, () => {
       :style="pageStyle"
       @touchstart.passive="onTouchStart"
       @touchend.passive="onTouchEnd"
+      @click="onReaderTap"
     >
       <h1 v-if="prefs.showChapterTitle" class="chapter-title" :style="{ fontSize: prefs.fontSize * 1.28 + 'px' }">
         {{ chapterTitle }}
@@ -994,7 +1350,6 @@ watch(chapterTitle, () => {
     <aside class="rail rail-right">
       <button class="rail-btn round" title="加书签" @click="addBookmark">🔖</button>
       <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">⌕</button>
-      <button v-if="!isLocalBook" class="rail-btn round" title="换源" @click="findSources">⇄</button>
       <button class="rail-btn round" title="笔记" @click="showNotes = true; loadNotes()">✎</button>
       <button class="rail-btn round" title="段评" @click="openDp">💬</button>
       <button class="rail-btn round" :title="caching ? '缓存中…' : '缓存 50 章'" @click="cacheChapter">⤓</button>
@@ -1131,6 +1486,7 @@ watch(chapterTitle, () => {
             </div>
           </div>
           <label class="panel-row"><span>显示章节标题</span><input v-model="prefs.showChapterTitle" type="checkbox" /></label>
+          <label class="panel-row"><span>区分正文/侧栏</span><input v-model="prefs.separateAreas" type="checkbox" /></label>
         </section>
 
         <section class="panel-section">
@@ -1273,6 +1629,45 @@ watch(chapterTitle, () => {
       </div>
     </div>
 
+    <!-- 书源 / 线路 -->
+    <div v-if="showReaderSource" class="sheet-backdrop" @click.self="showReaderSource = false">
+      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
+        <div class="sheet-handle" />
+        <div class="row" style="align-items: center">
+          <h2 style="margin: 0">书源 · {{ book?.name }}</h2>
+          <div class="spacer" />
+          <button class="ghost" @click="showReaderSource = false">关闭</button>
+        </div>
+        <div class="reader-source-current">
+          <span>当前书源</span>
+          <strong>{{ book?.originName || '书源' }}</strong>
+          <small>{{ book?.origin }}</small>
+        </div>
+        <div v-if="readerSourceLoading" class="muted" style="padding: 12px 0">正在测速…</div>
+        <div v-else-if="!readerSourceLines.length" class="muted" style="padding: 12px 0">该书源没有可切换线路。</div>
+        <div v-else class="reader-line-list">
+          <button
+            v-for="line in readerSourceLines"
+            :key="line.url"
+            class="reader-line-item"
+            :class="{ active: line.url === readerSourceCurrent }"
+            :disabled="readerSourceBusy"
+            @click="switchReaderLine(line)"
+          >
+            <i class="line-dot" :class="readerLineClass(line)" />
+            <span>{{ line.name }}</span>
+            <b :class="readerLineClass(line)">{{ line.ok && line.latency >= 0 ? line.latency + 'ms' : '超时' }}</b>
+            <em v-if="line.url === readerSourceCurrent">当前</em>
+          </button>
+        </div>
+        <div class="row" style="justify-content: flex-end; margin-top: 14px; flex-wrap: wrap">
+          <button v-if="!isLocalBook" class="ghost" @click="showReaderSource = false; findSources()">换源</button>
+          <button class="ghost" @click="showReaderSource = false; router.push('/sources')">书源管理</button>
+          <button class="primary" @click="showReaderSource = false">完成</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 换源 -->
     <div v-if="showSource" class="sheet-backdrop" @click.self="showSource = false">
       <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
@@ -1332,10 +1727,17 @@ watch(chapterTitle, () => {
         <div v-else-if="dpPanelError && !dpComments.length && !dpPanelHtml" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
         <template v-else>
           <iframe
-            v-if="dpPanelHtml"
+            v-if="dpPanelUrl"
+            class="dp-panel-iframe"
+            :src="dpPanelUrl"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            title="段评面板"
+          />
+          <iframe
+            v-else-if="dpPanelHtml"
             class="dp-panel-iframe"
             :srcdoc="dpPanelHtml"
-            sandbox="allow-scripts allow-forms allow-popups"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             title="段评面板"
           />
           <template v-else>
@@ -2295,6 +2697,128 @@ watch(chapterTitle, () => {
 
   .reader-panel .panel-body {
     padding-bottom: 60px;
+  }
+}
+
+/* ───────── 手机阅读器：浮动控制条（点中间唤出，4 秒后自动收起） ───────── */
+.m-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(env(safe-area-inset-top, 0px) + 6px) 12px 8px;
+  background: color-mix(in srgb, var(--reader-bg, #f3e9d2) 90%, transparent);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.14);
+  transform: translateY(-105%);
+  transition: transform 0.22s ease;
+}
+
+.m-topbar.shown {
+  transform: translateY(0);
+}
+
+.m-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.m-title strong,
+.m-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-title strong {
+  font-size: 14px;
+}
+
+.m-title span {
+  font-size: 11.5px;
+  opacity: 0.62;
+}
+
+.m-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.m-bottombar {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  z-index: 40;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--reader-bg, #f3e9d2) 94%, transparent);
+  box-shadow: 0 10px 30px rgba(60, 40, 20, 0.22);
+  backdrop-filter: blur(16px);
+  opacity: 0;
+  transform: translateY(140%);
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.m-bottombar.shown {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.m-bottombar button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 10.5px;
+  opacity: 0.92;
+}
+
+.m-bottombar button i {
+  font-size: 17px;
+  font-style: normal;
+  line-height: 1;
+}
+
+.m-bottombar .m-progress strong {
+  font-size: 14px;
+}
+
+.m-bottombar .m-progress span {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+@media (max-width: 760px) {
+  .rail {
+    display: none !important;
+  }
+
+  .reader-main {
+    padding-top: 64px !important;
+    padding-bottom: 118px !important;
   }
 }
 </style>

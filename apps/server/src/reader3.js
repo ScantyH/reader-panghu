@@ -503,6 +503,22 @@ async function primeBook(book) {
       } catch {
         /* ignore */
       }
+      const source = store.getSource(origin)
+      const lineUrl = String(source?._line?.url || '').trim()
+      let panelUrl = ''
+      try {
+        const pageUrl = new URL(markerUrl)
+        if (lineUrl) {
+          const line = new URL(lineUrl)
+          pageUrl.protocol = line.protocol
+          pageUrl.host = line.host
+        }
+        const key = String(source?._runtime?.key || process.env.SOURCE_KEY || '')
+        if (key) pageUrl.searchParams.set('k', key)
+        panelUrl = pageUrl.toString()
+      } catch {
+        panelUrl = ''
+      }
       const apiUrl = new URL(markerUrl)
       apiUrl.pathname = apiUrl.pathname.replace(/\/qddp\/?$/, '/qddp/api')
       const offset = Math.max(0, Number(req.body?.offset) || 0)
@@ -574,11 +590,11 @@ async function primeBook(book) {
               const raw = boot?.page?.Data?.DataList || boot?.page?.data || []
               const total = Number(boot?.counts?.all || boot?.page?.total || raw.length || 0)
               const comments = raw.slice(0, limit).map(mapComment)
-              if (comments.length) return ok({ comments, total, offset: 0, limit, hasMore: false })
+              if (comments.length) return ok({ comments, total, offset: 0, limit, hasMore: false, panelUrl })
             } catch {
               /* 解析失败再退回 HTML */
             }
-            return ok({ html: panelHtml.slice(0, 1024 * 1024), comments: [], total: 0, offset: 0, limit, hasMore: false })
+            return ok({ html: panelHtml.slice(0, 1024 * 1024), comments: [], total: 0, offset: 0, limit, hasMore: false, panelUrl })
           }
         } catch {
           /* ignore */
@@ -589,7 +605,7 @@ async function primeBook(book) {
       const list = data.DataList || data.data || data.list || []
       const total = Number(data.TotalCount || data.total || list.length)
       const comments = list.slice(0, limit).map(mapComment)
-      return ok({ comments, total, offset, limit, hasMore: offset + comments.length < total })
+      return ok({ comments, total, offset, limit, hasMore: offset + comments.length < total, panelUrl })
     } catch (error) {
       return fail(`段评接口请求失败：${error.message}${error.cause?.code ? `（${error.cause.code}）` : ''}${markerHost ? ` ${markerHost}` : ''}`)
     }
