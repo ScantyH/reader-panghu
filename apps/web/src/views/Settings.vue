@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.3.3',
+    date: '2026-11-20',
+    items: ['羊皮纸背景替换为 hectorqin/reader 项目内置高清羊皮纸原图'],
+  },
+  {
     version: '1.3.2',
     date: '2026-11-20',
     items: ['段评直接以完整大窗打开，加载完成前隐藏 iframe，消除白屏和黑屏闪烁'],
