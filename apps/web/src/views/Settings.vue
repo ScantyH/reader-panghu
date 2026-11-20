@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.2.1',
+    date: '2026-11-20',
+    items: ['四个角标统一为 20px，右下角更多按钮不再缩放'],
+  },
+  {
     version: '1.2.0',
     date: '2026-11-20',
     items: [

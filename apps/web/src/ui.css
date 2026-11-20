@@ -2133,3 +2133,5 @@ button.settings-nav-item { border: 0; background: transparent; font: inherit; te
 .corner-badge { height: 20px; padding: 0 6px; font-size: 10.5px; line-height: 20px; }
 .corner-more { width: 20px !important; height: 20px !important; min-width: 20px !important; }
 .corner-more svg { width: 12px; height: 12px; }
+
+.corner-more { transform: none !important; opacity: 1 !important; }
