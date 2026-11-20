@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
 
 
 
-    <main class="app-main" :class="{ 'nav-constrained': showLeftNav && route.name !== 'bookshelf' }">
+    <main class="app-main" :class="{ 'nav-constrained': showLeftNav && route.name !== 'bookshelf', 'stats-wide': route.name === 'stats' }">
       <div v-if="parent" class="page-back">
         <button class="page-back-btn" :title="`返回 ${parent.label}`" @click="goParent">
           <span aria-hidden="true">←</span>

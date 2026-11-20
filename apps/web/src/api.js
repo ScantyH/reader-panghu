@@ -134,6 +134,9 @@ export const api = {
   sources: () => request('/getBookSources'),
   sourceBundles: () => request('/getSourceBundles'),
   sourceList: () => request('/getBookSourceList'),
+  sourceLines: (bookSourceUrl) => request('/getSourceLines?bookSourceUrl=' + encodeURIComponent(bookSourceUrl)),
+  setSourceLine: (bookSourceUrl, line) =>
+    request('/setSourceLine', { method: 'POST', body: { bookSourceUrl, name: line.name, url: line.url } }),
   sourceBundleLimit: () => request('/getSourceBundleLimit'),
   checkSourceKeys: () => request('/checkSourceKeys', { method: 'POST', body: {} }),
   importSources: (sources, name) => request('/importBookSources', { method: 'POST', body: { sources, name } }),

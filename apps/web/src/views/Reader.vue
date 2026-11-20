@@ -1342,13 +1342,38 @@ watch(chapterTitle, () => {
             <div class="dp-comment-summary">共 {{ dpPanelTotal }} 条 · 已显示 {{ dpComments.length }} 条</div>
             <div class="dp-comment-list" @scroll.passive="onDpPanelScroll">
               <div v-for="(comment, index) in dpComments" :key="comment.id || index" class="dp-comment-item">
-                <div class="dp-comment-meta">
-                  <strong>{{ comment.user }}</strong>
-                  <span>{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
+                <div class="dp-comment-head">
+                  <img
+                    v-if="comment.avatar"
+                    class="dp-comment-avatar"
+                    :src="comment.avatar"
+                    alt=""
+                    referrerpolicy="no-referrer"
+                    loading="lazy"
+                  />
+                  <span v-else class="dp-comment-avatar placeholder">👤</span>
+                  <div class="dp-comment-meta">
+                    <strong>{{ comment.user }}</strong>
+                    <span>{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
+                  </div>
+                  <span class="dp-comment-like">👍 {{ comment.agree }}</span>
                 </div>
                 <div v-if="comment.quote" class="dp-comment-quote">{{ comment.quote }}</div>
                 <p class="dp-comment-content">{{ comment.content }}</p>
-                <div class="dp-comment-like">👍 {{ comment.agree }}</div>
+                <div v-if="comment.images?.length" class="dp-comment-images">
+                  <img
+                    v-for="(image, imageIndex) in comment.images"
+                    :key="imageIndex"
+                    :src="image"
+                    alt="段评图片"
+                    referrerpolicy="no-referrer"
+                    loading="lazy"
+                  />
+                </div>
+                <div v-if="comment.audio" class="dp-comment-audio-row">
+                  <audio :src="comment.audio" controls preload="none" />
+                  <span v-if="comment.audioTime">{{ comment.audioTime }}″</span>
+                </div>
               </div>
               <div v-if="dpPanelLoadingMore" class="muted" style="padding: 10px 0; text-align: center">正在加载更多…</div>
               <div v-else-if="!dpPanelHasMore && dpComments.length" class="muted" style="padding: 10px 0; text-align: center">没有更多了</div>
@@ -1687,12 +1712,36 @@ watch(chapterTitle, () => {
   border: 1px solid rgba(127, 127, 127, 0.14);
 }
 
+.dp-comment-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.dp-comment-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+  background: rgba(127, 127, 127, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
 .dp-comment-meta {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
-  margin-bottom: 4px;
+}
+
+.dp-comment-meta strong {
+  font-size: 13px;
 }
 
 .dp-comment-meta span {
@@ -1704,20 +1753,55 @@ watch(chapterTitle, () => {
   opacity: 0.6;
   border-left: 2px solid rgba(120, 90, 50, 0.3);
   padding-left: 8px;
-  margin: 4px 0;
+  margin: 6px 0 4px 38px;
 }
 
 .dp-comment-content {
-  margin: 4px 0;
+  margin: 5px 0 4px 38px;
   font-size: 14px;
   line-height: 1.7;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .dp-comment-like {
   font-size: 11px;
   opacity: 0.55;
-  text-align: right;
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.dp-comment-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 6px;
+  margin: 8px 0 4px 38px;
+}
+
+.dp-comment-images img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.dp-comment-audio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 2px 38px;
+}
+
+.dp-comment-audio-row audio {
+  width: min(300px, 100%);
+  height: 32px;
+}
+
+.dp-comment-audio-row span {
+  font-size: 11px;
+  opacity: 0.55;
 }
 
 .chapter-end-btn {

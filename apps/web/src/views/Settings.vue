@@ -20,6 +20,15 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.1.7',
+    date: '2026-11-20',
+    items: [
+      '胖虎书源支持线路切换与延迟测速',
+      '段评支持头像、配图、语音与更清晰的元信息布局',
+      '统计页饼图在宽屏保持一排显示，更新日志最多保留近 10 条',
+    ],
+  },
+  {
     version: '1.1.6',
     date: '2026-11-20',
     items: ['书仓支持批量导入本地书籍，一次最多 100 本', '批量导入可选择书仓根目录或已有分类文件夹'],
@@ -89,6 +98,9 @@ const CHANGELOG = [
     items: ['布局选择卡片改紧凑', '左侧页面边距与封面尺寸修正', '去掉侧栏重复品牌'],
   },
 ]
+
+const CHANGELOG_MAX = 10
+const visibleChangelog = computed(() => CHANGELOG.slice(0, CHANGELOG_MAX))
 
 const section = computed(() => {
   const wanted = String(route.params.section || '')
@@ -817,7 +829,7 @@ onMounted(load)
           </div>
           <div class="settings-card">
             <div class="settings-card-title">更新日志</div>
-            <div v-for="release in CHANGELOG" :key="release.version" class="changelog-item">
+            <div v-for="release in visibleChangelog" :key="release.version" class="changelog-item">
               <div class="changelog-head">
                 <strong>v{{ release.version }}</strong>
                 <span>{{ release.date }}</span>

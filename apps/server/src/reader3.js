@@ -18,6 +18,7 @@ import { createRuleRuntime } from './rule-runtime.js'
 import { convertText } from './text-convert.js'
 import { extractContentImages, sourceTextToPlain } from './source-text.js'
 import { extractCards, extractDpMarkers } from './comment-markers.js'
+import { applySourceLine } from './source-tools.js'
 import { cleanIntro, cleanText } from './text.js'
 import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
 
@@ -125,7 +126,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
         userAgent: runtimeConfig.userAgent,
       })
     }
-    return createRuntime(source, {
+    return createRuntime(applySourceLine(source), {
       name: source.bookSourceName,
       key: runtimeConfig.key || globalKey,
       rewrites: [...globalRewrites, ...(runtimeConfig.rewrites || [])],
@@ -429,6 +430,59 @@ async function primeBook(book) {
     if (!book) return fail('书籍不存在')
     const origin = String(req.body?.bookSourceUrl || book.origin || '')
     const chapters = store.getChapters(book.bookUrl, book.origin)
+
+    const commentUrl = (...values) => {
+      for (const value of values) {
+        const candidate = typeof value === 'string' ? value : value?.Url || value?.url || value?.Src || value?.src
+        if (typeof candidate === 'string' && /^https?:\/\//i.test(candidate)) return candidate
+      }
+      return ''
+    }
+    const commentImages = (item) => {
+      const out = []
+      const add = (value) => {
+        if (!value) return
+        if (Array.isArray(value)) return value.forEach(add)
+        if (typeof value === 'object') {
+          const url = commentUrl(value)
+          if (url) out.push(url)
+          return
+        }
+        const text = String(value)
+        const src = /<img[^>]+src=["']([^"']+)["']/gi
+        let match
+        while ((match = src.exec(text))) out.push(match[1])
+        if (/^https?:\/\//i.test(text)) out.push(text)
+      }
+      add(item.Images)
+      add(item.ImageList)
+      add(item.PicList)
+      add(item.PicUrls)
+      add(item.ImageUrls)
+      add(item.Pictures)
+      add(item.Attachments)
+      add(item.PicUrl)
+      add(item.ImageUrl)
+      add(item.PictureUrl)
+      add(item.Content)
+      return [...new Set(out)].slice(0, 6)
+    }
+    const mapComment = (item) => {
+      const content = String(item.Content || item.content || '')
+      return {
+        id: String(item.Id || item.id || ''),
+        user: String(item.UserName || item.userName || '书友'),
+        avatar: commentUrl(item.UserHeadIcon, item.HeadIcon, item.Avatar, item.UserAvatar),
+        content: content.replace(/<img[^>]*>/gi, '').trim(),
+        quote: String(item.RefferContent || item.quote || ''),
+        agree: Number(item.AgreeAmount || item.agree || 0),
+        ip: String(item.IpLocation || ''),
+        time: Number(item.CreateTime || 0),
+        images: commentImages(item),
+        audio: commentUrl(item.AudioUrl, item.VoiceUrl, item.SoundUrl, item.MediaUrl, item.Audio, item.Voice),
+        audioTime: Number(item.AudioTime || item.AudioDuration || item.VoiceTime || item.SoundTime || 0),
+      }
+    }
     const target = String(req.body?.chapterUrl || chapters[Number(req.body?.index) || 0]?.url || '')
     if (!target) return fail('缺少章节地址')
     let markerHost = ''
@@ -512,15 +566,7 @@ async function primeBook(book) {
               const boot = bootText ? JSON.parse(bootText) : null
               const raw = boot?.page?.Data?.DataList || boot?.page?.data || []
               const total = Number(boot?.counts?.all || boot?.page?.total || raw.length || 0)
-              const comments = raw.slice(0, limit).map((item) => ({
-                id: String(item.Id || item.id || ''),
-                user: String(item.UserName || item.userName || '书友'),
-                content: String(item.Content || item.content || ''),
-                quote: String(item.RefferContent || item.quote || ''),
-                agree: Number(item.AgreeAmount || item.agree || 0),
-                ip: String(item.IpLocation || ''),
-                time: Number(item.CreateTime || 0),
-              }))
+              const comments = raw.slice(0, limit).map(mapComment)
               if (comments.length) return ok({ comments, total, offset: 0, limit, hasMore: false })
             } catch {
               /* 解析失败再退回 HTML */
@@ -535,15 +581,7 @@ async function primeBook(book) {
       const data = payload?.Data || payload?.data || {}
       const list = data.DataList || data.data || data.list || []
       const total = Number(data.TotalCount || data.total || list.length)
-      const comments = list.slice(0, limit).map((item) => ({
-        id: String(item.Id || item.id || ''),
-        user: String(item.UserName || item.userName || '书友'),
-        content: String(item.Content || item.content || ''),
-        quote: String(item.RefferContent || item.quote || ''),
-        agree: Number(item.AgreeAmount || item.agree || 0),
-        ip: String(item.IpLocation || ''),
-        time: Number(item.CreateTime || 0),
-      }))
+      const comments = list.slice(0, limit).map(mapComment)
       return ok({ comments, total, offset, limit, hasMore: offset + comments.length < total })
     } catch (error) {
       return fail(`段评接口请求失败：${error.message}${error.cause?.code ? `（${error.cause.code}）` : ''}${markerHost ? ` ${markerHost}` : ''}`)
@@ -681,6 +719,54 @@ async function primeBook(book) {
   /* ---------------------------------------------------------------- sources */
 
   app.get('/reader3/getBookSources', async () => ok(store.listSources().map(sanitizeSource)))
+
+  /** 解析书源内置线路表（如胖虎的 QD_FIXED），并测速 */
+  const sourceLinesOf = (source) => {
+    const html = String(source?.html || '')
+    const lines = []
+    const fixed = /QD_FIXED\s*=\s*\[([\s\S]*?)\]\s*\.filter/.exec(html)?.[1] || ''
+    for (const match of fixed.matchAll(/\{\s*name:\s*["']([^"']+)["']\s*,\s*url:\s*["']([^"']+)["']\s*\}/g)) {
+      const name = match[1].trim()
+      const url = match[2].trim().replace(/\/$/, '')
+      if (/^https?:\/\//i.test(url) && !lines.some((line) => line.url === url)) lines.push({ name, url })
+    }
+    if (!lines.length) {
+      const main = /var\s+API\s*=\s*["']([^"']+)["']/.exec(html)?.[1]
+      if (main) lines.push({ name: '主线路', url: main.replace(/\/$/, '') })
+    }
+    return lines
+  }
+
+  app.get('/reader3/getSourceLines', async (req) => {
+    const source = store.getSource(String(req.query?.bookSourceUrl || ''))
+    if (!source) return fail('书源不存在')
+    const lines = sourceLinesOf(source)
+    if (!lines.length) return ok({ sourceName: source.bookSourceName, current: source.bookSourceUrl, lines: [] })
+    const measured = await Promise.all(
+      lines.map(async (line) => {
+        const started = Date.now()
+        try {
+          const response = await fetch(`${line.url}/ping`, { signal: AbortSignal.timeout(1800) })
+          return { ...line, latency: response.ok ? Date.now() - started : -1, ok: response.ok }
+        } catch {
+          return { ...line, latency: -1, ok: false }
+        }
+      }),
+    )
+    const current = source._line?.url || measured[0]?.url || ''
+    return ok({ sourceName: source.bookSourceName, current, lines: measured })
+  })
+
+  app.post('/reader3/setSourceLine', async (req) => {
+    const source = store.getSource(String(req.body?.bookSourceUrl || ''))
+    if (!source) return fail('书源不存在')
+    const lines = sourceLinesOf(source)
+    const wanted = String(req.body?.url || '')
+    const line = lines.find((item) => item.url === wanted) || lines.find((item) => item.name === String(req.body?.name || ''))
+    if (!line) return fail('线路不存在')
+    store.saveSource({ ...source, _line: { name: line.name, url: line.url } })
+    return ok({ current: line.url, name: line.name })
+  })
 
   /** 轻量书源列表：不带 html / 规则正文，手机端列表专用。 */
   app.get('/reader3/getBookSourceList', async () =>
