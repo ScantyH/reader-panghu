@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, setToken } from '../api.js'
 import { useSortable } from '../use-sortable.js'
 import { desktopNavLayout, setDesktopNavLayout } from '../use-layout.js'
-import { CORNER_ITEMS, CORNER_SLOTS, shelfCorners, setCorner } from '../use-shelf-corners.js'
+import { CORNER_ITEMS, CORNER_MODES, CORNER_SLOTS, shelfCorners, shelfCornerModes, setCorner, setCornerMode } from '../use-shelf-corners.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +20,11 @@ const SECTIONS = [
 ]
 
 const CHANGELOG = [
+  {
+    version: '1.2.2',
+    date: '2026-11-20',
+    items: ['四个角标可分别设置常显、触碰显示、隐藏，并可独立配置位置'],
+  },
   {
     version: '1.2.1',
     date: '2026-11-20',
@@ -784,7 +789,7 @@ onMounted(load)
             <div class="settings-card-title">书架角标</div>
             <div class="settings-row" style="display: block">
               <div class="settings-row-desc" style="margin-bottom: 8px">
-                自由组合四个角标的位置；同一个位置只能放一个角标，选择「隐藏」可关闭。
+                可分别设置四个角标的位置和显示方式；显示方式支持常显、触碰显示、隐藏不显示。
               </div>
               <div v-for="item in CORNER_ITEMS" :key="item.key" class="corner-setting-row">
                 <div class="settings-row-main">
@@ -796,6 +801,12 @@ onMounted(load)
                   @change="setCorner(item.key, $event.target.value)"
                 >
                   <option v-for="slot in CORNER_SLOTS" :key="slot.value" :value="slot.value">{{ slot.label }}</option>
+                </select>
+                <select
+                  :value="shelfCornerModes[item.key]"
+                  @change="setCornerMode(item.key, $event.target.value)"
+                >
+                  <option v-for="mode in CORNER_MODES" :key="mode.value" :value="mode.value">{{ mode.label }}</option>
                 </select>
               </div>
             </div>

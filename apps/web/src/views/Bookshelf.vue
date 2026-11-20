@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf } from '../api.js'
-import { shelfCorners } from '../use-shelf-corners.js'
+import { shelfCorners, shelfCornerModes } from '../use-shelf-corners.js'
 
 const props = defineProps({ recentOnly: { type: Boolean, default: false } })
 
@@ -354,8 +354,9 @@ function groupName(book) {
 
 function cornerClass(key) {
   const slot = shelfCorners[key]
-  if (!slot || slot === 'hidden') return ''
-  return `corner-${slot}`
+  const mode = shelfCornerModes[key] || 'always'
+  if (mode === 'hidden') return 'corner-mode-hidden'
+  return `corner-${slot} corner-mode-${mode}`
 }
 
 /** 未读章节数，超过 99 显示 99+ */
@@ -538,24 +539,24 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
           <div v-else class="placeholder">{{ book.name }}</div>
           <div v-if="progressOf(book)" class="progress"><i :style="{ width: progressOf(book) + '%' }" /></div>
           <span
-            v-if="shelfCorners.group !== 'hidden'"
+            v-if="shelfCornerModes.group !== 'hidden'"
             class="shelf-corner corner-badge group-corner"
             :class="cornerClass('group')"
           >{{ groupName(book) }}</span>
           <span
-            v-if="shelfCorners.source !== 'hidden'"
+            v-if="shelfCornerModes.source !== 'hidden'"
             class="shelf-corner corner-badge source-corner"
             :class="cornerClass('source')"
           >{{ isLocalBook(book) ? '本地导入' : (book.originName || '书源') }}</span>
           <span
-            v-if="shelfCorners.status !== 'hidden' && (book.hasUpdate || unreadCount(book))"
+            v-if="shelfCornerModes.status !== 'hidden' && (book.hasUpdate || unreadCount(book))"
             class="shelf-corner corner-badge status-corner"
             :class="cornerClass('status')"
           >
             {{ book.hasUpdate ? `有更新${Number(book.newChapterCount || 0) > 0 ? ` +${book.newChapterCount}` : ''}` : unreadCount(book) }}
           </span>
           <button
-            v-if="shelfCorners.more !== 'hidden'"
+            v-if="shelfCornerModes.more !== 'hidden'"
             class="card-more shelf-corner corner-more"
             :class="cornerClass('more')"
             title="更多操作"

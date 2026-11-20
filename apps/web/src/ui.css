@@ -2135,3 +2135,10 @@ button.settings-nav-item { border: 0; background: transparent; font: inherit; te
 .corner-more svg { width: 12px; height: 12px; }
 
 .corner-more { transform: none !important; opacity: 1 !important; }
+
+.corner-mode-hidden { display: none !important; }
+@media (hover: hover) and (pointer: fine) {
+  .shelf-card .shelf-corner.corner-mode-hover { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .15s ease; }
+  .shelf-card:hover .shelf-corner.corner-mode-hover,
+  .shelf-card:focus-within .shelf-corner.corner-mode-hover { opacity: 1; visibility: visible; pointer-events: auto; }
+}
