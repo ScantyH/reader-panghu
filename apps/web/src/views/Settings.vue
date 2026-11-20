@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.3.4',
+    date: '2026-11-20',
+    items: ['段评改为与阅读正文同为 820px 的底部抽屉，从底部滑入，不再居中弹窗'],
+  },
+  {
     version: '1.3.3',
     date: '2026-11-20',
     items: ['羊皮纸背景替换为 hectorqin/reader 项目内置高清羊皮纸原图'],

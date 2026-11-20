@@ -78,7 +78,7 @@ const DEFAULT_PREFS = {
   letterSpacing: 0,
   fontFamily: '',
   textAlign: 'justify',
-  pageWidth: 760,
+  pageWidth: 820,
   pagePadding: 24,
   pageTop: 0,
   pageBottom: 0,
@@ -102,6 +102,10 @@ function loadPrefs() {
     if (saved && typeof saved === 'object') {
       if (saved.paper === 'paper' || saved.paper === 'warm') saved.paper = 'parchment'
       if (saved.appearance === 'system' && !saved.paper) saved.paper = 'parchment'
+      if (!localStorage.getItem('rp_width_820')) {
+        if (Number(saved.pageWidth) === 760) saved.pageWidth = 820
+        localStorage.setItem('rp_width_820', '1')
+      }
       return { ...DEFAULT_PREFS, ...saved }
     }
   } catch {
@@ -283,6 +287,7 @@ const shellStyle = computed(() => {
     background: current.bg,
     '--reader-bg': current.bg,
     '--reader-half': `${prefs.value.pageWidth / 2}px`,
+    '--reader-page-width': `${prefs.value.pageWidth}px`,
   }
   if (!isDark.value && prefs.value.paper === 'parchment') {
     return {
