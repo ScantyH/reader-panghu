@@ -2041,3 +2041,6 @@ button.settings-nav-item { border: 0; background: transparent; font: inherit; te
 .m-tab.force-active { color: #111; }
 .m-tab.force-active .m-tab-icon { transform: translateY(-1px) scale(1.05); }
 .m-tab.force-active .m-tab-label { font-weight: 700; }
+
+.warehouse-upload-target { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-text-secondary); white-space: nowrap; }
+.warehouse-upload-target select { max-width: 150px; }

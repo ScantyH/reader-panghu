@@ -9,6 +9,10 @@ const loading = ref(false)
 const newCategory = ref('')
 const fileInput = ref(null)
 const groups = ref([])
+const rootCategories = ref([])
+const uploadTarget = ref('')
+const uploadBusy = ref(false)
+const uploadProgress = ref({ done: 0, total: 0 })
 const selected = ref([])
 const batchGroup = ref(0)
 const batchBusy = ref(false)
@@ -49,6 +53,15 @@ async function loadGroups() {
   }
 }
 
+async function loadRootCategories() {
+  try {
+    const result = await api.warehouse('')
+    rootCategories.value = result.categories || []
+  } catch {
+    rootCategories.value = []
+  }
+}
+
 function moveCategory(from, to) {
   const list = [...data.value.categories]
   const [item] = list.splice(from, 1)
@@ -82,6 +95,7 @@ async function createCategory() {
     await api.warehouseMkdir('', name)
     newCategory.value = ''
     await load('')
+    await loadRootCategories()
     window.__toast?.('分类已创建')
   } catch (error) {
     window.__toast?.(error.message)
@@ -164,15 +178,26 @@ async function importBatch() {
 
 async function uploadFiles(event) {
   const files = [...(event.target.files || [])]
+  event.target.value = ''
   if (!files.length) return
+  if (files.length > 100) {
+    window.__toast?.('一次最多导入 100 本')
+    return
+  }
+  uploadBusy.value = true
+  uploadProgress.value = { done: 0, total: files.length }
   try {
-    for (const file of files) await api.warehouseUpload(currentPath.value, file)
-    window.__toast?.(`已上传 ${files.length} 个文件`)
-    await load()
+    for (const file of files) {
+      await api.warehouseUpload(uploadTarget.value, file)
+      uploadProgress.value = { ...uploadProgress.value, done: uploadProgress.value.done + 1 }
+    }
+    await load(uploadTarget.value)
+    await loadRootCategories()
+    window.__toast?.(`已导入 ${files.length} 本到${uploadTarget.value ? '分类' : '书仓根目录'}`)
   } catch (error) {
     window.__toast?.(error.message)
   } finally {
-    event.target.value = ''
+    uploadBusy.value = false
   }
 }
 
@@ -192,7 +217,7 @@ function formatSize(bytes) {
 }
 
 onMounted(async () => {
-  await Promise.all([load(''), loadGroups()])
+  await Promise.all([load(''), loadGroups(), loadRootCategories()])
 })
 </script>
 
@@ -202,13 +227,29 @@ onMounted(async () => {
       <h1>书仓</h1>
       <span class="badge">{{ data.categories.length }} 个分类 · {{ data.files.length }} 本书</span>
       <div class="spacer" />
-      <input ref="fileInput" type="file" multiple hidden @change="uploadFiles" />
-      <button class="ghost" @click="fileInput.click()">上传到当前目录</button>
+      <label class="warehouse-upload-target">
+        <span>导入到</span>
+        <select v-model="uploadTarget" :disabled="uploadBusy">
+          <option value="">书仓根目录</option>
+          <option v-for="category in rootCategories" :key="category.path" :value="category.path">{{ category.name }}</option>
+        </select>
+      </label>
+      <input
+        ref="fileInput"
+        type="file"
+        multiple
+        hidden
+        accept=".txt,.epub,.docx,.mobi,.azw,.azw3,.pdf"
+        @change="uploadFiles"
+      />
+      <button class="ghost" :disabled="uploadBusy" @click="fileInput.click()">
+        {{ uploadBusy ? `导入中 ${uploadProgress.done}/${uploadProgress.total}` : '批量导入书籍' }}
+      </button>
       <button class="primary" @click="load()">刷新</button>
     </div>
 
     <p class="muted" style="font-size: 13px; margin-top: -6px">
-      书仓是服务端的数据目录，文件夹即分类。把 txt / epub / docx / mobi / azw3 / pdf 放进来，可单本或批量导入书架。
+      书仓是服务端的数据目录，文件夹即分类。把 txt / epub / docx / mobi / azw3 / pdf 放进来，可单本或批量导入书架。批量导入本地书籍一次最多 100 本。
     </p>
 
     <div class="row" style="margin-bottom: 12px; flex-wrap: wrap">
