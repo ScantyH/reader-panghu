@@ -72,6 +72,53 @@ try {
   const warehouse = (await call('/reader3/warehouse?path=', { token })).data
   check('书仓分类按自定义顺序显示', warehouse.categories.map((item) => item.name).join(',') === '分类B,分类A', JSON.stringify(warehouse.categories.map((item) => item.name)))
 
+  const createMember = await call('/reader3/createUser', {
+    method: 'POST',
+    token,
+    body: {
+      username: 'member',
+      password: 'secret123',
+      note: '家人',
+      bookLimit: 2,
+      sourceLimit: 1,
+      allowWebdav: false,
+      allowWarehouse: false,
+      allowEditSources: false,
+      allowEditRss: true,
+    },
+  })
+  check('管理员可新建用户并配置权限', createMember.isSuccess === true, createMember.errorMsg)
+  const member = (await call('/reader3/login', { method: 'POST', body: { username: 'member', password: 'secret123' } })).data
+  const memberInfo = (await call('/reader3/getUserInfo', { token: member?.token })).data
+  check(
+    '新用户权限已生效',
+    memberInfo?.bookLimit === 2 &&
+      memberInfo?.sourceLimit === 1 &&
+      memberInfo?.allowWebdav === false &&
+      memberInfo?.allowWarehouse === false &&
+      memberInfo?.allowEditSources === false &&
+      memberInfo?.allowEditRss === true,
+    JSON.stringify(memberInfo),
+  )
+  const memberCreate = await call('/reader3/createUser', {
+    method: 'POST',
+    token: member?.token,
+    body: { username: 'nobody', password: 'secret123' },
+  })
+  check('普通用户不能新建用户', memberCreate.isSuccess === false && /管理员/.test(memberCreate.errorMsg), memberCreate.errorMsg)
+  const duplicate = await call('/reader3/createUser', {
+    method: 'POST',
+    token,
+    body: { username: 'member', password: 'secret123' },
+  })
+  check('不能创建重名用户', duplicate.isSuccess === false && /已存在/.test(duplicate.errorMsg), duplicate.errorMsg)
+  const shortPassword = await call('/reader3/createUser', {
+    method: 'POST',
+    token,
+    body: { username: 'shortpass', password: '123' },
+  })
+  check('新用户密码至少 6 位', shortPassword.isSuccess === false && /6 位/.test(shortPassword.errorMsg), shortPassword.errorMsg)
+
   const removeDefault = await call('/reader3/deleteUser', { method: 'POST', token, body: { username: 'reader' } })
   check('默认普通账号可以删除', removeDefault.isSuccess === true, removeDefault.errorMsg)
   const afterRemove = (await call('/reader3/getUserList', { token })).data

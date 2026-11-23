@@ -131,6 +131,31 @@ export function registerPortability(app, { store }) {
     return ok({ username, role })
   })
 
+  /** 管理员新建子账号，并在创建时一次性写入配额与功能开关 */
+  app.post('/reader3/createUser', async (req) => {
+    if (!requireAdmin(req)) return fail('需要管理员权限')
+    const username = String(req.body?.username || '').trim()
+    const password = String(req.body?.password || '')
+    if (!username) return fail('用户名不能为空')
+    if (username.length > 32) return fail('用户名最多 32 个字符')
+    if (password.length < 6) return fail('密码至少 6 位')
+    if (store.findUserByName(username)) return fail('用户名已存在')
+    const { hashPassword } = await import('./auth.js')
+    const user = store.createUser(username, hashPassword(password), 'user')
+    const limit = (value) => Math.max(0, Math.floor(Number(value) || 0))
+    const flag = (value) => (value === undefined ? true : Boolean(value))
+    store.updateUserSettings(user.id, {
+      note: String(req.body?.note || '').slice(0, 60),
+      bookLimit: limit(req.body?.bookLimit),
+      sourceLimit: limit(req.body?.sourceLimit),
+      allowWebdav: flag(req.body?.allowWebdav),
+      allowWarehouse: flag(req.body?.allowWarehouse),
+      allowEditSources: flag(req.body?.allowEditSources),
+      allowEditRss: flag(req.body?.allowEditRss),
+    })
+    return ok({ username, role: 'user' })
+  })
+
   /** 给子账号分配书籍/书源上限与功能开关（管理员专用） */
   app.post('/reader3/setUserSettings', async (req) => {
     if (!requireAdmin(req)) return fail('需要管理员权限')

@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.4.4',
+    date: '2026-11-23',
+    items: ['管理员可在用户管理中新建账号，并在创建时配置书籍/书源上限与 WebDAV、书仓、书源、RSS 权限'],
+  },
+  {
     version: '1.4.3',
     date: '2026-11-23',
     items: [
@@ -303,6 +308,19 @@ const newPassword = ref('')
 const newGroupName = ref('')
 const editingUser = ref('')
 const userDraft = ref({})
+const creatingUser = ref(false)
+const emptyCreateDraft = () => ({
+  username: '',
+  password: '',
+  note: '',
+  bookLimit: 0,
+  sourceLimit: 0,
+  allowWebdav: true,
+  allowWarehouse: true,
+  allowEditSources: true,
+  allowEditRss: true,
+})
+const createDraft = ref(emptyCreateDraft())
 const loading = ref(false)
 const importInput = ref(null)
 const importBusy = ref(false)
@@ -484,6 +502,33 @@ async function removeUser(user) {
     await api.deleteUser({ username: user.username })
     await load()
     window.__toast?.('已删除')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
+function toggleCreateUser() {
+  creatingUser.value = !creatingUser.value
+  if (creatingUser.value) createDraft.value = emptyCreateDraft()
+  editingUser.value = ''
+}
+
+async function submitCreateUser() {
+  const username = createDraft.value.username.trim()
+  if (!username) {
+    window.__toast?.('请输入用户名')
+    return
+  }
+  if (createDraft.value.password.length < 6) {
+    window.__toast?.('密码至少 6 位')
+    return
+  }
+  try {
+    await api.createUser({ ...createDraft.value, username })
+    window.__toast?.(`已创建用户「${username}」`)
+    creatingUser.value = false
+    createDraft.value = emptyCreateDraft()
+    await load()
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -721,6 +766,70 @@ onMounted(load)
 
           <div v-if="isAdmin()" class="settings-card">
             <div class="settings-card-title">用户管理</div>
+            <button class="settings-row" type="button" @click="toggleCreateUser">
+              <div class="settings-row-icon">＋</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">新建用户</div>
+                <div class="settings-row-desc">创建账号，并设置书籍/书源上限与功能权限</div>
+              </div>
+              <span class="settings-row-meta">{{ creatingUser ? '收起' : '创建' }}</span>
+            </button>
+            <div v-if="creatingUser" class="settings-user-editor">
+              <div class="settings-inline-form" style="padding: 12px 0 10px">
+                <label class="settings-field">
+                  用户名
+                  <input
+                    v-model="createDraft.username"
+                    type="text"
+                    maxlength="32"
+                    autocomplete="off"
+                    placeholder="登录用户名"
+                    style="width: 160px"
+                  />
+                </label>
+                <label class="settings-field">
+                  密码
+                  <input
+                    v-model="createDraft.password"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="至少 6 位"
+                    style="width: 160px"
+                  />
+                </label>
+                <label class="settings-field">
+                  备注
+                  <input
+                    v-model="createDraft.note"
+                    type="text"
+                    maxlength="60"
+                    placeholder="例如：家人 / 手机端"
+                    style="width: 180px"
+                  />
+                </label>
+                <label class="settings-field">
+                  书籍上限
+                  <input v-model.number="createDraft.bookLimit" type="number" min="0" step="1" placeholder="0 = 不限" />
+                </label>
+                <label class="settings-field">
+                  书源上限
+                  <input v-model.number="createDraft.sourceLimit" type="number" min="0" step="1" placeholder="0 = 不限" />
+                </label>
+              </div>
+              <div class="settings-perms">
+                <label><input v-model="createDraft.allowWebdav" type="checkbox" /> 启用 WebDAV</label>
+                <label><input v-model="createDraft.allowWarehouse" type="checkbox" /> 启用书仓</label>
+                <label><input v-model="createDraft.allowEditSources" type="checkbox" /> 编辑书源</label>
+                <label><input v-model="createDraft.allowEditRss" type="checkbox" /> 编辑 RSS 源</label>
+              </div>
+              <div class="row" style="gap: 8px; flex-wrap: wrap">
+                <button class="primary" @click="submitCreateUser">创建用户</button>
+                <button class="ghost" @click="creatingUser = false">取消</button>
+              </div>
+              <div class="settings-row-desc" style="margin-top: 8px">
+                新账号默认是普通用户；书籍/书源上限填 0 表示不限。创建后可在列表里继续调整权限或复制书源。
+              </div>
+            </div>
             <template v-for="user in orderedUsers" :key="user.username">
               <div
                 class="settings-row"

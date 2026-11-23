@@ -165,6 +165,7 @@ export const api = {
   exportBookSources: () => fetch('/reader3/exportBookSources').then((r) => r.blob()),
   exportBackup: () => fetch('/reader3/exportBackup').then((r) => r.blob()),
   userList: () => request('/getUserList'),
+  createUser: (payload) => request('/createUser', { method: 'POST', body: payload }),
   setUserRole: (payload) => request('/setUserRole', { method: 'POST', body: payload }),
   setUserSettings: (payload) => request('/setUserSettings', { method: 'POST', body: payload }),
   reorderUsers: (usernames) => request('/reorderUsers', { method: 'POST', body: { usernames } }),
