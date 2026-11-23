@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, getToken, isNativeApp, withImageToken } from '../api.js'
 import parchmentBg from '../assets/paper-parchment.jpg'
+import NumberStepper from '../components/NumberStepper.vue'
 
 const props = defineProps({ bookUrl: { type: String, required: true } })
 const router = useRouter()
@@ -140,21 +141,9 @@ watch(
     }
     // 设置面板打开期间只预览，写入由 ✓ 触发；面板内快捷切换不受影响
     if (!showSettings.value) localStorage.setItem('readerPrefs', JSON.stringify(value))
-    nextTick(updateRangeFills)
   },
   { deep: true },
 )
-
-/** 原生 range 的已选段填充：保证拉到 100% 时轨道真正铺满 */
-function updateRangeFills() {
-  document.querySelectorAll('.panel-row input[type="range"]').forEach((input) => {
-    const min = Number(input.min || 0)
-    const max = Number(input.max || 100)
-    const value = Number(input.value || 0)
-    const percent = max > min ? ((value - min) / (max - min)) * 100 : 0
-    input.style.setProperty('--range-fill', `${Math.max(0, Math.min(100, percent))}%`)
-  })
-}
 
 const book = ref(null)
 const chapters = ref([])
@@ -162,9 +151,9 @@ const current = ref(0)
 const content = ref('')
 const loading = ref(false)
 const readingEl = ref(null)
-/** 正文内容区实际宽度：阅读弹层按它对齐，页宽/页边距或窗口变化时同步更新 */
-const textWidth = ref(0)
-let textWidthObserver = null
+/** 阅读页实际宽度（含页边距）：弹层与阅读宽度对齐，不受页边距影响 */
+const readingWidth = ref(0)
+let readingWidthObserver = null
 
 const showCatalog = ref(false)
 const showSettings = ref(false)
@@ -292,10 +281,8 @@ const shellStyle = computed(() => {
     '--reader-bg': current.bg,
     '--reader-half': `${prefs.value.pageWidth / 2}px`,
     '--reader-page-width': `${prefs.value.pageWidth}px`,
-    // 弹层宽度跟正文内容区一致（页宽减去两侧页边距），而不是跟整页外框一致
-    '--reader-panel-width': `${
-      textWidth.value || Math.max(0, prefs.value.pageWidth - prefs.value.pagePadding * 2)
-    }px`,
+    // 弹层宽度跟随阅读页宽度（整页宽度，不扣页边距）
+    '--reader-panel-width': `${readingWidth.value || prefs.value.pageWidth}px`,
   }
   if (!isDark.value && prefs.value.paper === 'parchment') {
     return {
@@ -345,6 +332,12 @@ const batteryText = computed(() => {
   return `${Math.round(battery.value.level * 100)}%${battery.value.charging ? '⚡' : ''}`
 })
 const ttsLabel = computed(() => (tts.value.playing ? (tts.value.paused ? '继续' : '暂停') : '朗读'))
+const ttsVolumePercent = computed({
+  get: () => Math.round((Number(prefs.value.ttsVolume) || 0) * 100),
+  set: (value) => {
+    prefs.value.ttsVolume = Math.min(1, Math.max(0, Number(value) / 100))
+  },
+})
 const animationClass = computed(() => (prefs.value.animation === 'none' ? '' : `${prefs.value.animation}-${turnDirection.value}`))
 const ttsSentences = computed(() => splitSentences(content.value))
 
@@ -634,7 +627,6 @@ function savePrefs() {
 function openSettings() {
   settingsSnapshot.value = JSON.stringify(prefs.value)
   showSettings.value = true
-  nextTick(updateRangeFills)
 }
 
 function saveSettings() {
@@ -1422,11 +1414,12 @@ onMounted(() => {
   updateScroll()
   loadBook()
   if (typeof ResizeObserver !== 'undefined') {
-    textWidthObserver = new ResizeObserver(([entry]) => {
-      const width = entry?.contentRect?.width
-      if (width) textWidth.value = Math.round(width)
+    readingWidthObserver = new ResizeObserver(([entry]) => {
+      const box = Array.isArray(entry?.borderBoxSize) ? entry.borderBoxSize[0] : entry?.borderBoxSize
+      const width = box?.inlineSize || entry?.target?.getBoundingClientRect().width
+      if (width) readingWidth.value = Math.round(width)
     })
-    if (readingEl.value) textWidthObserver.observe(readingEl.value)
+    if (readingEl.value) readingWidthObserver.observe(readingEl.value)
   }
   updateMobileLayout()
   window.addEventListener('resize', updateMobileLayout)
@@ -1442,7 +1435,7 @@ watch(showDpPanel, (open) => {
 })
 
 onBeforeUnmount(() => {
-  textWidthObserver?.disconnect()
+  readingWidthObserver?.disconnect()
   document.body.classList.remove('dp-panel-open')
   stopTts()
   flushReading()
@@ -1640,11 +1633,10 @@ watch(chapterTitle, () => {
               @click="selectPaper(key)"
             >{{ paper.name }}</button>
           </div>
-          <label class="panel-row">
+          <div class="panel-row">
             <span>亮度</span>
-            <input v-model.number="prefs.brightness" type="range" min="20" max="100" step="1" />
-            <b>{{ prefs.brightness }}%</b>
-          </label>
+            <NumberStepper v-model="prefs.brightness" :min="20" :max="100" :step="1" unit="%" />
+          </div>
         </section>
 
         <section class="panel-section">
@@ -1657,50 +1649,40 @@ watch(chapterTitle, () => {
           </label>
           <div class="panel-row">
             <span>字号</span>
-            <button class="step-btn" @click="prefs.fontSize = Math.max(12, prefs.fontSize - 1)">A−</button>
-            <b>{{ prefs.fontSize }}px</b>
-            <button class="step-btn" @click="prefs.fontSize = Math.min(32, prefs.fontSize + 1)">A＋</button>
+            <NumberStepper v-model="prefs.fontSize" :min="12" :max="32" :step="1" unit="px" />
           </div>
-          <label class="panel-row">
+          <div class="panel-row">
             <span>行距</span>
-            <input v-model.number="prefs.lineHeight" type="range" min="1.4" max="2.8" step="0.05" />
-            <b>{{ prefs.lineHeight.toFixed(2) }}</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.lineHeight" :min="1.4" :max="2.8" :step="0.05" :precision="2" />
+          </div>
+          <div class="panel-row">
             <span>段距</span>
-            <input v-model.number="prefs.paragraphSpacing" type="range" min="0" max="2" step="0.1" />
-            <b>{{ prefs.paragraphSpacing.toFixed(1) }}em</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.paragraphSpacing" :min="0" :max="2" :step="0.1" :precision="1" unit="em" />
+          </div>
+          <div class="panel-row">
             <span>首行缩进</span>
-            <input v-model.number="prefs.textIndent" type="range" min="0" max="3" step="0.5" />
-            <b>{{ prefs.textIndent }}em</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.textIndent" :min="0" :max="3" :step="0.5" :precision="1" unit="em" />
+          </div>
+          <div class="panel-row">
             <span>字距</span>
-            <input v-model.number="prefs.letterSpacing" type="range" min="0" max="0.2" step="0.01" />
-            <b>{{ prefs.letterSpacing.toFixed(2) }}em</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.letterSpacing" :min="0" :max="0.2" :step="0.01" :precision="2" unit="em" />
+          </div>
+          <div class="panel-row">
             <span>页宽</span>
-            <input v-model.number="prefs.pageWidth" type="range" min="520" max="1000" step="20" />
-            <b>{{ prefs.pageWidth }}px</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.pageWidth" :min="520" :max="1000" :step="20" unit="px" />
+          </div>
+          <div class="panel-row">
             <span>页边距</span>
-            <input v-model.number="prefs.pagePadding" type="range" min="8" max="64" step="4" />
-            <b>{{ prefs.pagePadding }}px</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.pagePadding" :min="8" :max="64" :step="4" unit="px" />
+          </div>
+          <div class="panel-row">
             <span>上留白</span>
-            <input v-model.number="prefs.pageTop" type="range" min="0" max="160" step="8" />
-            <b>{{ prefs.pageTop }}px</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.pageTop" :min="0" :max="160" :step="8" unit="px" />
+          </div>
+          <div class="panel-row">
             <span>下留白</span>
-            <input v-model.number="prefs.pageBottom" type="range" min="0" max="160" step="8" />
-            <b>{{ prefs.pageBottom }}px</b>
-          </label>
+            <NumberStepper v-model="prefs.pageBottom" :min="0" :max="160" :step="8" unit="px" />
+          </div>
           <div class="panel-row">
             <span>对齐</span>
             <div class="segmented small">
@@ -1739,21 +1721,18 @@ watch(chapterTitle, () => {
               <option v-for="voice in voices" :key="voice.voiceURI" :value="voice.voiceURI">{{ voice.name }}</option>
             </select>
           </label>
-          <label class="panel-row">
+          <div class="panel-row">
             <span>语速</span>
-            <input v-model.number="prefs.ttsRate" type="range" min="0.5" max="2" step="0.1" />
-            <b>{{ prefs.ttsRate.toFixed(1) }}x</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.ttsRate" :min="0.5" :max="2" :step="0.1" :precision="1" unit="x" />
+          </div>
+          <div class="panel-row">
             <span>音调</span>
-            <input v-model.number="prefs.ttsPitch" type="range" min="0.5" max="2" step="0.1" />
-            <b>{{ prefs.ttsPitch.toFixed(1) }}</b>
-          </label>
-          <label class="panel-row">
+            <NumberStepper v-model="prefs.ttsPitch" :min="0.5" :max="2" :step="0.1" :precision="1" />
+          </div>
+          <div class="panel-row">
             <span>音量</span>
-            <input v-model.number="prefs.ttsVolume" type="range" min="0" max="1" step="0.05" />
-            <b>{{ Math.round(prefs.ttsVolume * 100) }}%</b>
-          </label>
+            <NumberStepper v-model="ttsVolumePercent" :min="0" :max="100" :step="5" unit="%" />
+          </div>
           <div class="row tts-actions">
             <button class="primary" @click="startTts">从头朗读</button>
             <button class="ghost" @click="ttsPrev">上一句</button>
@@ -2616,36 +2595,32 @@ watch(chapterTitle, () => {
 }
 
 .settings-sheet {
-  display: flex;
-  flex-direction: column;
   max-height: 82vh;
-  overflow: hidden;
-}
-
-/* 滚动条放在内容区里，避免白色滚动条盖住弹层右边缘和右上圆角 */
-.settings-body {
-  flex: 1;
-  min-height: 0;
-  padding: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(127, 127, 127, 0.42) transparent;
 }
 
-.settings-body::-webkit-scrollbar {
-  width: 8px;
+/* 滚动条贴弹层右边缘；轨道透明并留出顶部圆角的空间 */
+.settings-sheet::-webkit-scrollbar {
+  width: 10px;
 }
 
-.settings-body::-webkit-scrollbar-track {
+.settings-sheet::-webkit-scrollbar-track {
   background: transparent;
+  margin: 18px 0 8px;
 }
 
-.settings-body::-webkit-scrollbar-thumb {
+.settings-sheet::-webkit-scrollbar-thumb {
   background: rgba(127, 127, 127, 0.4);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
+}
+
+.settings-body {
+  padding: 0;
+  overflow: visible;
 }
 
 .settings-head {
@@ -2699,11 +2674,6 @@ watch(chapterTitle, () => {
   flex: none;
   width: 72px;
   opacity: 0.75;
-}
-
-.panel-row input[type='range'] {
-  flex: 1;
-  accent-color: var(--color-primary);
 }
 
 .panel-row b {
