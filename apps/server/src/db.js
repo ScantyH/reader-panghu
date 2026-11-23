@@ -140,7 +140,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
   username TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  boot_id TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_books_user ON books (user_id);
@@ -157,6 +158,12 @@ export function openDatabase(file) {
   // 老库补 role 列（多用户之前建的库没有这一列）
   try {
     db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+  } catch {
+    /* 已存在 */
+  }
+  // 老库补 boot_id：重启后旧会话不再有效
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN boot_id TEXT NOT NULL DEFAULT ''")
   } catch {
     /* 已存在 */
   }
@@ -728,22 +735,28 @@ class Store {
   /* ---------------------------------------------------------------- sessions */
 
   /** 会话是全局的（token 唯一），不按用户隔离；放在库里才能在重启后继续有效。 */
-  createSession(token, { userId, username, createdAt }) {
+  createSession(token, { userId, username, createdAt, bootId = '' }) {
     const value = String(token || '')
     if (!value) throw new Error('token is required')
     const owner = Number(userId) || DEFAULT_USER_ID
     const at = createdAt === undefined ? Date.now() : Number(createdAt)
     this.db
-      .prepare('INSERT INTO sessions (token, user_id, username, created_at) VALUES (?, ?, ?, ?)')
-      .run(value, owner, String(username || ''), at)
+      .prepare('INSERT INTO sessions (token, user_id, username, created_at, boot_id) VALUES (?, ?, ?, ?, ?)')
+      .run(value, owner, String(username || ''), at, String(bootId || ''))
   }
 
   getSession(token) {
     const row = this.db
-      .prepare('SELECT token, user_id, username, created_at FROM sessions WHERE token = ?')
+      .prepare('SELECT token, user_id, username, created_at, boot_id FROM sessions WHERE token = ?')
       .get(String(token || ''))
     if (!row) return null
-    return { token: row.token, userId: row.user_id, username: row.username, createdAt: row.created_at }
+    return {
+      token: row.token,
+      userId: row.user_id,
+      username: row.username,
+      createdAt: row.created_at,
+      bootId: row.boot_id || '',
+    }
   }
 
   deleteSession(token) {
@@ -752,6 +765,11 @@ class Store {
 
   deleteExpiredSessions(beforeTs) {
     return this.db.prepare('DELETE FROM sessions WHERE created_at < ?').run(Number(beforeTs)).changes
+  }
+
+  /** 重启后清掉上一进程签发的会话 */
+  deleteSessionsExceptBoot(bootId) {
+    return this.db.prepare('DELETE FROM sessions WHERE boot_id != ?').run(String(bootId || '')).changes
   }
 
   countSessions() {

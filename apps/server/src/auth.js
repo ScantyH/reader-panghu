@@ -3,7 +3,7 @@
  *
  * 设计取舍：
  * - 密码用 Node 内置 `scrypt`，不引依赖；
- * - 会话落在 SQLite 的 sessions 表（重启后仍有效），cookie 与 `Authorization: Bearer`
+ * - 会话落在 SQLite 的 sessions 表，但带 boot_id：进程重启后旧会话全部失效，必须重新登录；cookie 与 `Authorization: Bearer`
  *   都接受，后者给 Legado 这类客户端用；
  * - **未配置任何密码用户时保持"单用户"行为**：所有请求都落到 user 1，
  *   这样既有部署和测试不受影响，打开多用户只是加账号。
@@ -16,7 +16,10 @@ import { permissionOf } from './user-perms.js'
 export const DEFAULT_USER_ID = 1
 const SESSION_COOKIE = 'rp_session'
 
-/** 会话 token 存在 SQLite 里，进程重启后仍然有效；TTL 仍是 30 天。 */
+/** 本进程的唯一标识：写进会话，重启后旧 token 一律视为失效。 */
+const BOOT_ID = randomBytes(12).toString('hex')
+
+/** 会话 TTL 仍是 30 天；但实际寿命不超过本次进程运行时间。 */
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const isSessionExpired = (session, now = Date.now()) => !session || now - Number(session.createdAt) > SESSION_TTL_MS
 
@@ -51,6 +54,13 @@ export function registerAuth(app, { store }) {
   const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
   const fail = (errorMsg) => ({ isSuccess: false, errorMsg, data: null })
 
+  // 启动时清掉上一进程留下的会话，避免重启后还能拿旧 token 试
+  try {
+    store.deleteSessionsExceptBoot?.(BOOT_ID)
+  } catch {
+    /* 老库没有这个方法时忽略 */
+  }
+
   const userCount = () => {
     try {
       return store.listUsers().length
@@ -84,6 +94,11 @@ export function registerAuth(app, { store }) {
     const session = token ? store.getSession(token) : null
     if (!session) return null
     if (isSessionExpired(session)) {
+      store.deleteSession(token)
+      return null
+    }
+    // 后端重启后 boot_id 变了：旧会话不再放行，客户端会收到 NEED_LOGIN
+    if (String(session.bootId || '') !== BOOT_ID) {
       store.deleteSession(token)
       return null
     }
@@ -131,6 +146,7 @@ export function registerAuth(app, { store }) {
       hasCookie: Boolean(req.headers?.cookie),
       hasBearer: Boolean(req.headers?.authorization),
       resolvedUserId: req.userId ?? null,
+      bootId: BOOT_ID,
       pid: process.pid,
     }),
   )
@@ -142,7 +158,7 @@ export function registerAuth(app, { store }) {
     if (store.findUserByName(username)) return fail('用户名已存在')
     const user = store.createUser(username, hashPassword(password))
     const token = randomBytes(24).toString('hex')
-    store.createSession(token, { userId: user.id, username: user.username })
+    store.createSession(token, { userId: user.id, username: user.username, bootId: BOOT_ID })
     reply.header('set-cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`)
     return ok({ username: user.username, token })
   })
@@ -153,7 +169,7 @@ export function registerAuth(app, { store }) {
     const user = store.findUserByName(username)
     if (!user || !verifyPassword(password, user.password)) return fail('用户名或密码不正确')
     const token = randomBytes(24).toString('hex')
-    store.createSession(token, { userId: user.id, username: user.username })
+    store.createSession(token, { userId: user.id, username: user.username, bootId: BOOT_ID })
     app.log.info(`[auth] login pid=${process.pid} sessions=${store.countSessions()}`)
     reply.header('set-cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`)
     return ok({ username: user.username, token })

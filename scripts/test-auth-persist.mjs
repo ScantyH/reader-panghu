@@ -1,5 +1,5 @@
 /**
- * 会话持久化 test：真实重启进程后，已登录的 token / cookie 仍然有效。
+ * 重启即失效 test：真实重启进程后，旧 token / cookie 必须要求重新登录。
  *
  *   node scripts/test-auth-persist.mjs
  *
@@ -106,34 +106,42 @@ try {
   console.log('  · 进程已停止，准备用同一 DATA_DIR 重启')
   await start()
 
-  // 4. 重启后 token A 仍有效
+  // 4. 重启后 token A 必须失效（要求重新登录）
   const meA = await call('/reader3/getUserInfo', { token: tokenA })
-  if (!meA.payload.isSuccess || meA.payload.data.username !== username) {
-    throw new Error(`重启后 token A 失效：${meA.payload.errorMsg || JSON.stringify(meA.payload.data)}`)
+  if (meA.payload.isSuccess) throw new Error('重启后旧 token A 仍然有效（应当要求重新登录）')
+  if (meA.response.status !== 401 && meA.payload.errorMsg !== 'NEED_LOGIN') {
+    throw new Error(`重启后旧 token 的拒绝方式不对：HTTP ${meA.response.status} ${meA.payload.errorMsg}`)
   }
-  console.log('  ✓ 重启后 token A 仍有效')
+  console.log('  ✓ 重启后 token A 失效（NEED_LOGIN）')
 
-  // 5. 重启后浏览器 cookie 仍有效
+  // 5. 重启后浏览器 cookie 也必须失效
   const viaCookie = await call('/reader3/getUserInfo', { cookie: String(setCookie).split(';')[0] })
-  if (!viaCookie.payload.isSuccess || viaCookie.payload.data.username !== username) {
-    throw new Error('重启后 session cookie 失效')
-  }
-  console.log('  ✓ 重启后 session cookie 仍有效')
+  if (viaCookie.payload.isSuccess) throw new Error('重启后旧 session cookie 仍然有效')
+  console.log('  ✓ 重启后 session cookie 失效')
 
-  // 6. 重启前登出的 token B 不能复活
+  // 6. 重启前登出的 token B 依然不能复活
   const meB = await call('/reader3/getUserInfo', { token: tokenB })
   if (meB.payload.isSuccess) throw new Error('重启前登出的 token 在重启后复活了')
   console.log('  ✓ 重启前登出的 token 仍失效')
 
-  // 7. 重启后登出，token A 立即失效
-  const logoutA = await call('/reader3/logout', { method: 'POST', token: tokenA })
-  if (!logoutA.payload.isSuccess) throw new Error('重启后登出失败')
-  const meAAfter = await call('/reader3/getUserInfo', { token: tokenA })
-  if (meAAfter.payload.isSuccess) throw new Error('登出后 token A 仍有效')
-  console.log('  ✓ 重启后登出即时失效')
+  // 7. 重新登录拿到新 token，必须可用
+  const relogin = await call('/reader3/login', { method: 'POST', body: { username, password: 'secret123' } })
+  if (!relogin.payload.isSuccess) throw new Error(`重启后重新登录失败：${relogin.payload.errorMsg}`)
+  const tokenC = relogin.payload.data.token
+  const meC = await call('/reader3/getUserInfo', { token: tokenC })
+  if (!meC.payload.isSuccess || meC.payload.data.username !== username) {
+    throw new Error('重新登录后的新 token 不可用')
+  }
+  console.log('  ✓ 重新登录后的新 token 可用')
 
+  // 8. 登出后新 token 立即失效
+  const logoutC = await call('/reader3/logout', { method: 'POST', token: tokenC })
+  if (!logoutC.payload.isSuccess) throw new Error('登出新 token 失败')
+  const meCAfter = await call('/reader3/getUserInfo', { token: tokenC })
+  if (meCAfter.payload.isSuccess) throw new Error('登出后新 token 仍有效')
+  console.log('  ✓ 登出后即时失效')
   await stop()
-  console.log('\n会话持久化 checks passed')
+  console.log('\n重启后重新登录 checks passed')
   process.exit(0)
 } catch (error) {
   console.error(`\n✗ ${error.message}`)
