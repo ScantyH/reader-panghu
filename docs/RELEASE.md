@@ -28,15 +28,17 @@
    ```
    （在项目上级目录执行，脚本默认推送到本仓库的 `main`。）
 
-4. **创建 GitHub Release**：tag 为 `v<version>`（如 `v0.9.1`），target 为 `main` 最新提交，release 标题与 tag 一致。
+4. **创建 GitHub Release**：tag 为 `v<version>`（如 `v1.4.0`），target 为 `main` 最新提交，release 标题与 tag 一致。
+   Release 发布后 `.github/workflows/docker-publish.yml` 会自动构建
+   `ghcr.io/scantyh/reader-panghu:<version>` 和 `:latest` 多架构镜像。
 
-5. **部署 NAS**（自建示例）：
-   ```bash
-   node scripts/deploy-nas.mjs
-   ```
-   该命令上传源码到 NAS 的数据目录，重启 compose 项目并等待就绪；数据卷 `/app/data` 不受影响。公网访问地址、NAS 路径等按自己的环境替换。
+5. **部署 NAS**：`reader-panghu` 的 compose 里已包含 `Watchtower-Reader`，每 5 分钟检查
+   `com.centurylinklabs.watchtower.enable=true` 的容器。Release 的 `:latest` 更新后，
+   `Reader-PH` 会自动拉取新镜像并重启，数据卷 `/app/data` 不受影响。
+   需要立即生效时，在 NAS 的 Docker/Compose 页面重建 `reader-panghu`，或使用 zspace-cli：
+   先拉取 `ghcr.io/scantyh/reader-panghu:latest`，再对 `reader-panghu` 执行 compose rebuild。
 
-6. **验证**：请求公网首页，确认引用的 `assets/index-*.js` 是新产物且包含当前版本号（如 `v0.9.1`），`/api/health` 的 `uptime` 已重置。用户刷新 F5 即可看到。
+6. **验证**：请求公网首页，确认引用的 `assets/index-*.js` 是新产物且包含当前版本号（如 `v1.4.0`），`/api/health` 的 `uptime` 已重置。用户刷新 F5 即可看到。
 
 ## 注意
 
