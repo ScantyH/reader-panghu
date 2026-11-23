@@ -2616,9 +2616,36 @@ watch(chapterTitle, () => {
 }
 
 .settings-sheet {
+  display: flex;
+  flex-direction: column;
   max-height: 82vh;
+  overflow: hidden;
+}
+
+/* 滚动条放在内容区里，避免白色滚动条盖住弹层右边缘和右上圆角 */
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 127, 127, 0.42) transparent;
+}
+
+.settings-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.settings-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-body::-webkit-scrollbar-thumb {
+  background: rgba(127, 127, 127, 0.4);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .settings-head {
@@ -2646,11 +2673,6 @@ watch(chapterTitle, () => {
   border-left: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
   transform: rotate(-45deg);
-}
-
-.settings-body {
-  padding: 0;
-  overflow: visible;
 }
 
 .panel-section {

@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.4.1',
+    date: '2026-11-23',
+    items: ['阅读设置弹层的滚动条移入内容区，右侧不再出现白边，右上角改为圆角并与正文宽度对齐'],
+  },
+  {
     version: '1.4.0',
     date: '2026-11-23',
     items: ['本地 TXT / DOCX / MOBI / PDF 分章新增识别「1、异界来客」这类数字编号标题'],
