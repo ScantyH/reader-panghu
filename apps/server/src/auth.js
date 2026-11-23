@@ -99,6 +99,7 @@ export function registerAuth(app, { store }) {
     '/reader3/getAuthMode',
     '/reader3/getUserInfo',
     '/reader3/debugAuth',
+    '/reader3/dpPage',
     '/api/health',
   ])
 
@@ -111,7 +112,7 @@ export function registerAuth(app, { store }) {
     // 只有接口需要登录；静态资源与 SPA 外壳必须放行，否则连登录页都打不开
     const path = String(req.raw?.url || '').split('?')[0]
     const isApi = path.startsWith('/reader3/') || path.startsWith('/api/')
-    if (required && !userId && isApi && !PUBLIC_PATHS.has(path)) {
+    if (required && !userId && isApi && !PUBLIC_PATHS.has(path) && !path.startsWith('/reader3/dp/')) {
       reply.code(401).send({ isSuccess: false, errorMsg: 'NEED_LOGIN', data: null })
       return
     }
@@ -172,6 +173,7 @@ export function registerAuth(app, { store }) {
       return ok({
         username: user?.username ?? 'reader',
         role: user?.role ?? 'admin',
+        avatar: user?.avatar ?? '',
         secure: false,
         authEnabled: false,
         ...perms,
@@ -183,6 +185,7 @@ export function registerAuth(app, { store }) {
     return ok({
       username: user?.username ?? '',
       role: user?.role ?? 'user',
+      avatar: user?.avatar ?? '',
       secure: true,
       authEnabled: true,
       ...perms,

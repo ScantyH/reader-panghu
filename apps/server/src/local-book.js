@@ -10,9 +10,7 @@ import { parseDocx } from './docx.js'
 import { parseEpub } from './epub.js'
 import { parseMobi } from './mobi.js'
 import { extractPdfText } from './pdf.js'
-
-const CHAPTER_TITLE =
-  /^\s*(第[0-9一二三四五六七八九十百千两零〇]+[章节回卷篇][^\n。！？]{0,20}|序章[^\n。！？]{0,20}|楔子[^\n。！？]{0,20})\s*$/
+import { isChapterTitle } from './chapter-title.js'
 
 export function decodeText(buffer) {
   try {
@@ -28,7 +26,7 @@ export function splitTextChapters(text, fallbackTitle = '正文') {
   const chapters = []
   let current = { title: fallbackTitle, lines: [] }
   for (const line of lines) {
-    if (CHAPTER_TITLE.test(line)) {
+    if (isChapterTitle(line)) {
       if (current.lines.join('').trim()) chapters.push(current)
       current = { title: line.trim(), lines: [] }
     } else {
@@ -40,6 +38,38 @@ export function splitTextChapters(text, fallbackTitle = '正文') {
     title: chapter.title || `第${index + 1}章`,
     text: chapter.lines.join('\n').trim(),
   }))
+}
+
+/**
+ * 从 TXT/PDF 文件名和开头几行里识别书名、作者。
+ * 支持：
+ *   《黄金瞳》作者：打眼
+ *   黄金瞳 作者：打眼
+ *   书名：黄金瞳  作者：打眼
+ *   黄金瞳.txt（只有书名）
+ */
+export function extractTextMetadata(filename, text) {
+  const base = String(filename || '').replace(/\.[^.]+$/, '').trim()
+  const head = String(text || '').slice(0, 8192)
+  const candidates = [base, ...head.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 6)]
+
+  const clean = (value) => String(value || '').replace(/^[《<【\s]+|[》>】\s]+$/g, '').trim()
+  let name = clean(base)
+  let author = ''
+
+  for (const line of candidates) {
+    let match = /^[《<【](.+?)[》>】]\s*(?:作者|著)\s*[:：]?\s*(.+)$/.exec(line)
+    if (!match) match = /^书名\s*[:：]\s*(.+?)\s+作者\s*[:：]\s*(.+)$/.exec(line)
+    if (!match) match = /^(.+?)\s+作者\s*[:：]\s*(.+)$/.exec(line)
+    if (!match) match = /^[《<【](.+?)[》>】]\s*$/.exec(line)
+    if (match) {
+      name = clean(match[1])
+      author = clean(match[2] || '').replace(/^作者\s*[:：]?/, '').replace(/\s*著$/, '')
+      break
+    }
+  }
+
+  return { name: name || clean(base) || '本地书籍', author }
 }
 
 /**
@@ -89,9 +119,10 @@ export function parseLocalBook(buffer, filename) {
 
   if (ext === 'pdf') {
     const text = extractPdfText(bytes)
+    const meta = extractTextMetadata(name, text)
     return {
-      name: name.replace(/\.pdf$/i, ''),
-      author: '',
+      name: meta.name,
+      author: meta.author,
       intro: '',
       chapters: splitTextChapters(text, '正文'),
       origin: 'local://pdf',
@@ -100,9 +131,10 @@ export function parseLocalBook(buffer, filename) {
 
   // 默认按纯文本处理（txt 或未知扩展名）
   const text = decodeText(bytes)
+  const meta = extractTextMetadata(name, text)
   return {
-    name: name.replace(/\.txt$/i, ''),
-    author: '',
+    name: meta.name,
+    author: meta.author,
     intro: '',
     chapters: splitTextChapters(text, '正文'),
     origin: 'local://txt',

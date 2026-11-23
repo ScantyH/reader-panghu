@@ -33,7 +33,9 @@ function buildDocx() {
     'word/document.xml': strToU8(
       `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${para(
         '第一章 山门',
-      )}${para('这是第一章的正文。')}${para('第一章第二段。')}${para('第二章 落雨')}${para('这是第二章的正文。')}</w:body></w:document>`,
+      )}${para('这是第一章的正文。')}${para('第一章第二段。')}${para('第二章 落雨')}${para('这是第二章的正文。')}${para(
+        '1、异界来客',
+      )}${para('这是编号标题章的正文。')}</w:body></w:document>`,
     ),
   }
   return zipSync(files, { level: 6 })
@@ -48,12 +50,16 @@ if (book.name !== '测试 DOCX 小说') throw new Error(`书名错误: ${book.na
 console.log(`  ✓ uploadDocxBook → ${book.name}`)
 
 const chapters = await call('/reader3/getChapterList', { method: 'POST', body: { bookUrl: book.bookUrl } })
-if (chapters.length !== 2) throw new Error(`应拆出 2 章，实际 ${chapters.length}: ${chapters.map((c) => c.title)}`)
+if (chapters.length !== 3) throw new Error(`应拆出 3 章，实际 ${chapters.length}: ${chapters.map((c) => c.title)}`)
+if (chapters[2].title !== '1、异界来客') throw new Error(`编号标题未识别：${chapters[2].title}`)
 console.log(`  ✓ 自动分章 → ${chapters.map((c) => c.title).join(' / ')}`)
 
 const content = await call('/reader3/getBookContent', { method: 'POST', body: { bookUrl: book.bookUrl, index: 0 } })
 if (!content.includes('第一章的正文') || !content.includes('第一章第二段')) throw new Error(`正文错误: ${content}`)
 console.log(`  ✓ 正文 → ${content.replace(/\n/g, ' / ')}`)
+
+const numbered = await call('/reader3/getBookContent', { method: 'POST', body: { bookUrl: book.bookUrl, index: 2 } })
+if (!numbered.includes('编号标题章的正文')) throw new Error(`编号标题正文错误: ${numbered}`)
 
 const mobi = new FormData()
 mobi.append('file', new Blob([strToU8('fake')], { type: 'application/x-mobipocket-ebook' }), 'x.mobi')

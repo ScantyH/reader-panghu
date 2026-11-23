@@ -60,7 +60,7 @@ PORT=18080 DATA_DIR=./data node apps/server/src/index.js
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 启动时创建/提权管理员 | 无 |
 | `SOURCE_TIMEOUT_MS` | 书源请求超时 | `30000` |
 | `RSS_REFRESH_MINUTES` | RSS 刷新间隔 | `30` |
-| `CHAPTER_CHECK_INTERVAL_HOURS` | 章节更新检查间隔，0 关闭 | `24` |
+| `CHAPTER_CHECK_RUNS_PER_DAY` | 每 24 小时随机检查章节更新的次数，0 关闭 | `18` |
 
 ## 部署
 
@@ -87,7 +87,7 @@ docker compose up -d
 
 默认监听 `18080`，数据保存在当前目录的 `./data`。打开 `http://127.0.0.1:18080` 即可使用；第一个注册的账号会成为管理员，也可以在 compose 里用 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 指定。
 
-> 镜像为 `linux/amd64`（x86_64）架构，ARM 设备请用方式二自行构建。
+> 镜像同时支持 `linux/amd64`（x86_64）和 `linux/arm64`（ARM）。
 
 ### 方式二：从源码构建
 
@@ -99,6 +99,20 @@ docker run -d -p 18080:18080 -v $PWD/data:/app/data reader-panghu:latest
 开发模式见上面的「快速开始」。
 
 > 数据目录里包含用户、账号密码、书源、书籍和阅读设置，升级镜像不会改动它，请定期备份 `./data`。极空间 NAS 的自动部署脚本见 `scripts/deploy-nas.mjs`。
+
+### 数据与隐私（镜像不含用户数据）
+
+- GHCR 镜像只包含程序代码，**不包含**任何用户、账号密码、书源、书籍、阅读设置或密钥。
+- 所有数据都保存在 `DATA_DIR`（默认 `/app/data`）：数据库、书仓、封面缓存等。
+- 部署时必须把宿主机目录挂载到 `/app/data`，例如：
+
+  ```yaml
+  volumes:
+    - /你的目录/reader-panghu:/app/data
+  ```
+
+- 换机器或升级镜像时，只需要保留/迁移这个挂载目录；删除容器不会删除数据。
+- 每个部署者自行导入自己的书源、账号和阅读设置，项目发布者不上传任何人的数据。
 
 ### 更新到最新版本
 

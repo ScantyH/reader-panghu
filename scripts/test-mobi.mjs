@@ -80,7 +80,7 @@ console.log(`base: ${base}`)
 const mobi = buildMobi({
   title: '测试 MOBI 小说',
   author: '测试作者乙',
-  text: '第一章 山门\n这是第一章的正文。\n第二章 落雨\n这是第二章的正文。',
+  text: '第一章 山门\n这是第一章的正文。\n第二章 落雨\n这是第二章的正文。\n1、异界来客\n这是编号标题章的正文。',
 })
 const form = new FormData()
 form.append('file', new Blob([mobi], { type: 'application/x-mobipocket-ebook' }), '测试.mobi')
@@ -90,11 +90,14 @@ if (book.author !== '测试作者乙') throw new Error(`作者错误: ${book.aut
 console.log(`  ✓ uploadMobiBook → ${book.name} / ${book.author}`)
 
 const chapters = await call('/reader3/getChapterList', { method: 'POST', body: { bookUrl: book.bookUrl } })
-if (chapters.length !== 2) throw new Error(`应拆出 2 章，实际 ${chapters.length}: ${chapters.map((c) => c.title)}`)
+if (chapters.length !== 3) throw new Error(`应拆出 3 章，实际 ${chapters.length}: ${chapters.map((c) => c.title)}`)
+if (chapters[2].title !== '1、异界来客') throw new Error(`编号标题未识别：${chapters[2].title}`)
 console.log(`  ✓ 自动分章 → ${chapters.map((c) => c.title).join(' / ')}`)
 
 const content = await call('/reader3/getBookContent', { method: 'POST', body: { bookUrl: book.bookUrl, index: 1 } })
 if (!content.includes('第二章的正文')) throw new Error(`正文错误: ${content}`)
+const numbered = await call('/reader3/getBookContent', { method: 'POST', body: { bookUrl: book.bookUrl, index: 2 } })
+if (!numbered.includes('编号标题章的正文')) throw new Error(`编号标题正文错误: ${numbered}`)
 console.log(`  ✓ 正文 → ${content.replace(/\n/g, ' / ')}`)
 
 const pdf = new FormData()

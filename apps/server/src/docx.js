@@ -7,8 +7,7 @@
  */
 
 import { strFromU8, unzipSync } from 'fflate'
-
-const CHAPTER_TITLE = /^\s*(第[0-9一二三四五六七八九十百千两零〇]+[章节回卷篇][^\n。！？]{0,20}|序章[^\n。！？]{0,20}|楔子[^\n。！？]{0,20})\s*$/
+import { isChapterTitle } from './chapter-title.js'
 
 function decodeEntities(text) {
   return String(text)
@@ -48,7 +47,7 @@ export function parseDocx(bytes) {
   const chapters = []
   let current = { title: title || '开始', lines: [] }
   for (const paragraph of paragraphs) {
-    if (CHAPTER_TITLE.test(paragraph)) {
+    if (isChapterTitle(paragraph)) {
       if (current.lines.length) chapters.push(current)
       current = { title: paragraph, lines: [] }
     } else {

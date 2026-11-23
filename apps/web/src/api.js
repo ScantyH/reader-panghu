@@ -116,6 +116,7 @@ export const api = {
     request('/cacheBook', { method: 'POST', body: { bookUrl, count, refresh, start } }),
   checkChapterUpdates: () => request('/checkChapterUpdates', { method: 'POST', body: { limit: 30 } }),
   chapterUpdateStatus: () => request('/getChapterUpdateStatus'),
+  clearBookUpdate: (bookUrl) => request('/clearBookUpdate', { method: 'POST', body: { bookUrl } }),
   groups: () => request('/getBookGroups'),
   saveBookGroup: (group) => request('/saveBookGroup', { method: 'POST', body: group }),
   deleteBookGroup: (groupId) => request('/deleteBookGroup', { method: 'POST', body: { groupId } }),
@@ -132,6 +133,10 @@ export const api = {
   // sources
   sources: () => request('/getBookSources'),
   sourceBundles: () => request('/getSourceBundles'),
+  sourceList: () => request('/getBookSourceList'),
+  sourceLines: (bookSourceUrl) => request('/getSourceLines?bookSourceUrl=' + encodeURIComponent(bookSourceUrl)),
+  setSourceLine: (bookSourceUrl, line) =>
+    request('/setSourceLine', { method: 'POST', body: { bookSourceUrl, name: line.name, url: line.url } }),
   sourceBundleLimit: () => request('/getSourceBundleLimit'),
   checkSourceKeys: () => request('/checkSourceKeys', { method: 'POST', body: {} }),
   importSources: (sources, name) => request('/importBookSources', { method: 'POST', body: { sources, name } }),
@@ -169,6 +174,7 @@ export const api = {
   chapterNotes: (bookUrl) => request('/getChapterNotes?bookUrl=' + encodeURIComponent(bookUrl)),
   paragraphComments: (payload) => request('/getParagraphComments', { method: 'POST', body: payload }),
   paragraphCommentPanel: (payload) => request('/getParagraphCommentPanel', { method: 'POST', body: payload }),
+  commentReplies: (payload) => request('/getCommentReplies', { method: 'POST', body: payload }),
   saveChapterNote: (payload) => request('/saveChapterNote', { method: 'POST', body: payload }),
   deleteChapterNote: (payload) => request('/deleteChapterNote', { method: 'POST', body: payload }),
   readRemoteSourceFile: (url) => request('/readSourceFile?url=' + encodeURIComponent(url)),
@@ -196,6 +202,7 @@ export const api = {
   // bookmarks
   getUserConfig: () => request('/getUserConfig'),
   saveUserConfig: (config) => request('/saveUserConfig', { method: 'POST', body: config }),
+  setAvatar: (avatar) => request('/setAvatar', { method: 'POST', body: { avatar } }),
 
   rssSources: () => request('/getRssSources'),
   saveRssSource: (source) => request('/saveRssSource', { method: 'POST', body: source }),
@@ -208,8 +215,16 @@ export const api = {
 
   warehouse: (path = '') => request('/warehouse' + (path ? '?path=' + encodeURIComponent(path) : '')),
   warehouseMkdir: (path, name) => request('/warehouse/mkdir', { method: 'POST', body: { path, name } }),
-  warehouseImport: (path) => request('/warehouse/import', { method: 'POST', body: { path } }),
+  warehousePreview: (path) => request('/warehouse/preview', { method: 'POST', body: { path } }),
+  warehouseImport: (payload) =>
+    request('/warehouse/import', {
+      method: 'POST',
+      body: typeof payload === 'string' ? { path: payload } : payload,
+    }),
+  warehouseImportBatch: (paths, group) => request('/warehouse/importBatch', { method: 'POST', body: { paths, group } }),
+  warehouseRemoveFromShelf: (path) => request('/warehouse/removeFromShelf', { method: 'POST', body: { path } }),
   warehouseDelete: (path) => request('/warehouse/delete', { method: 'POST', body: { path } }),
+  warehouseReorder: (path, names) => request('/warehouse/reorder', { method: 'POST', body: { path, names } }),
   warehouseUpload: (path, file) => {
     const form = new FormData()
     form.append('file', file)
@@ -226,11 +241,12 @@ export const api = {
 }
 
 /** SSE multi-source search: onBooks per source batch, resolves when the stream ends. */
-export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBundle }, onBooks) {
+export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBundle, bookSourceBundles }, onBooks) {
   const query = new URLSearchParams({ key })
   if (bookSourceUrl) query.set('bookSourceUrl', bookSourceUrl)
   if (bookSourceGroup) query.set('bookSourceGroup', bookSourceGroup)
   if (bookSourceBundle) query.set('bookSourceBundle', bookSourceBundle)
+  if (Array.isArray(bookSourceBundles) && bookSourceBundles.length) query.set('bookSourceBundles', bookSourceBundles.join(','))
   const source = new EventSource(`${BASE}${withToken(`/searchBookMultiSSE?${query}`)}`)
   return new Promise((resolve, reject) => {
     source.onmessage = (event) => {

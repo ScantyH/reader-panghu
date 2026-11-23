@@ -22,7 +22,7 @@ const call = async (path, { method = 'GET', body, form } = {}) => {
 
 const fileOf = async (name) => {
   const form = new FormData()
-  form.append('file', new Blob([`第一章 书仓\n这是书仓里的第一本书。\n第二章 继续\n第二段正文。`], { type: 'text/plain' }), name)
+  form.append('file', new Blob([`第一章 书仓\n这是书仓里的第一本书。\n第二章 继续\n第二段正文。\n1、异界来客\n第三段正文。`], { type: 'text/plain' }), name)
   return form
 }
 
@@ -43,6 +43,7 @@ try {
 
   const imported = await call('/reader3/warehouse/import', { method: 'POST', body: { path: '玄幻/书仓测试书.txt' } })
   if (!imported.book?.name) throw new Error('导入没有返回书')
+  if (Number(imported.book.totalChapterNum) !== 3) throw new Error(`书仓本地书应有 3 章，实际 ${imported.book.totalChapterNum}`)
   console.log(`  ✓ 导入书架 → 《${imported.book.name}》，${imported.book.totalChapterNum} 章`)
 
   const shelf = await call('/reader3/getBookshelf')

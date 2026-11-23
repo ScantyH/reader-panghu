@@ -2,15 +2,32 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, getToken, isNativeApp, withImageToken } from '../api.js'
+import parchmentBg from '../assets/paper-parchment.jpg'
 
 const props = defineProps({ bookUrl: { type: String, required: true } })
 const router = useRouter()
 
 const PAPER = {
-  parchment: { name: '羊皮纸', bg: '#f3e9d2', text: '#3b2f24' },
+  parchment: { name: '羊皮纸', bg: '#e9dfc7', text: '#3b2f24', image: parchmentBg },
   white: { name: '白纸', bg: '#ffffff', text: '#242424' },
   green: { name: '浅绿', bg: '#e6f0e2', text: '#2c3a2a' },
   gray: { name: '灰调', bg: '#ececec', text: '#2b2b2b' },
+  blue: { name: '雾蓝', bg: '#e9f1f7', text: '#24323d' },
+  mint: { name: '薄荷', bg: '#e8f4ef', text: '#244038' },
+  rose: { name: '藕粉', bg: '#f7ebee', text: '#3d2b30' },
+  sand: { name: '沙漠', bg: '#f2eadc', text: '#3a3026' },
+  paper: {
+    name: '宣纸',
+    bg: '#f6f1e4',
+    text: '#352d23',
+    pattern: 'radial-gradient(circle at 20% 30%, rgba(120,90,50,0.05) 0 1px, transparent 1px)',
+  },
+  bamboo: {
+    name: '竹影',
+    bg: '#eaf1e5',
+    text: '#2b3928',
+    pattern: 'linear-gradient(135deg, rgba(80,120,70,0.06) 25%, transparent 25%, transparent 75%, rgba(80,120,70,0.06) 75%)',
+  },
 }
 const DARK = { name: '夜间', bg: '#121212', text: '#c9c4bb' }
 const APPEARANCE = [
@@ -23,12 +40,20 @@ const FONT_OPTIONS = [
   { value: 'serif', label: '宋体' },
   { value: 'kai', label: '楷体' },
   { value: 'sans', label: '黑体' },
+  { value: 'fangsong', label: '仿宋' },
+  { value: 'noto-serif', label: '思源宋体' },
+  { value: 'lxgw', label: '霞鹜文楷' },
+  { value: 'round', label: '圆体' },
 ]
 const FONT_STACKS = {
   '': '',
   serif: '"Songti SC", "SimSun", "Noto Serif CJK SC", serif',
   kai: '"Kaiti SC", "KaiTi", "STKaiti", serif',
   sans: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
+  fangsong: '"FangSong", "STFangsong", "FangSong_GB2312", serif',
+  'noto-serif': '"Noto Serif CJK SC", "Noto Serif SC", "Source Han Serif SC", serif',
+  lxgw: '"LXGW WenKai", "LXGW WenKai Screen", "Kaiti SC", serif',
+  round: '"YouYuan", "Yuanti SC", "Hiragino Sans GB", sans-serif',
 }
 const ALIGNS = [
   { value: 'justify', label: '两端对齐' },
@@ -53,8 +78,8 @@ const DEFAULT_PREFS = {
   letterSpacing: 0,
   fontFamily: '',
   textAlign: 'justify',
-  pageWidth: 760,
-  pagePadding: 24,
+  pageWidth: 780,
+  pagePadding: 36,
   pageTop: 0,
   pageBottom: 0,
   appearance: 'light',
@@ -63,6 +88,7 @@ const DEFAULT_PREFS = {
   pageMode: 'scroll',
   animation: 'slide',
   showChapterTitle: true,
+  separateAreas: false,
   convert: '',
   ttsRate: 1,
   ttsPitch: 1,
@@ -76,6 +102,11 @@ function loadPrefs() {
     if (saved && typeof saved === 'object') {
       if (saved.paper === 'paper' || saved.paper === 'warm') saved.paper = 'parchment'
       if (saved.appearance === 'system' && !saved.paper) saved.paper = 'parchment'
+      if (!localStorage.getItem('rp_width_780')) {
+        if ([760, 820].includes(Number(saved.pageWidth))) saved.pageWidth = 780
+        if (!saved.pagePadding || [20, 24].includes(Number(saved.pagePadding))) saved.pagePadding = 36
+        localStorage.setItem('rp_width_780', '1')
+      }
       return { ...DEFAULT_PREFS, ...saved }
     }
   } catch {
@@ -109,9 +140,21 @@ watch(
     }
     // 设置面板打开期间只预览，写入由 ✓ 触发；面板内快捷切换不受影响
     if (!showSettings.value) localStorage.setItem('readerPrefs', JSON.stringify(value))
+    nextTick(updateRangeFills)
   },
   { deep: true },
 )
+
+/** 原生 range 的已选段填充：保证拉到 100% 时轨道真正铺满 */
+function updateRangeFills() {
+  document.querySelectorAll('.panel-row input[type="range"]').forEach((input) => {
+    const min = Number(input.min || 0)
+    const max = Number(input.max || 100)
+    const value = Number(input.value || 0)
+    const percent = max > min ? ((value - min) / (max - min)) * 100 : 0
+    input.style.setProperty('--range-fill', `${Math.max(0, Math.min(100, percent))}%`)
+  })
+}
 
 const book = ref(null)
 const chapters = ref([])
@@ -119,6 +162,9 @@ const current = ref(0)
 const content = ref('')
 const loading = ref(false)
 const readingEl = ref(null)
+/** 正文内容区实际宽度：阅读弹层按它对齐，页宽/页边距或窗口变化时同步更新 */
+const textWidth = ref(0)
+let textWidthObserver = null
 
 const showCatalog = ref(false)
 const showSettings = ref(false)
@@ -126,6 +172,11 @@ const showSearch = ref(false)
 const showNotes = ref(false)
 const showBookmarks = ref(false)
 const showSource = ref(false)
+const showReaderSource = ref(false)
+const readerSourceLines = ref([])
+const readerSourceCurrent = ref('')
+const readerSourceLoading = ref(false)
+const readerSourceBusy = ref(false)
 const showDp = ref(false)
 const showDpPanel = ref(false)
 
@@ -149,6 +200,20 @@ const dpPanelLoading = ref(false)
 const dpPanelTitle = ref('')
 const dpComments = ref([])
 const dpPanelTotal = ref(0)
+const dpPanelHtml = ref('')
+const dpPanelUrl = ref('')
+const dpPanelProxyUrl = ref('')
+const dpFrameReady = ref(false)
+const dpPanelTab = ref('all')
+const dpPanelSort = ref('default')
+const dpSortOpen = ref(false)
+const dpPanelQuote = ref('')
+const dpCounts = ref({ all: 0, img: 0, audio: 0 })
+const dpReplies = ref({})
+const dpReplyBusy = ref('')
+const dpPanelHasMore = ref(false)
+const dpPanelLoadingMore = ref(false)
+const dpPanelMarker = ref(null)
 
 const turnDirection = ref('')
 const caching = ref(false)
@@ -226,9 +291,22 @@ const shellStyle = computed(() => {
     background: current.bg,
     '--reader-bg': current.bg,
     '--reader-half': `${prefs.value.pageWidth / 2}px`,
+    '--reader-page-width': `${prefs.value.pageWidth}px`,
+    // 弹层宽度跟正文内容区一致（页宽减去两侧页边距），而不是跟整页外框一致
+    '--reader-panel-width': `${
+      textWidth.value || Math.max(0, prefs.value.pageWidth - prefs.value.pagePadding * 2)
+    }px`,
   }
   if (!isDark.value && prefs.value.paper === 'parchment') {
-    return { ...base, backgroundImage: PARCHMENT_TEXTURE }
+    return {
+      ...base,
+      backgroundImage: `url(${current.image || parchmentBg})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+    }
+  }
+  if (!isDark.value && current.pattern) {
+    return { ...base, backgroundImage: current.pattern, backgroundSize: '10px 10px' }
   }
   return base
 })
@@ -556,6 +634,7 @@ function savePrefs() {
 function openSettings() {
   settingsSnapshot.value = JSON.stringify(prefs.value)
   showSettings.value = true
+  nextTick(updateRangeFills)
 }
 
 function saveSettings() {
@@ -609,6 +688,11 @@ async function loadBook() {
       window.__toast?.('这本书不在书架里')
       router.replace('/bookshelf')
       return
+    }
+    if (book.value.hasUpdate) {
+      book.value.hasUpdate = false
+      book.value.newChapterCount = 0
+      api.clearBookUpdate(book.value.bookUrl).catch(() => {})
     }
     chapters.value = await api.chapterList({
       bookUrl: book.value.bookUrl,
@@ -789,6 +873,44 @@ async function removeNote(note) {
 }
 
 /* ---------------- 换源 ---------------- */
+async function openReaderSource() {
+  if (!book.value) return
+  showReaderSource.value = true
+  readerSourceLoading.value = true
+  readerSourceLines.value = []
+  readerSourceCurrent.value = ''
+  try {
+    const result = await api.sourceLines(book.value.origin)
+    readerSourceLines.value = result?.lines || []
+    readerSourceCurrent.value = result?.current || ''
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    readerSourceLoading.value = false
+  }
+}
+
+async function switchReaderLine(line) {
+  if (!book.value || readerSourceBusy.value) return
+  readerSourceBusy.value = true
+  try {
+    await api.setSourceLine(book.value.origin, line)
+    readerSourceCurrent.value = line.url
+    window.__toast?.(`已切换到「${line.name}」`)
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    readerSourceBusy.value = false
+  }
+}
+
+function readerLineClass(line) {
+  if (!line.ok || line.latency < 0) return 'bad'
+  if (line.latency < 300) return 'good'
+  if (line.latency < 900) return 'mid'
+  return 'slow'
+}
+
 async function findSources() {
   if (isLocalBook.value) {
     window.__toast?.('本地导入的书不需要换源')
@@ -863,28 +985,224 @@ async function openDp() {
 async function openDpComment(marker) {
   if (!marker || dpPanelLoading.value) return
   showDpPanel.value = true
-  dpPanelLoading.value = true
-  dpPanelError.value = ''
-  dpComments.value = []
-  dpPanelTotal.value = 0
+  dpPanelMarker.value = marker
+  dpPanelTab.value = 'all'
+  dpPanelSort.value = 'default'
+  dpPanelQuote.value =
+    Number(marker.paragraph) >= 0 ? String(paragraphs.value[Number(marker.paragraph)] || '').trim() : ''
+  dpReplies.value = {}
+  dpCounts.value = { all: 0, img: 0, audio: 0 }
   dpPanelTitle.value =
     Number(marker.paragraph) === -1
       ? `章节名 · ${marker.count} 条段评`
       : `第 ${Number(marker.paragraph) + 1} 段 · ${marker.count} 条段评`
+  await loadDpComments(0)
+}
+
+function onDpFrameLoad() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      dpFrameReady.value = true
+    })
+  })
+}
+
+async function changeDpTab(tab) {
+  if (dpPanelTab.value === tab) return
+  dpPanelTab.value = tab
+  await loadDpComments(0)
+}
+
+async function setDpSort(sort) {
+  dpSortOpen.value = false
+  if (dpPanelSort.value === sort) return
+  dpPanelSort.value = sort
+  await loadDpComments(0)
+}
+
+const dpSortLabel = computed(
+  () => ({ default: '推荐排序', hot: '按热度', new: '按时间', floor: '按楼层' })[dpPanelSort.value] || '推荐排序',
+)
+const dpDisplayComments = computed(() =>
+  dpPanelSort.value === 'floor'
+    ? [...dpComments.value].sort((a, b) => Number(a.floor || 0) - Number(b.floor || 0))
+    : dpComments.value,
+)
+
+function toggleDpTheme() {
+  prefs.value.appearance = isDark.value ? 'light' : 'dark'
+}
+
+async function refreshDpCounts() {
+  const marker = dpPanelMarker.value
+  if (!marker) return
+  try {
+    const base = {
+      bookUrl: props.bookUrl,
+      index: current.value,
+      paragraph: Number(marker.paragraph),
+      offset: 0,
+      limit: 1,
+    }
+    const [imgResult, audioResult] = await Promise.all([
+      api.paragraphCommentPanel({ ...base, tab: 'img' }),
+      api.paragraphCommentPanel({ ...base, tab: 'audio' }),
+    ])
+    dpCounts.value = {
+      all: dpCounts.value.all || dpPanelTotal.value,
+      img: Number(imgResult?.total || 0),
+      audio: Number(audioResult?.total || 0),
+    }
+  } catch {
+    /* 数量测速失败不影响评论展示 */
+  }
+}
+
+async function toggleReplies(comment) {
+  if (!comment?.id || dpReplyBusy.value) return
+  const state = dpReplies.value[comment.id]
+  if (state?.open) {
+    dpReplies.value = { ...dpReplies.value, [comment.id]: { ...state, open: false } }
+    return
+  }
+  dpReplyBusy.value = comment.id
+  try {
+    const result = await api.commentReplies({
+      bookUrl: props.bookUrl,
+      index: current.value,
+      chapterUrl: chapter.value?.url || '',
+      paragraph: Number(dpPanelMarker.value?.paragraph || 0),
+      rootReviewId: comment.id,
+      page: 1,
+      limit: 6,
+    })
+    dpReplies.value = {
+      ...dpReplies.value,
+      [comment.id]: { open: true, items: result.replies || [], total: result.total || 0, hasMore: Boolean(result.hasMore), page: 1 },
+    }
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    dpReplyBusy.value = ''
+  }
+}
+
+async function loadMoreReplies(comment) {
+  const state = dpReplies.value[comment.id]
+  if (!state || dpReplyBusy.value) return
+  dpReplyBusy.value = comment.id
+  try {
+    const page = state.page + 1
+    const result = await api.commentReplies({
+      bookUrl: props.bookUrl,
+      index: current.value,
+      chapterUrl: chapter.value?.url || '',
+      paragraph: Number(dpPanelMarker.value?.paragraph || 0),
+      rootReviewId: comment.id,
+      page,
+      limit: 6,
+    })
+    dpReplies.value = {
+      ...dpReplies.value,
+      [comment.id]: {
+        ...state,
+        items: [...state.items, ...(result.replies || [])],
+        page,
+        hasMore: Boolean(result.hasMore),
+      },
+    }
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    dpReplyBusy.value = ''
+  }
+}
+
+async function loadDpComments(offset) {
+  const marker = dpPanelMarker.value
+  if (!marker) return
+  if (offset === 0) {
+    dpPanelLoading.value = true
+    dpPanelError.value = ''
+    dpComments.value = []
+    dpPanelHtml.value = ''
+    dpPanelUrl.value = ''
+    dpPanelProxyUrl.value = ''
+    dpFrameReady.value = false
+    dpReplies.value = {}
+    dpPanelTotal.value = 0
+    dpPanelHasMore.value = false
+  } else {
+    dpPanelLoadingMore.value = true
+  }
   try {
     const result = await api.paragraphCommentPanel({
       bookUrl: props.bookUrl,
       index: current.value,
-      paragraph: marker.paragraph,
+      paragraph: Number(marker.paragraph),
+      offset,
+      limit: offset === 0 ? 10 : 6,
+      tab: dpPanelTab.value,
+      sort: dpPanelSort.value,
     })
-    dpComments.value = result.comments || []
+    if (result.html) {
+      dpPanelHtml.value = result.html
+      dpPanelUrl.value = result.panelUrl || ''
+      dpFrameReady.value = false
+      dpPanelProxyUrl.value = result.panelUrl
+        ? (() => {
+            const source = new URL(result.panelUrl)
+            const params = new URLSearchParams(source.search)
+            params.set('url', result.panelUrl)
+            params.set('theme', isDark.value ? 'dark' : 'light')
+            params.set('bg', theme.value.bg)
+            return `/reader3/dpPage?${params.toString()}`
+          })()
+        : ''
+      dpPanelHasMore.value = false
+      return
+    }
+    dpComments.value = offset === 0 ? result.comments || [] : [...dpComments.value, ...(result.comments || [])]
     dpPanelTotal.value = Number(result.total || dpComments.value.length)
+    if (offset === 0) {
+      const c = result.counts || {}
+      dpCounts.value = {
+        all: Number(c.all ?? c.All ?? (dpPanelTab.value === 'all' ? result.total : dpCounts.value.all) ?? 0),
+        img: Number(c.img ?? c.Img ?? c.image ?? c.Image ?? dpCounts.value.img ?? 0),
+        audio: Number(c.audio ?? c.Audio ?? dpCounts.value.audio ?? 0),
+      }
+    }
+    dpPanelUrl.value = result.panelUrl || ''
+    dpFrameReady.value = false
+      dpPanelProxyUrl.value = result.panelUrl
+      ? (() => {
+          const source = new URL(result.panelUrl)
+          const params = new URLSearchParams(source.search)
+          params.set('url', result.panelUrl)
+            params.set('theme', isDark.value ? 'dark' : 'light')
+            params.set('bg', theme.value.bg)
+          return `/reader3/dpPage?${params.toString()}`
+        })()
+      : ''
+    dpPanelHasMore.value = Boolean(result.hasMore)
+    if (offset === 0 && dpPanelTab.value === 'all') {
+      const c = result.counts || {}
+      if (!Number(c.img || c.Img || c.image || c.Image || 0) && !Number(c.audio || c.Audio || 0)) refreshDpCounts()
+    }
     if (!dpComments.value.length) dpPanelError.value = '没有取到段评内容'
   } catch (error) {
-    dpPanelError.value = error.message
+    if (offset === 0) dpPanelError.value = error.message
   } finally {
     dpPanelLoading.value = false
+    dpPanelLoadingMore.value = false
   }
+}
+
+function onDpPanelScroll(event) {
+  if (!dpPanelHasMore.value || dpPanelLoadingMore.value || dpPanelLoading.value) return
+  const el = event.target
+  if (!el || el.scrollTop + el.clientHeight < el.scrollHeight - 80) return
+  loadDpComments(dpComments.value.length)
 }
 
 function formatCommentTime(value) {
@@ -1044,7 +1362,7 @@ const warmCache = (index) => {
   if (!origin || /^local:\/\/(txt|epub|docx|mobi|pdf)(\/|$)/i.test(origin) || cacheWarmed) return
   cacheWarmed = true
   api
-    .cacheBook(book.value.bookUrl, 50, false, index)
+    .cacheBook(book.value.bookUrl, 10, false, index)
     .then((result) => {
       if (result?.cached) window.__toast?.(`已从第 ${index + 1} 章起缓存 ${result.cached} 章`)
     })
@@ -1103,6 +1421,13 @@ onMounted(() => {
 
   updateScroll()
   loadBook()
+  if (typeof ResizeObserver !== 'undefined') {
+    textWidthObserver = new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect?.width
+      if (width) textWidth.value = Math.round(width)
+    })
+    if (readingEl.value) textWidthObserver.observe(readingEl.value)
+  }
   updateMobileLayout()
   window.addEventListener('resize', updateMobileLayout)
   revealChrome()
@@ -1112,7 +1437,13 @@ onMounted(() => {
   window.__panghuFlushProgress = () => saveProgressNow({ force: true })
 })
 
+watch(showDpPanel, (open) => {
+  document.body.classList.toggle('dp-panel-open', open)
+})
+
 onBeforeUnmount(() => {
+  textWidthObserver?.disconnect()
+  document.body.classList.remove('dp-panel-open')
   stopTts()
   flushReading()
   saveProgressNow({ force: true })
@@ -1145,7 +1476,7 @@ watch(chapterTitle, () => {
 </script>
 
 <template>
-  <div class="reader-shell" :style="shellStyle">
+  <div class="reader-shell" :class="{ 'separate-areas': prefs.separateAreas }" :style="shellStyle">
     <div class="reader-dim" :style="{ opacity: dimOpacity }" />
 
     <!-- 手机：浮动顶部栏（返回/书名/目录） -->
@@ -1171,12 +1502,24 @@ watch(chapterTitle, () => {
     </div>
 
     <aside class="rail rail-left">
-      <button class="rail-btn" title="返回书架" @click="router.push('/bookshelf')"><span>⌂</span><i>书架</i></button>
-      <button class="rail-btn" title="书源" @click="router.push('/sources')"><span>⌘</span><i>书源</i></button>
-      <button class="rail-btn" title="目录" @click="showCatalog = true"><span>☰</span><i>目录</i></button>
-      <button class="rail-btn" title="设置" @click="openSettings"><span>⚙</span><i>设置</i></button>
-      <button class="rail-btn" title="顶部" @click="toTop"><span>︿</span><i>顶部</i></button>
-      <button class="rail-btn" title="底部" @click="toBottom"><span>﹀</span><i>底部</i></button>
+      <button class="rail-btn" title="返回书架" @click="router.push('/bookshelf')">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8" /><path d="M5.5 9.5V21h13V9.5" /></svg><i>书架</i>
+      </button>
+      <button class="rail-btn" title="书源" @click="openReaderSource">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4Z" /><path d="M8 4v16" /><path d="M11 8h5" /></svg><i>书源</i>
+      </button>
+      <button class="rail-btn" title="目录" @click="showCatalog = true">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg><i>目录</i>
+      </button>
+      <button class="rail-btn" title="设置" @click="openSettings">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-3v-.1A1.7 1.7 0 0 0 9.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-3h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.12-2.12.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h3v.1A1.7 1.7 0 0 0 14.4 4a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.12 2.12-.06.06A1.7 1.7 0 0 0 19.4 9c.4.5.8.8 1.4 1h.2v3h-.1a1.7 1.7 0 0 0-1.5 2Z" /></svg><i>设置</i>
+      </button>
+      <button class="rail-btn" title="顶部" @click="toTop">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6" /></svg><i>顶部</i>
+      </button>
+      <button class="rail-btn" title="底部" @click="toBottom">
+        <svg class="rail-left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6" /></svg><i>底部</i>
+      </button>
     </aside>
 
     <main
@@ -1223,18 +1566,27 @@ watch(chapterTitle, () => {
 
     <aside class="rail rail-right">
       <button class="rail-btn round" title="加书签" @click="addBookmark">🔖</button>
-      <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">⌕</button>
-      <button v-if="!isLocalBook" class="rail-btn round" title="换源" @click="findSources">⇄</button>
+      <button class="rail-btn round" title="查找" @click="showSearch = !showSearch">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
+      </button>
       <button class="rail-btn round" title="笔记" @click="showNotes = true; loadNotes()">✎</button>
       <button class="rail-btn round" title="段评" @click="openDp">💬</button>
-      <button class="rail-btn round" :title="caching ? '缓存中…' : '缓存 50 章'" @click="cacheChapter">⤓</button>
-      <button class="rail-btn round" title="刷新本章" @click="loadChapter(current)">↻</button>
+      <button class="rail-btn round" :title="caching ? '缓存中…' : '缓存 50 章'" @click="cacheChapter">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11" /><path d="m7.5 10 4.5 4.5 4.5-4.5" /><path d="M4 19h16" /></svg>
+      </button>
+      <button class="rail-btn round" title="刷新本章" @click="loadChapter(current)">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.2" /><path d="M20 4v7h-7" /></svg>
+      </button>
       <button class="rail-btn round" title="简繁" @click="setConvert(prefs.convert === 'tw' ? 'cn' : 'tw')">文</button>
       <button class="rail-btn round" :title="tts.playing ? '停止朗读' : '朗读'" @click="tts.playing ? stopTts() : startTts()">🎧</button>
       <div class="rail-progress">{{ progress }}%</div>
       <div class="rail-page">{{ current + 1 }}/{{ chapters.length }}</div>
-      <button class="rail-btn round" title="上一章" @click="turnPrev">‹</button>
-      <button class="rail-btn round" title="下一章" @click="turnNext">›</button>
+      <button class="rail-btn round" title="上一章" @click="turnPrev">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7" /></svg>
+      </button>
+      <button class="rail-btn round" title="下一章" @click="turnNext">
+        <svg class="rail-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5 7 7-7 7" /></svg>
+      </button>
     </aside>
 
     <!-- 正文搜索条 -->
@@ -1284,7 +1636,7 @@ watch(chapterTitle, () => {
               :key="key"
               class="theme-swatch"
               :class="{ active: prefs.paper === key && !isDark }"
-              :style="{ background: paper.bg, color: paper.text }"
+              :style="{ background: paper.image ? `url(${paper.image}) center/cover` : paper.bg, color: paper.text }"
               @click="selectPaper(key)"
             >{{ paper.name }}</button>
           </div>
@@ -1361,6 +1713,7 @@ watch(chapterTitle, () => {
             </div>
           </div>
           <label class="panel-row"><span>显示章节标题</span><input v-model="prefs.showChapterTitle" type="checkbox" /></label>
+          <label class="panel-row"><span>区分正文/侧栏</span><input v-model="prefs.separateAreas" type="checkbox" /></label>
         </section>
 
         <section class="panel-section">
@@ -1453,7 +1806,7 @@ watch(chapterTitle, () => {
           <button class="ghost" @click="refreshCatalog">刷新目录</button>
         </div>
         <input v-model="catalogFilter" placeholder="搜索章节名" style="margin: 10px 0" />
-        <div class="list" style="max-height: 60vh; overflow: auto">
+        <div class="list catalog-grid" style="max-height: 60vh; overflow: auto">
           <div
             v-for="(item, index) in filteredChapters"
             :key="index"
@@ -1499,6 +1852,45 @@ watch(chapterTitle, () => {
             </div>
             <button class="ghost" @click="removeNote(note)">删除</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 书源 / 线路 -->
+    <div v-if="showReaderSource" class="sheet-backdrop" @click.self="showReaderSource = false">
+      <div class="sheet reader-sheet" :style="{ background: theme.bg, color: theme.text }">
+        <div class="sheet-handle" />
+        <div class="row" style="align-items: center">
+          <h2 style="margin: 0">书源 · {{ book?.name }}</h2>
+          <div class="spacer" />
+          <button class="ghost" @click="showReaderSource = false">关闭</button>
+        </div>
+        <div class="reader-source-current">
+          <span>当前书源</span>
+          <strong>{{ book?.originName || '书源' }}</strong>
+          <small>{{ book?.origin }}</small>
+        </div>
+        <div v-if="readerSourceLoading" class="muted" style="padding: 12px 0">正在测速…</div>
+        <div v-else-if="!readerSourceLines.length" class="muted" style="padding: 12px 0">该书源没有可切换线路。</div>
+        <div v-else class="reader-line-list">
+          <button
+            v-for="line in readerSourceLines"
+            :key="line.url"
+            class="reader-line-item"
+            :class="{ active: line.url === readerSourceCurrent }"
+            :disabled="readerSourceBusy"
+            @click="switchReaderLine(line)"
+          >
+            <i class="line-dot" :class="readerLineClass(line)" />
+            <span>{{ line.name }}</span>
+            <b :class="readerLineClass(line)">{{ line.ok && line.latency >= 0 ? line.latency + 'ms' : '超时' }}</b>
+            <em v-if="line.url === readerSourceCurrent">当前</em>
+          </button>
+        </div>
+        <div class="row" style="justify-content: flex-end; margin-top: 14px; flex-wrap: wrap">
+          <button v-if="!isLocalBook" class="ghost" @click="showReaderSource = false; findSources()">换源</button>
+          <button class="ghost" @click="showReaderSource = false; router.push('/sources')">书源管理</button>
+          <button class="primary" @click="showReaderSource = false">完成</button>
         </div>
       </div>
     </div>
@@ -1550,29 +1942,154 @@ watch(chapterTitle, () => {
     </div>
 
     <!-- 段评面板 -->
-    <div v-if="showDpPanel" class="sheet-backdrop" @click.self="showDpPanel = false">
-      <div class="sheet reader-sheet dp-panel-sheet" :style="{ background: theme.bg, color: theme.text }">
+    <div v-if="showDpPanel" class="sheet-backdrop dp-backdrop" @click.self="showDpPanel = false">
+      <div
+        class="sheet reader-sheet dp-panel-sheet"
+        :class="{ 'has-proxy': Boolean(dpPanelProxyUrl), 'dp-loading': !dpPanelProxyUrl && dpPanelLoading }"
+        :style="{ background: theme.bg, color: theme.text }"
+      >
         <div class="sheet-handle" />
-        <div class="row" style="align-items: center; gap: 8px">
-          <h2 style="margin: 0">{{ dpPanelTitle }}</h2>
-          <div class="spacer" />
-          <button class="ghost" @click="showDpPanel = false">关闭</button>
+        <div v-if="!dpPanelProxyUrl && dpPanelLoading" class="dp-initial-loading">
+          <span class="dp-loading-dot" />
+          正在加载段评…
+        </div>
+        <iframe
+          v-if="dpPanelProxyUrl"
+          class="dp-proxy-iframe"
+          :class="{ ready: dpFrameReady }"
+          :src="dpPanelProxyUrl"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          @load="onDpFrameLoad"
+          title="段评"
+        />
+        <div class="dp-panel-top">
+          <div class="dp-panel-brand">
+            <button class="dp-theme-toggle" :title="isDark ? '切换浅色' : '切换深色'" @click="toggleDpTheme">
+              <svg v-if="!isDark" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 15.2A8.2 8.2 0 0 1 8.8 4a8.4 8.4 0 1 0 11.2 11.2Z" />
+              </svg>
+            </button>
+            <strong>段评</strong>
+            <span class="dp-brand-sub">段落评论·起点</span>
+          </div>
+          <button class="dp-refresh" title="刷新段评" @click="loadDpComments(0)">↻</button>
         </div>
         <div v-if="dpPanelLoading" class="muted" style="padding: 24px 0">正在加载段评…</div>
-        <div v-else-if="dpPanelError && !dpComments.length" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
+        <div v-else-if="dpPanelError && !dpComments.length && !dpPanelHtml" class="muted" style="padding: 24px 0">{{ dpPanelError }}</div>
         <template v-else>
-          <div class="dp-comment-summary">共 {{ dpPanelTotal }} 条 · 显示前 {{ dpComments.length }} 条</div>
-          <div class="dp-comment-list">
-            <div v-for="(comment, index) in dpComments" :key="comment.id || index" class="dp-comment-item">
-              <div class="dp-comment-meta">
-                <strong>{{ comment.user }}</strong>
-                <span>{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
+          <iframe
+            v-if="dpPanelHtml"
+            class="dp-panel-iframe"
+            :srcdoc="dpPanelHtml"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            title="段评面板"
+          />
+          <template v-else>
+            <div class="dp-filter-row">
+              <div class="dp-tabs">
+                <button :class="{ active: dpPanelTab === 'all' }" @click="changeDpTab('all')">全部 <b>{{ dpCounts.all || dpPanelTotal }}</b></button>
+                <button :class="{ active: dpPanelTab === 'img' }" @click="changeDpTab('img')">配图 <b>{{ dpCounts.img }}</b></button>
+                <button :class="{ active: dpPanelTab === 'audio' }" @click="changeDpTab('audio')">配音 <b>{{ dpCounts.audio }}</b></button>
               </div>
-              <div v-if="comment.quote" class="dp-comment-quote">{{ comment.quote }}</div>
-              <p class="dp-comment-content">{{ comment.content }}</p>
-              <div class="dp-comment-like">👍 {{ comment.agree }}</div>
             </div>
-          </div>
+            <div class="dp-sort-row">
+              <div class="dp-sort-dd">
+                <button class="dp-sort-trigger" @click.stop="dpSortOpen = !dpSortOpen">
+                  {{ dpSortLabel }} <span>⌄</span>
+                </button>
+                <div v-if="dpSortOpen" class="dp-sort-menu" @click.stop>
+                  <button :class="{ active: dpPanelSort === 'default' }" @click="setDpSort('default')">推荐排序</button>
+                  <button :class="{ active: dpPanelSort === 'hot' }" @click="setDpSort('hot')">按热度</button>
+                  <button :class="{ active: dpPanelSort === 'new' }" @click="setDpSort('new')">按时间</button>
+                  <button :class="{ active: dpPanelSort === 'floor' }" @click="setDpSort('floor')">按楼层</button>
+                </div>
+              </div>
+            </div>
+            <div v-if="dpPanelQuote" class="dp-origin-quote">
+              <span>引用原文</span>
+              <p>{{ dpPanelQuote }}</p>
+            </div>
+            <div class="dp-comment-summary">共 {{ dpPanelTotal }} 条 · 已显示 {{ dpComments.length }} 条</div>
+            <div class="dp-comment-list" @scroll.passive="onDpPanelScroll">
+              <div v-for="(comment, index) in dpDisplayComments" :key="comment.id || index" class="dp-comment-item">
+                <div class="dp-comment-head">
+                  <img
+                    v-if="comment.avatar"
+                    class="dp-comment-avatar"
+                    :src="comment.avatar"
+                    alt=""
+                    referrerpolicy="no-referrer"
+                    loading="lazy"
+                  />
+                  <span v-else class="dp-comment-avatar placeholder">👤</span>
+                  <div class="dp-comment-meta">
+                    <div class="dp-comment-userline">
+                      <strong>{{ comment.user }}</strong>
+                      <span v-for="title in comment.titles || []" :key="title" class="dp-user-title">{{ title }}</span>
+                    </div>
+                    <span>{{ comment.floor ? `第 ${comment.floor} 楼 · ` : '' }}{{ comment.ip }} {{ formatCommentTime(comment.time) }}</span>
+                  </div>
+                </div>
+                <div v-if="comment.quote" class="dp-comment-quote">{{ comment.quote }}</div>
+                <p v-if="comment.content" class="dp-comment-content">{{ comment.content }}</p>
+                <div v-if="comment.images?.length" class="dp-comment-images">
+                  <img
+                    v-for="(image, imageIndex) in comment.images"
+                    :key="imageIndex"
+                    :src="image"
+                    alt="段评图片"
+                    referrerpolicy="no-referrer"
+                    loading="lazy"
+                  />
+                </div>
+                <div v-if="comment.audio" class="dp-comment-audio-row">
+                  <audio :src="comment.audio" controls preload="none" />
+                  <span v-if="comment.audioTime">{{ comment.audioTime }}″</span>
+                </div>
+                <div class="dp-comment-foot">
+                  <span>👍 {{ comment.agree }}</span>
+                  <span>👎 {{ comment.disagree || 0 }}</span>
+                  <span>💬 {{ comment.replyCount || 0 }}</span>
+                </div>
+                <div v-if="comment.replyCount" class="dp-reply-toggle">
+                  <button :disabled="dpReplyBusy === comment.id" @click="toggleReplies(comment)">
+                    💬 {{ dpReplyBusy === comment.id ? '加载中…' : `${dpReplies[comment.id]?.open ? '收起' : '查看'} ${comment.replyCount} 条回复` }}
+                  </button>
+                </div>
+                <div v-if="dpReplies[comment.id]?.open" class="dp-reply-list">
+                  <div class="dp-reply-context">
+                    <span>引用原文</span>
+                    <p>{{ comment.quote || dpPanelQuote }}</p>
+                    <small v-if="comment.content">{{ comment.content }}</small>
+                  </div>
+                  <div v-for="reply in dpReplies[comment.id].items" :key="reply.id" class="dp-reply-item">
+                    <img v-if="reply.avatar" class="dp-reply-avatar" :src="reply.avatar" alt="" referrerpolicy="no-referrer" loading="lazy" />
+                    <span v-else class="dp-reply-avatar placeholder">👤</span>
+                    <div class="dp-reply-main">
+                      <div class="dp-reply-meta">
+                        <strong>{{ reply.user }}</strong>
+                        <span v-if="reply.floor">第 {{ reply.floor }} 楼</span>
+                        <span>{{ formatCommentTime(reply.time) }}</span>
+                      </div>
+                      <p>{{ reply.content }}</p>
+                    </div>
+                  </div>
+                  <button
+                    v-if="dpReplies[comment.id].hasMore"
+                    class="dp-reply-more"
+                    :disabled="dpReplyBusy === comment.id"
+                    @click="loadMoreReplies(comment)"
+                  >展开更多回复</button>
+                </div>
+              </div>
+              <div v-if="dpPanelLoadingMore" class="muted" style="padding: 10px 0; text-align: center">正在加载更多…</div>
+              <div v-else-if="!dpPanelHasMore && dpComments.length" class="muted" style="padding: 10px 0; text-align: center">没有更多了</div>
+            </div>
+          </template>
         </template>
       </div>
     </div>
@@ -1883,6 +2400,14 @@ watch(chapterTitle, () => {
   padding: 8px 0;
 }
 
+.dp-panel-iframe {
+  width: 100%;
+  height: 68vh;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+}
+
 .dp-comment-list {
   max-height: 64vh;
   overflow-y: auto;
@@ -1898,12 +2423,36 @@ watch(chapterTitle, () => {
   border: 1px solid rgba(127, 127, 127, 0.14);
 }
 
+.dp-comment-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.dp-comment-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+  background: rgba(127, 127, 127, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
 .dp-comment-meta {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
-  margin-bottom: 4px;
+}
+
+.dp-comment-meta strong {
+  font-size: 13px;
 }
 
 .dp-comment-meta span {
@@ -1915,20 +2464,55 @@ watch(chapterTitle, () => {
   opacity: 0.6;
   border-left: 2px solid rgba(120, 90, 50, 0.3);
   padding-left: 8px;
-  margin: 4px 0;
+  margin: 6px 0 4px 38px;
 }
 
 .dp-comment-content {
-  margin: 4px 0;
+  margin: 5px 0 4px 38px;
   font-size: 14px;
   line-height: 1.7;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .dp-comment-like {
   font-size: 11px;
   opacity: 0.55;
-  text-align: right;
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.dp-comment-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 6px;
+  margin: 8px 0 4px 38px;
+}
+
+.dp-comment-images img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.dp-comment-audio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 2px 38px;
+}
+
+.dp-comment-audio-row audio {
+  width: min(300px, 100%);
+  height: 32px;
+}
+
+.dp-comment-audio-row span {
+  font-size: 11px;
+  opacity: 0.55;
 }
 
 .chapter-end-btn {

@@ -114,6 +114,8 @@ try {
   check('手动换源成功', manual.isSuccess === true && manual.data?.origin === sourceB.bookSourceUrl, manual.errorMsg)
   check('手动换源按章节名定位', manual.data?.durChapterIndex === 2 && manual.data?.durChapterTitle === '第二章', JSON.stringify(manual.data))
   check('手动换源保留阅读位置', manual.data?.durChapterPos === 50, String(manual.data?.durChapterPos))
+  const afterSwitchShelf = (await call('/reader3/getBookshelf', { token })).data
+  check('换源不会在书架留下重复书籍', afterSwitchShelf.filter((item) => item.name === '换源测试书').length === 1, JSON.stringify(afterSwitchShelf.map((item) => item.bookUrl)))
 
   const localBook = { ...bookA, bookUrl: 'local://switch-local', origin: 'local://txt', originName: '本地', name: '本地书' }
   await call('/reader3/saveBook', { method: 'POST', token, body: localBook })

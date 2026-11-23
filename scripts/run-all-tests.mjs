@@ -32,6 +32,8 @@ const SUITES = [
   'test-order',
   'test-switch',
   'test-keycheck',
+  'test-books',
+  'test-account',
   'test-warehouse',
   'test-reading-extras',
   'test-legado-client',

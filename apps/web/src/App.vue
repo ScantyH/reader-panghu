@@ -1,10 +1,17 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, isNativeApp, setToken } from './api.js'
+import { api, coverOf, isNativeApp, setToken } from './api.js'
+import { desktopNavLayout } from './use-layout.js'
 
 const route = useRoute()
 const router = useRouter()
+const isBookshelfPath = () => window.location.pathname.startsWith('/bookshelf')
+const layoutRouteName = ref(isBookshelfPath() ? 'bookshelf' : route.name)
+
+function syncLayoutRoute() {
+  layoutRouteName.value = isBookshelfPath() ? 'bookshelf' : route.name
+}
 const toast = ref('')
 const headerQuery = ref('')
 const searchReadonly = ref(true)
@@ -39,12 +46,43 @@ const isReader = () => route.name === 'reader'
 const isLogin = () => route.name === 'login'
 const authUser = ref('')
 const authOn = ref(false)
+const authAvatar = ref('')
+const authRole = ref('')
+const userInfoOpen = ref(false)
+const sidebarBooks = ref([])
+
+const showLeftNav = computed(() => !isMobile.value && desktopNavLayout.value === 'left')
+
+/** 子页面归属哪个主栏目，保证在子页面时主栏目标签始终高亮 */
+const activeNav = computed(() => {
+  const path = route.path || ''
+  if (path.startsWith('/settings') || path.startsWith('/warehouse') || path.startsWith('/bookmarks') || path.startsWith('/cache') || path.startsWith('/replace') || path.startsWith('/webdav') || path.startsWith('/users')) return '/settings'
+  if (path.startsWith('/backup')) return NAV.some((item) => item.to === '/backup') ? '/backup' : '/settings'
+  if (path.startsWith('/book/') || path.startsWith('/recent') || path.startsWith('/bookshelf')) return '/bookshelf'
+  if (path.startsWith('/sources') || path.startsWith('/rss')) return '/sources'
+  if (path.startsWith('/search')) return '/search'
+  if (path.startsWith('/stats')) return '/stats'
+  return ''
+})
+
+async function loadSidebarBooks() {
+  try {
+    const list = await api.bookshelf()
+    sidebarBooks.value = [...list]
+      .sort((a, b) => Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0))
+      .slice(0, 3)
+  } catch {
+    sidebarBooks.value = []
+  }
+}
 
 async function loadAuth() {
   try {
     const info = await api.getUserInfo()
     authOn.value = Boolean(info?.authEnabled)
     authUser.value = info?.username || ''
+    authAvatar.value = info?.avatar || ''
+    authRole.value = info?.role || ''
   } catch {
     authOn.value = true
     authUser.value = ''
@@ -119,17 +157,33 @@ function updateMobile() {
 }
 
 onMounted(() => {
+  layoutRouteName.value = isBookshelfPath() ? 'bookshelf' : route.name
   loadAuth()
+  loadSidebarBooks()
   updateMobile()
   window.addEventListener('resize', updateMobile)
+  window.addEventListener('rp-user-updated', loadAuth)
+  window.addEventListener('rp-layout-updated', loadSidebarBooks)
+  document.addEventListener('click', closeUserInfo)
 })
-onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateMobile)
+  window.removeEventListener('rp-user-updated', loadAuth)
+  window.removeEventListener('rp-layout-updated', loadSidebarBooks)
+  document.removeEventListener('click', closeUserInfo)
+})
+
+function closeUserInfo(event) {
+  if (!userInfoOpen.value) return
+  if (event.target?.closest?.('.header-user')) return
+  userInfoOpen.value = false
+}
 </script>
 
 <template>
   <router-view v-if="isReader() || isLogin()" />
 
-  <div v-else class="app" :class="{ 'app-mobile': isMobile }">
+  <div v-else class="app" :class="{ 'app-mobile': isMobile, 'nav-left': showLeftNav }">
     <header class="app-header">
       <div class="app-title">
         <img class="app-logo" src="/brand/logo-128.png" alt="胖虎阅读" />
@@ -155,10 +209,50 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
       <div v-else class="spacer" />
       <span class="badge version-badge" :title="'系统版本 ' + appVersion">{{ appVersion }}</span>
       <div v-if="authUser" class="header-user">
-        <span class="header-user-name">{{ authUser }}</span>
-        <button class="header-user-logout" @click="logout">退出</button>
+        <button class="header-user-trigger" title="用户信息" @click.stop="userInfoOpen = !userInfoOpen">
+          <span class="header-avatar">
+            <img v-if="authAvatar" :src="authAvatar" alt="" />
+            <span v-else>👤</span>
+          </span>
+          <span class="header-user-name">{{ authUser }}</span>
+        </button>
+        <div v-if="userInfoOpen" class="user-popover" @click.stop>
+          <div class="user-popover-head">
+            <button class="header-avatar large" @click="router.push('/settings/account'); userInfoOpen = false">
+              <img v-if="authAvatar" :src="authAvatar" alt="" />
+              <span v-else>👤</span>
+            </button>
+            <div>
+              <strong>{{ authUser }}</strong>
+              <div class="muted" style="font-size: 12px">{{ authRole === 'admin' ? '管理员' : '普通用户' }}</div>
+            </div>
+          </div>
+          <button class="ghost" style="width: 100%; margin-top: 8px" @click="router.push('/settings/account'); userInfoOpen = false">账号设置</button>
+          <button class="ghost" style="width: 100%; margin-top: 4px" @click="logout">退出登录</button>
+        </div>
       </div>
     </header>
+
+    <aside v-if="showLeftNav" class="side-nav">
+      <nav class="side-nav-links">
+        <router-link v-for="item in NAV" :key="item.to" :to="item.to" :title="item.label" :class="{ 'force-active': activeNav === item.to }">
+          <span class="side-nav-icon">{{ item.icon }}</span>
+          <span class="side-nav-label">{{ item.label }}</span>
+        </router-link>
+      </nav>
+      <div class="side-nav-detail">
+        <div class="side-nav-title">最近阅读</div>
+        <router-link v-for="book in sidebarBooks" :key="book.bookUrl" :to="{ path: '/read', query: { book: book.bookUrl } }" class="side-book">
+          <img v-if="coverOf(book)" :src="coverOf(book)" alt="" />
+          <span v-else class="side-book-placeholder">📖</span>
+          <span class="side-book-text">
+            <strong>{{ book.name }}</strong>
+            <small>{{ book.durChapterTitle || '还没开始读' }}</small>
+          </span>
+        </router-link>
+        <div v-if="!sidebarBooks.length" class="side-nav-empty">书架还没有书</div>
+      </div>
+    </aside>
 
     <!-- 手机：原生风格大标题 + 右侧玻璃圆钮 -->
     <header v-if="isMobile" class="m-header">
@@ -172,7 +266,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
       </div>
     </header>
 
-    <main class="app-main">
+    <main class="app-main" :class="{ 'nav-constrained': showLeftNav && layoutRouteName !== 'bookshelf', 'stats-wide': route.name === 'stats' }">
       <div v-if="parent && !isMobile" class="page-back">
         <button class="page-back-btn" :title="`返回 ${parent.label}`" @click="goParent">
           <span aria-hidden="true">←</span>
@@ -180,14 +274,14 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
         </button>
       </div>
       <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
+        <transition name="fade" mode="out-in" @after-leave="syncLayoutRoute">
           <component :is="Component" />
         </transition>
       </router-view>
     </main>
 
-    <nav v-if="!isMobile" class="bottom-nav">
-      <router-link v-for="item in NAV" :key="item.to" :to="item.to">
+    <nav v-if="!isMobile && !showLeftNav" class="bottom-nav">
+      <router-link v-for="item in NAV" :key="item.to" :to="item.to" :class="{ 'force-active': activeNav === item.to }">
         <span class="icon">{{ item.icon }}</span>
         <span>{{ item.label }}</span>
       </router-link>
@@ -195,7 +289,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
 
     <!-- 手机：悬浮液态玻璃标签栏 -->
     <nav v-if="isMobile" class="m-tabbar">
-      <router-link v-for="item in NAV_MOBILE" :key="item.to" :to="item.to" class="m-tab">
+      <router-link v-for="item in NAV_MOBILE" :key="item.to" :to="item.to" class="m-tab" :class="{ 'force-active': activeNav === item.to }">
         <span class="m-tab-icon" v-html="item.icon" />
         <span class="m-tab-label">{{ item.label }}</span>
       </router-link>

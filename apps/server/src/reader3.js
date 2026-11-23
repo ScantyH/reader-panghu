@@ -18,6 +18,7 @@ import { createRuleRuntime } from './rule-runtime.js'
 import { convertText } from './text-convert.js'
 import { extractContentImages, sourceTextToPlain } from './source-text.js'
 import { extractCards, extractDpMarkers } from './comment-markers.js'
+import { applySourceLine } from './source-tools.js'
 import { cleanIntro, cleanText } from './text.js'
 import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
 
@@ -125,7 +126,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
         userAgent: runtimeConfig.userAgent,
       })
     }
-    return createRuntime(source, {
+    return createRuntime(applySourceLine(source), {
       name: source.bookSourceName,
       key: runtimeConfig.key || globalKey,
       rewrites: [...globalRewrites, ...(runtimeConfig.rewrites || [])],
@@ -186,6 +187,8 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     totalChapterNum: existing?.totalChapterNum ?? 0,
     customCoverUrl: existing?.customCoverUrl ?? '',
     lastCheckTime: existing?.lastCheckTime ?? 0,
+    hasUpdate: Boolean(existing?.hasUpdate),
+    newChapterCount: Number(existing?.newChapterCount || 0),
   })
 
   /* ------------------------------------------------------------------ shelf */
@@ -375,7 +378,13 @@ async function primeBook(book) {
     if (!target) return fail('缺少目录地址')
     if (!refresh && book) {
       const cached = store.getChapters(book.bookUrl, book.origin)
-      if (cached?.length) return ok(cached)
+      if (cached?.length) {
+        const latest = cached.at(-1)?.title || ''
+        if (Number(book.totalChapterNum || 0) !== cached.length || (latest && book.latestChapterTitle !== latest)) {
+          store.saveBook({ ...book, totalChapterNum: cached.length, latestChapterTitle: latest })
+        }
+        return ok(cached)
+      }
     }
     const chapters = await withRuntime(origin, (runtime) => runtime.chapter(target))
     // 卷名/分组信息一并返回，前端据此做缩进
@@ -388,7 +397,7 @@ async function primeBook(book) {
     }))
     if (book && list.length) {
       store.saveChapters(book.bookUrl, book.origin, list)
-      store.saveBook({ ...book, totalChapterNum: list.length })
+      store.saveBook({ ...book, totalChapterNum: list.length, latestChapterTitle: list.at(-1)?.title || book.latestChapterTitle || '' })
     }
     return ok(list)
   })
@@ -421,6 +430,65 @@ async function primeBook(book) {
     if (!book) return fail('书籍不存在')
     const origin = String(req.body?.bookSourceUrl || book.origin || '')
     const chapters = store.getChapters(book.bookUrl, book.origin)
+
+    const commentUrl = (...values) => {
+      for (const value of values) {
+        const candidate = typeof value === 'string' ? value : value?.Url || value?.url || value?.Src || value?.src
+        if (typeof candidate === 'string' && /^https?:\/\//i.test(candidate)) return candidate
+      }
+      return ''
+    }
+    const commentImages = (item) => {
+      const out = []
+      const add = (value) => {
+        if (!value) return
+        if (Array.isArray(value)) return value.forEach(add)
+        if (typeof value === 'object') {
+          const url = commentUrl(value)
+          if (url) out.push(url)
+          return
+        }
+        const text = String(value)
+        const src = /<img[^>]+src=["']([^"']+)["']/gi
+        let match
+        while ((match = src.exec(text))) out.push(match[1])
+        if (/^https?:\/\//i.test(text)) out.push(text)
+      }
+      add(item.Images)
+      add(item.ImageList)
+      add(item.PicList)
+      add(item.PicUrls)
+      add(item.ImageUrls)
+      add(item.Pictures)
+      add(item.Attachments)
+      add(item.PicUrl)
+      add(item.ImageUrl)
+      add(item.PictureUrl)
+      add(item.Content)
+      return [...new Set(out)].slice(0, 6)
+    }
+    const mapComment = (item) => {
+      const content = String(item.Content || item.content || '')
+      return {
+        id: String(item.Id || item.id || ''),
+        user: String(item.UserName || item.userName || '书友'),
+        avatar: commentUrl(item.UserHeadIcon, item.HeadIcon, item.Avatar, item.UserAvatar),
+        content: content.replace(/<img[^>]*>/gi, '').trim(),
+        quote: String(item.RefferContent || item.quote || ''),
+        agree: Number(item.AgreeAmount || item.agree || 0),
+        disagree: Number(item.OpposeAmount || item.disagree || 0),
+        ip: String(item.IpLocation || ''),
+        time: Number(item.CreateTime || 0),
+        images: commentImages(item),
+        audio: commentUrl(item.AudioUrl, item.VoiceUrl, item.SoundUrl, item.MediaUrl, item.Audio, item.Voice),
+        audioTime: Number(item.AudioTime || item.AudioDuration || item.VoiceTime || item.SoundTime || 0),
+        floor: Number(item.Floor || 0),
+        replyCount: Number(item.ReviewCount || 0),
+        titles: Array.isArray(item.TitleInfoList)
+          ? item.TitleInfoList.map((title) => String(title.TitleName || '')).filter(Boolean).slice(0, 3)
+          : [],
+      }
+    }
     const target = String(req.body?.chapterUrl || chapters[Number(req.body?.index) || 0]?.url || '')
     if (!target) return fail('缺少章节地址')
     let markerHost = ''
@@ -441,38 +509,264 @@ async function primeBook(book) {
       } catch {
         /* ignore */
       }
+      const source = store.getSource(origin)
+      const lineUrl = String(source?._line?.url || '').trim()
+      let panelUrl = ''
+      try {
+        const pageUrl = new URL(markerUrl)
+        if (lineUrl) {
+          const line = new URL(lineUrl)
+          pageUrl.protocol = line.protocol
+          pageUrl.host = line.host
+        }
+        const key = String(source?._runtime?.key || process.env.SOURCE_KEY || '')
+        if (key) pageUrl.searchParams.set('k', key)
+        panelUrl = pageUrl.toString()
+      } catch {
+        panelUrl = ''
+      }
       const apiUrl = new URL(markerUrl)
       apiUrl.pathname = apiUrl.pathname.replace(/\/qddp\/?$/, '/qddp/api')
-      apiUrl.searchParams.set('tab', 'all')
-      apiUrl.searchParams.set('pg', '1')
-      apiUrl.searchParams.set('pz', '50')
-      apiUrl.searchParams.set('offset', '0')
-      const response = await fetch(apiUrl, {
-        headers: {
-          'user-agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-          referer: `${origin}/`,
-          accept: 'application/json, text/plain, */*',
-        },
-        signal: AbortSignal.timeout(20000),
-      })
-      if (!response.ok) return fail(`段评接口返回 HTTP ${response.status}（${markerHost}）`)
-      const payload = await response.json()
+      const offset = Math.max(0, Number(req.body?.offset) || 0)
+      const limit = Math.max(1, Math.min(20, Number(req.body?.limit) || 10))
+      const tab = ['all', 'img', 'audio'].includes(String(req.body?.tab)) ? String(req.body.tab) : 'all'
+      apiUrl.searchParams.set('tab', tab)
+      apiUrl.searchParams.set('pg', String(Math.floor(offset / limit) + 1))
+      apiUrl.searchParams.set('pz', String(limit))
+      apiUrl.searchParams.set('offset', String(offset))
+      if (req.body?.sort === 'new') apiUrl.searchParams.set('sort', '0')
+      else if (req.body?.sort === 'hot') apiUrl.searchParams.set('sort', '1')
+      // 起点类书源的 /qddp/api 需要 k/did/ts/sign 签名；直接 fetch 会 401。
+      // 优先调用书源自己的 qget()，由书源运行时带上密钥、设备指纹、Cookie 和签名。
+      let payload = null
+      let qgetError = ''
+      try {
+        const signed = await withRuntime(origin, async (runtime) => {
+          if (typeof runtime.window?.qget !== 'function') return null
+          const request = () => runtime.window.qget(apiUrl.toString())
+          const finish = (result) => {
+            if (result?.statusCode && Number(result.statusCode) >= 400) {
+              throw new Error(`HTTP ${result.statusCode}`)
+            }
+            return result?.data ?? null
+          }
+          try {
+            return finish(await request())
+          } catch {
+            // 仅首次失败时再初始化一次正文会话，避免每次段评都多等一次正文请求
+            try {
+              await runtime.content(target)
+            } catch {
+              /* 正文失败不阻塞评论重试 */
+            }
+            return finish(await request())
+          }
+        })
+        if (signed) payload = JSON.parse(String(signed))
+      } catch (error) {
+        qgetError = error.message
+      }
+      if (!payload) {
+        try {
+          const response = await fetch(apiUrl, {
+            headers: {
+              'user-agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+              referer: `${origin}/`,
+              accept: 'application/json, text/plain, */*',
+            },
+            signal: AbortSignal.timeout(20000),
+          })
+          if (response.ok) payload = await response.json()
+        } catch {
+          /* 下面统一走 HTML 面板兜底 */
+        }
+      }
+      if (!payload) {
+        // 有些段落的 /qddp/api 仍会 401，但书源自己的面板 HTML 能正常出数据。
+        // 用书源的 qdPanelHtml() 取整页面板，前端用 iframe 显示，保证评论可见。
+        try {
+          const panelHtml = await withRuntime(origin, async (runtime) => {
+            if (typeof runtime.window?.qdPanelHtml !== 'function') return ''
+            return String((await runtime.window.qdPanelHtml(markerUrl)) || '')
+          })
+          if (panelHtml && panelHtml.includes('__QD_BOOT__')) {
+            try {
+              const bootStart = panelHtml.indexOf('window.__QD_BOOT__=')
+              const bootEnd = bootStart >= 0 ? panelHtml.indexOf(';window.', bootStart) : -1
+              const bootText = bootStart >= 0 && bootEnd > bootStart ? panelHtml.slice(bootStart + 'window.__QD_BOOT__='.length, bootEnd) : ''
+              const boot = bootText ? JSON.parse(bootText) : null
+              const raw = boot?.page?.Data?.DataList || boot?.page?.data || []
+              const total = Number(boot?.counts?.all || boot?.page?.total || raw.length || 0)
+              const comments = raw.slice(0, limit).map(mapComment)
+              if (comments.length) return ok({ comments, total, offset: 0, limit, hasMore: false, panelUrl, counts: { all: total, img: 0, audio: 0 } })
+            } catch {
+              /* 解析失败再退回 HTML */
+            }
+            return ok({ html: panelHtml.slice(0, 1024 * 1024), comments: [], total: 0, offset: 0, limit, hasMore: false, panelUrl })
+          }
+        } catch {
+          /* ignore */
+        }
+        return fail(`段评接口返回 401（${markerHost}）${qgetError ? `：${qgetError}` : ''}`)
+      }
       const data = payload?.Data || payload?.data || {}
       const list = data.DataList || data.data || data.list || []
       const total = Number(data.TotalCount || data.total || list.length)
-      const comments = list.slice(0, 50).map((item) => ({
-        id: String(item.Id || item.id || ''),
-        user: String(item.UserName || item.userName || '书友'),
-        content: String(item.Content || item.content || ''),
-        quote: String(item.RefferContent || item.quote || ''),
-        agree: Number(item.AgreeAmount || item.agree || 0),
-        ip: String(item.IpLocation || ''),
-        time: Number(item.CreateTime || 0),
-      }))
-      return ok({ comments, total })
+      const comments = list.slice(0, limit).map(mapComment)
+      return ok({
+        comments,
+        total,
+        offset,
+        limit,
+        hasMore: offset + comments.length < total,
+        panelUrl,
+        counts: data.Counts || data.counts || payload.Counts || payload.counts || { all: total, img: 0, audio: 0 },
+      })
     } catch (error) {
       return fail(`段评接口请求失败：${error.message}${error.cause?.code ? `（${error.cause.code}）` : ''}${markerHost ? ` ${markerHost}` : ''}`)
+    }
+  })
+
+  app.post('/reader3/getCommentReplies', async (req) => {
+    const book = store.getBook(String(req.body?.bookUrl ?? ''))
+    if (!book) return fail('书籍不存在')
+    const origin = String(req.body?.bookSourceUrl || book.origin || '')
+    const target = String(req.body?.chapterUrl || store.getChapters(book.bookUrl, book.origin)[Number(req.body?.index) || 0]?.url || '')
+    const paragraph = Number(req.body?.paragraph)
+    const rootReviewId = String(req.body?.rootReviewId || '')
+    if (!target || !rootReviewId) return fail('缺少回复参数')
+    try {
+      let markerUrl = dpMarkerCache.get(dpCacheKey(book.bookUrl, target, paragraph))?.url || ''
+      if (!markerUrl) {
+        const raw = await withRuntime(origin, (runtime) => runtime.content(target))
+        const parsed = extractDpMarkers(raw, { transform: (text) => applyReplaceRules(text, store.listReplaceRules()) })
+        cacheDpMarkers(book.bookUrl, target, parsed)
+        markerUrl = parsed.find((item) => Number(item.paragraph) === paragraph)?.url || ''
+      }
+      if (!markerUrl) return fail('这一段没有段评')
+      const page = new URL(markerUrl)
+      const bookId = page.searchParams.get('bookId')
+      const chapterId = page.searchParams.get('chapterId')
+      if (!bookId || !chapterId) return fail('缺少章节标识')
+      const url = new URL(`/book/${bookId}/chapter/${chapterId}/comments/review`, page.origin)
+      url.searchParams.set('paragraphId', String(paragraph + 1))
+      url.searchParams.set('rootReviewId', rootReviewId)
+      url.searchParams.set('pg', String(Math.max(1, Number(req.body?.page) || 1)))
+      url.searchParams.set('pz', String(Math.max(1, Math.min(20, Number(req.body?.limit) || 6))))
+      const source = store.getSource(origin)
+      const key = page.searchParams.get('k') || String(source?._runtime?.key || '')
+      if (key) url.searchParams.set('k', key)
+      const signed = await withRuntime(origin, (runtime) => runtime.window.qget(url.toString()))
+      if (signed?.statusCode >= 400) throw new Error(`HTTP ${signed.statusCode}`)
+      const payload = JSON.parse(String(signed?.data || '{}'))
+      const data = payload?.Data || payload?.data || {}
+      const list = data.DataList || data.data || []
+      const total = Number(data.TotalCount || data.total || list.length)
+      const replies = list.map((item) => ({
+        id: String(item.Id || item.id || ''),
+        user: String(item.UserName || '书友'),
+        avatar: String(item.UserHeadIcon || item.HeadIcon || ''),
+        content: String(item.Content || ''),
+        quote: String(item.RefferContent || ''),
+        agree: Number(item.AgreeAmount || 0),
+        time: Number(item.CreateTime || 0),
+        floor: Number(item.Floor || 0),
+        titles: Array.isArray(item.TitleInfoList) ? item.TitleInfoList.map((title) => String(title.TitleName || '')).filter(Boolean).slice(0, 2) : [],
+      }))
+      return ok({ replies, total, hasMore: Number(req.body?.page || 1) * Number(req.body?.limit || 6) < total })
+    } catch (error) {
+      return fail(`回复加载失败：${error.message}`)
+    }
+  })
+
+  /** 段评网页代理：把书源页面放到同源 HTTPS 下，保留网页全部交互 */
+  app.get('/reader3/dpPage', async (req, reply) => {
+    const sourceUrl = String(req.query?.url || '')
+    if (!/^https?:\/\//i.test(sourceUrl)) return reply.code(400).send('缺少段评页面地址')
+    try {
+      const response = await fetch(sourceUrl, {
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+          referer: new URL(sourceUrl).origin + '/',
+          accept: 'text/html,application/xhtml+xml',
+        },
+        signal: AbortSignal.timeout(20000),
+      })
+      if (!response.ok) return reply.code(response.status).send('段评页面加载失败')
+      const origin = new URL(sourceUrl).origin
+      const sourceJson = JSON.stringify(store.listSources())
+      const known =
+        sourceJson.includes(origin) ||
+        new URL(origin).port === '4280' ||
+        store.listSources().some((source) =>
+          sourceLinesOf(source).some((line) => {
+            try {
+              return new URL(line.url).origin === origin
+            } catch {
+              return false
+            }
+          }),
+        )
+      if (!known) return reply.code(403).send('不允许的书源地址')
+      const token = Buffer.from(origin).toString('base64url')
+      const prefix = `/reader3/dp/${token}`
+      let html = await response.text()
+      const theme = String(req.query?.theme || 'light') === 'dark' ? 'dark' : 'light'
+      const bg = /^(?:#[0-9a-f]{3,8}|rgba?\([^)]*\))$/i.test(String(req.query?.bg || '')) ? String(req.query.bg) : '#e9dfc7'
+      const inject = `<style>body{--bg:${bg} !important;background:${bg} !important;}</style><script>(function(){var t=${JSON.stringify(theme)};try{localStorage.setItem('qd_theme',t);}catch(e){}function apply(){document.body.classList.toggle('dark',t==='dark');var b=document.getElementById('btnTheme');if(b)b.textContent=t==='dark'?'☾':'☀';}if(document.body)apply();else document.addEventListener('DOMContentLoaded',apply);})();</script>`
+      html = html.replace('</head>', `${inject}</head>`)
+      for (const part of ['/qddp/', '/book/', '/img?', '/media?', '/static/']) {
+        html = html.split(part).join(prefix + part)
+      }
+      html = html.split(origin).join(prefix)
+      return reply.type('text/html; charset=utf-8').send(html)
+    } catch (error) {
+      return reply.code(502).send(`段评页面加载失败：${error.message}`)
+    }
+  })
+
+  app.get('/reader3/dp/*', async (req, reply) => {
+    const wildcard = String(req.params['*'] || '')
+    const slash = wildcard.indexOf('/')
+    if (slash <= 0) return reply.code(400).send('无效代理地址')
+    let origin = ''
+    try {
+      origin = Buffer.from(wildcard.slice(0, slash), 'base64url').toString('utf8')
+    } catch {
+      return reply.code(400).send('无效代理地址')
+    }
+    if (!/^https?:\/\//i.test(origin)) return reply.code(400).send('无效代理地址')
+    const sourceJson = JSON.stringify(store.listSources())
+    const known =
+      sourceJson.includes(origin) ||
+      new URL(origin).port === '4280' ||
+      store.listSources().some((source) =>
+        sourceLinesOf(source).some((line) => {
+          try {
+            return new URL(line.url).origin === origin
+          } catch {
+            return false
+          }
+        }),
+      )
+    if (!known) return reply.code(403).send('不允许的书源地址')
+    const rest = wildcard.slice(slash)
+    const query = String(req.raw.url || '').includes('?') ? String(req.raw.url).slice(String(req.raw.url).indexOf('?')) : ''
+    try {
+      const response = await fetch(origin + rest + query, {
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+          referer: origin + '/',
+          accept: req.headers?.accept || '*/*',
+        },
+        signal: AbortSignal.timeout(20000),
+      })
+      const buffer = Buffer.from(await response.arrayBuffer())
+      const type = response.headers.get('content-type') || 'application/octet-stream'
+      return reply.code(response.status).type(type).send(buffer)
+    } catch (error) {
+      return reply.code(502).send(`代理失败：${error.message}`)
     }
   })
 
@@ -589,7 +883,8 @@ async function primeBook(book) {
       return { info: nextInfo, chapters: nextChapters }
     })
     const source = store.getSource(sourceUrl)
-    const next = toBook({ ...info, bookUrl: String(newUrl ?? bookUrl) }, source, existing)
+    const stableBookUrl = existing?.bookUrl || String(newUrl ?? bookUrl)
+    const next = toBook({ ...info, bookUrl: stableBookUrl }, source, existing)
     if (chapters.length) {
       const matched = oldTitle ? chapters.findIndex((chapter) => chapter.title === oldTitle) : -1
       const target = matched >= 0 ? matched : Math.min(Math.max(0, oldIndex), chapters.length - 1)
@@ -606,6 +901,54 @@ async function primeBook(book) {
   /* ---------------------------------------------------------------- sources */
 
   app.get('/reader3/getBookSources', async () => ok(store.listSources().map(sanitizeSource)))
+
+  /** 解析书源内置线路表（如胖虎的 QD_FIXED），并测速 */
+  const sourceLinesOf = (source) => {
+    const html = String(source?.html || '')
+    const lines = []
+    const fixed = /QD_FIXED\s*=\s*\[([\s\S]*?)\]\s*\.filter/.exec(html)?.[1] || ''
+    for (const match of fixed.matchAll(/\{\s*name:\s*["']([^"']+)["']\s*,\s*url:\s*["']([^"']+)["']\s*\}/g)) {
+      const name = match[1].trim()
+      const url = match[2].trim().replace(/\/$/, '')
+      if (/^https?:\/\//i.test(url) && !lines.some((line) => line.url === url)) lines.push({ name, url })
+    }
+    if (!lines.length) {
+      const main = /var\s+API\s*=\s*["']([^"']+)["']/.exec(html)?.[1]
+      if (main) lines.push({ name: '主线路', url: main.replace(/\/$/, '') })
+    }
+    return lines
+  }
+
+  app.get('/reader3/getSourceLines', async (req) => {
+    const source = store.getSource(String(req.query?.bookSourceUrl || ''))
+    if (!source) return fail('书源不存在')
+    const lines = sourceLinesOf(source)
+    if (!lines.length) return ok({ sourceName: source.bookSourceName, current: source.bookSourceUrl, lines: [] })
+    const measured = await Promise.all(
+      lines.map(async (line) => {
+        const started = Date.now()
+        try {
+          const response = await fetch(`${line.url}/ping`, { signal: AbortSignal.timeout(1800) })
+          return { ...line, latency: response.ok ? Date.now() - started : -1, ok: response.ok }
+        } catch {
+          return { ...line, latency: -1, ok: false }
+        }
+      }),
+    )
+    const current = source._line?.url || measured[0]?.url || ''
+    return ok({ sourceName: source.bookSourceName, current, lines: measured })
+  })
+
+  app.post('/reader3/setSourceLine', async (req) => {
+    const source = store.getSource(String(req.body?.bookSourceUrl || ''))
+    if (!source) return fail('书源不存在')
+    const lines = sourceLinesOf(source)
+    const wanted = String(req.body?.url || '')
+    const line = lines.find((item) => item.url === wanted) || lines.find((item) => item.name === String(req.body?.name || ''))
+    if (!line) return fail('线路不存在')
+    store.saveSource({ ...source, _line: { name: line.name, url: line.url } })
+    return ok({ current: line.url, name: line.name })
+  })
 
   /** 轻量书源列表：不带 html / 规则正文，手机端列表专用。 */
   app.get('/reader3/getBookSourceList', async () =>
@@ -949,6 +1292,11 @@ async function primeBook(book) {
     const group = req.query?.bookSourceGroup ? String(req.query.bookSourceGroup) : ''
     const sourceUrl = req.query?.bookSourceUrl ? String(req.query.bookSourceUrl) : ''
     const bundle = req.query?.bookSourceBundle ? String(req.query.bookSourceBundle) : ''
+    const bundleList = String(req.query?.bookSourceBundles || '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean)
+    const bundleSet = new Set(bundleList)
 
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -967,6 +1315,7 @@ async function primeBook(book) {
       } else {
         const sources = enabledSources().filter((source) => {
           if (sourceUrl) return source.bookSourceUrl === sourceUrl
+          if (bundleSet.size) return bundleSet.has(String(source._bundle || '未归类'))
           if (bundle) return String(source._bundle || '未归类') === bundle
           if (group) return source.bookSourceGroup === group
           return true
@@ -993,6 +1342,16 @@ async function primeBook(book) {
 
   app.get('/reader3/getUserConfig', async () => ok(store.getUserConfig()))
   app.post('/reader3/saveUserConfig', async (req) => ok(store.saveUserConfig(req.body || {})))
+
+  /** 当前用户头像：data URL，限制大小，避免把大图塞进数据库 */
+  app.post('/reader3/setAvatar', async (req) => {
+    const avatar = String(req.body?.avatar || '')
+    if (avatar && !/^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(avatar)) return fail('头像格式不支持')
+    if (avatar.length > 600 * 1024) return fail('头像太大，请换一张小图')
+    if (!req.userId) return fail('NEED_LOGIN')
+    store.setUserAvatar(req.userId, avatar)
+    return ok({ avatar })
+  })
 
   /* ------------------------------------------------------------------ cover */
 
@@ -1127,6 +1486,8 @@ const cacheKey = (book) => `${book.origin || ''}|${book.bookUrl}`
         ...book,
         totalChapterNum: chapters.length,
         latestChapterTitle: chapters[chapters.length - 1].title,
+        hasUpdate: true,
+        newChapterCount: chapters.length - before,
         lastCheckTime: Date.now(),
       })
       return { bookUrl: book.bookUrl, name: book.name, before, after: chapters.length }
@@ -1185,6 +1546,14 @@ const cacheKey = (book) => `${book.origin || ''}|${book.bookUrl}`
 
     void runUpdateCheck(books)
     return ok({ started: true, total: books.length })
+  })
+
+  /** 进入阅读后清掉“有更新”角标 */
+  app.post('/reader3/clearBookUpdate', async (req) => {
+    const bookUrl = String(req.body?.bookUrl || '')
+    const book = store.getBook(bookUrl)
+    if (!book) return fail('书籍不存在')
+    return ok(store.saveBook({ ...book, hasUpdate: false, newChapterCount: 0 }))
   })
 
   app.log.info(`[reader3] registered · sources=${store.listSources().length} books=${store.listBooks().length}`)

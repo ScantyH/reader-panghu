@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS users (
   allow_edit_sources INTEGER NOT NULL DEFAULT 1,
   allow_edit_rss INTEGER NOT NULL DEFAULT 1,
   note TEXT NOT NULL DEFAULT '',
-  sort_order INTEGER NOT NULL DEFAULT 0
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  avatar TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS book_sources (
@@ -55,6 +56,12 @@ CREATE TABLE IF NOT EXISTS book_sources (
 );
 
 CREATE TABLE IF NOT EXISTS source_order (
+  user_id INTEGER PRIMARY KEY,
+  json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS warehouse_order (
   user_id INTEGER PRIMARY KEY,
   json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
@@ -163,6 +170,7 @@ export function openDatabase(file) {
     ['allow_edit_rss', 'INTEGER NOT NULL DEFAULT 1'],
     ['note', "TEXT NOT NULL DEFAULT ''"],
     ['sort_order', 'INTEGER NOT NULL DEFAULT 0'],
+    ['avatar', "TEXT NOT NULL DEFAULT ''"],
   ]) {
     try {
       db.exec(`ALTER TABLE users ADD COLUMN ${column} ${ddl}`)
@@ -228,6 +236,27 @@ class Store {
       )
       .run(userId, JSON.stringify(list), Date.now())
     return list
+  }
+
+  getWarehouseOrder(userId = currentUserId()) {
+    const row = this.db.prepare('SELECT json FROM warehouse_order WHERE user_id = ?').get(userId)
+    if (!row) return {}
+    try {
+      const value = JSON.parse(row.json)
+      return value && typeof value === 'object' ? value : {}
+    } catch {
+      return {}
+    }
+  }
+
+  saveWarehouseOrder(order, userId = currentUserId()) {
+    this.db
+      .prepare(
+        `INSERT INTO warehouse_order (user_id, json, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at`,
+      )
+      .run(userId, JSON.stringify(order || {}), Date.now())
+    return order
   }
 
   getSource(bookSourceUrl, userId = currentUserId()) {
@@ -551,7 +580,7 @@ class Store {
   listUsers() {
     return this.db
       .prepare(
-        `SELECT id, username, password, role, created_at, note, sort_order,
+        `SELECT id, username, password, role, created_at, note, sort_order, avatar,
                 book_limit AS bookLimit, source_limit AS sourceLimit,
                 allow_webdav AS allowWebdav, allow_warehouse AS allowWarehouse,
                 allow_edit_sources AS allowEditSources, allow_edit_rss AS allowEditRss
@@ -568,7 +597,7 @@ class Store {
   getUserById(userId) {
     return this.db
       .prepare(
-        `SELECT id, username, role, created_at, note, sort_order,
+        `SELECT id, username, role, created_at, avatar, note, sort_order,
                 book_limit AS bookLimit, source_limit AS sourceLimit,
                 allow_webdav AS allowWebdav, allow_warehouse AS allowWarehouse,
                 allow_edit_sources AS allowEditSources, allow_edit_rss AS allowEditRss
@@ -589,6 +618,10 @@ class Store {
 
   setUserRole(userId, role) {
     return this.db.prepare('UPDATE users SET role = ? WHERE id = ?').run(String(role), Number(userId)).changes > 0
+  }
+
+  setUserAvatar(userId, avatar) {
+    return this.db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(String(avatar || ''), Number(userId)).changes > 0
   }
 
   /** 管理员给子账号分配配额与功能开关；0 表示不限，布尔转 0/1。 */
@@ -671,7 +704,7 @@ class Store {
   getUser(userId = currentUserId()) {
     return this.db
       .prepare(
-        `SELECT id, username, role, created_at,
+        `SELECT id, username, role, created_at, avatar,
                 book_limit AS bookLimit, source_limit AS sourceLimit,
                 allow_webdav AS allowWebdav, allow_warehouse AS allowWarehouse,
                 allow_edit_sources AS allowEditSources, allow_edit_rss AS allowEditRss
@@ -723,3 +756,4 @@ class Store {
 }
 
 export const defaultDatabaseFile = (dataDir) => join(dataDir, 'reader.db')
+

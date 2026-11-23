@@ -35,6 +35,74 @@ const debugUrl = ref('')
 const debugResult = ref(null)
 const debugLoading = ref(false)
 
+// 线路切换
+const linesSource = ref(null)
+const sourceLines = ref([])
+const lineCurrent = ref('')
+const lineLoading = ref(false)
+const lineBusy = ref(false)
+
+async function openSourceLines(source) {
+  linesSource.value = source
+  sourceLines.value = []
+  lineCurrent.value = ''
+  lineLoading.value = true
+  try {
+    const result = await api.sourceLines(source.bookSourceUrl)
+    sourceLines.value = result?.lines || []
+    lineCurrent.value = result?.current || ''
+    if (!sourceLines.value.length) window.__toast?.('该书源没有可切换的线路')
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    lineLoading.value = false
+  }
+}
+
+async function measureSourceLines() {
+  if (!linesSource.value) return
+  lineLoading.value = true
+  try {
+    const result = await api.sourceLines(linesSource.value.bookSourceUrl)
+    sourceLines.value = result?.lines || []
+    lineCurrent.value = result?.current || ''
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    lineLoading.value = false
+  }
+}
+
+async function switchSourceLine(line) {
+  if (!linesSource.value || lineBusy.value) return
+  lineBusy.value = true
+  try {
+    await api.setSourceLine(linesSource.value.bookSourceUrl, line)
+    lineCurrent.value = line.url
+    window.__toast?.(`已切换到「${line.name}」`)
+  } catch (error) {
+    window.__toast?.(error.message)
+  } finally {
+    lineBusy.value = false
+  }
+}
+
+async function useFastestLine() {
+  const fastest = [...sourceLines.value].filter((line) => line.ok && line.latency >= 0).sort((a, b) => a.latency - b.latency)[0]
+  if (!fastest) {
+    window.__toast?.('暂时没有可用线路')
+    return
+  }
+  await switchSourceLine(fastest)
+}
+
+function lineLatencyClass(line) {
+  if (!line.ok || line.latency < 0) return 'bad'
+  if (line.latency < 300) return 'good'
+  if (line.latency < 900) return 'mid'
+  return 'slow'
+}
+
 const expanded = ref('')
 const bundleLimit = ref(100)
 const keyChecking = ref(false)
@@ -583,6 +651,7 @@ onMounted(load)
               </div>
             </div>
             <button class="ghost" title="固定到顶部，全部书源搜索时最先搜它" @click="pinSource(source)">固定</button>
+            <button v-if="source.html" class="ghost" @click="openSourceLines(source)">线路</button>
             <button v-if="source.html" class="ghost" @click="editSourceKey(source)">密钥</button>
             <button class="ghost" @click="toggle(source)">{{ source.enabled === false ? '启用' : '禁用' }}</button>
             <button class="ghost" @click="editing = JSON.stringify(source, null, 2)">编辑</button>
@@ -705,6 +774,44 @@ onMounted(load)
       </div>
       <div v-else-if="!debugLoading" class="empty">选书源和阶段，点执行查看每一步的原始响应与解析结果。</div>
     </section>
+
+    <!-- 线路切换 -->
+    <div v-if="linesSource" class="dialog-backdrop" @click.self="linesSource = null">
+      <div class="dialog" style="max-width: 520px">
+        <div class="page-head" style="margin-bottom: 12px">
+          <h1 style="font-size: 16px">线路选择</h1>
+          <div class="spacer" />
+          <button class="ghost" @click="linesSource = null">关闭</button>
+        </div>
+        <p class="muted" style="font-size: 12.5px; margin: 0 0 10px">
+          {{ linesSource.bookSourceName }} · 点击线路切换，测速结果仅供参考
+        </p>
+        <div v-if="lineLoading" class="muted" style="padding: 18px 0">正在测速…</div>
+        <div v-else-if="!sourceLines.length" class="empty">该书源没有可切换的线路。</div>
+        <div v-else class="line-list">
+          <button
+            v-for="line in sourceLines"
+            :key="line.url"
+            class="line-item"
+            :class="{ active: line.url === lineCurrent }"
+            :disabled="lineBusy"
+            @click="switchSourceLine(line)"
+          >
+            <span class="line-dot" :class="lineLatencyClass(line)" />
+            <span class="line-name">{{ line.name }}</span>
+            <span class="line-latency" :class="lineLatencyClass(line)">
+              {{ line.ok && line.latency >= 0 ? line.latency + 'ms' : '超时' }}
+            </span>
+            <span v-if="line.url === lineCurrent" class="badge accent">当前</span>
+          </button>
+        </div>
+        <div class="row" style="justify-content: flex-end; margin-top: 14px">
+          <button class="ghost" :disabled="lineLoading || lineBusy" @click="measureSourceLines">重新测速</button>
+          <button class="ghost" :disabled="lineLoading || lineBusy || !sourceLines.length" @click="useFastestLine">使用最快线路</button>
+          <button class="primary" @click="linesSource = null">完成</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 编辑抽屉 -->
     <div v-if="editing" class="sheet-backdrop" @click.self="editing = null">

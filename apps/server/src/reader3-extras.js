@@ -20,12 +20,11 @@ import { parseEpub } from './epub.js'
 import { parseFeed } from './rss.js'
 import { parseMobi } from './mobi.js'
 import { extractPdfText } from './pdf.js'
+import { isChapterTitle } from './chapter-title.js'
 import { bookQuotaError, permissionsFor } from './user-perms.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
-
-const CHAPTER_TITLE = /^\s*(第[0-9一二三四五六七八九十百千两零〇]+[章节回卷篇][^\n。！？]{0,20}|序章[^\n。！？]{0,20}|楔子[^\n。！？]{0,20})\s*$/
 
 function decodeText(buffer) {
   try {
@@ -42,7 +41,7 @@ export function splitTxtChapters(text) {
   const chapters = []
   let current = { title: '开始', lines: [] }
   for (const line of lines) {
-    if (CHAPTER_TITLE.test(line)) {
+    if (isChapterTitle(line)) {
       if (current.lines.join('').trim()) chapters.push(current)
       current = { title: line.trim(), lines: [] }
     } else {

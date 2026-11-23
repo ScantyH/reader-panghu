@@ -10,6 +10,8 @@
  * (encryption !== 0). Both throw a readable error instead of producing garbage.
  */
 
+import { isChapterTitle } from './chapter-title.js'
+
 function palmDocDecompress(bytes) {
   const out = []
   let i = 0
@@ -73,14 +75,12 @@ function readExth(rec0, offset, end, encoding) {
   return meta
 }
 
-const CHAPTER_TITLE = /^\s*(第[0-9一二三四五六七八九十百千两零〇]+[章节回卷篇][^\n。！？]{0,20}|序章[^\n。！？]{0,20}|楔子[^\n。！？]{0,20})\s*$/
-
 export function splitChapters(text, fallbackTitle = '正文') {
   const lines = String(text).replace(/\r\n?/g, '\n').split('\n')
   const chapters = []
   let current = { title: fallbackTitle, lines: [] }
   for (const line of lines) {
-    if (CHAPTER_TITLE.test(line)) {
+    if (isChapterTitle(line)) {
       if (current.lines.join('').trim()) chapters.push(current)
       current = { title: line.trim(), lines: [] }
     } else {
