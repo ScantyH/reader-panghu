@@ -6,8 +6,10 @@
  */
 
 import { mkdirSync, readdirSync, readFileSync, rmdirSync, statSync, unlinkSync, writeFileSync, existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { basename, join, normalize, relative, resolve } from 'node:path'
 import { parseLocalBook } from './local-book.js'
+import { writeDefaultCover } from './default-cover.js'
 import { bookQuotaError, permissionsFor } from './user-perms.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
@@ -17,7 +19,12 @@ const BOOK_EXT = /\.(txt|epub|docx|mobi|azw3?|pdf)$/i
 
 export function registerWarehouse(app, { store, dataDir }) {
   const root = resolve(process.env.LIBRARY_DIR || join(dataDir, 'library'))
+  const coversDir = join(dataDir, 'covers')
   mkdirSync(root, { recursive: true })
+  mkdirSync(coversDir, { recursive: true })
+
+  const coverExt = (type) =>
+    type === 'image/png' ? '.png' : type === 'image/webp' ? '.webp' : type === 'image/gif' ? '.gif' : type === 'image/svg+xml' ? '.svg' : '.jpg'
 
   const warehouseBlocked = (req) =>
     permissionsFor(store, req).allowWarehouse ? '' : '当前账号没有使用书仓的权限，请联系管理员'
@@ -79,14 +86,27 @@ export function registerWarehouse(app, { store, dataDir }) {
     }))
     if (!chapters.length) throw new Error('没有解析出章节')
     const meta = options.meta || {}
+    const name = String(meta.name || parsed.name || filename)
+    const author = String(meta.author || parsed.author || '')
+
+    let customCoverUrl = ''
+    if (parsed.cover) {
+      const coverId = randomUUID()
+      const ext = coverExt(parsed.coverType)
+      writeFileSync(join(coversDir, coverId + ext), Buffer.from(parsed.cover))
+      customCoverUrl = `/reader3/bookCover/${coverId}`
+    } else {
+      customCoverUrl = writeDefaultCover(coversDir, name, author)
+    }
 
     const book = store.saveBook({
-      name: String(meta.name || parsed.name || filename),
-      author: String(meta.author || parsed.author || ''),
+      name,
+      author,
       bookUrl,
       origin: parsed.origin || 'local://txt',
       originName: '书仓',
       coverUrl: '',
+      customCoverUrl,
       tocUrl: '',
       intro: String(meta.intro || parsed.intro || ''),
       kind: String(meta.kind || ''),

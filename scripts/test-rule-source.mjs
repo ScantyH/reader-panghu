@@ -54,6 +54,15 @@ const server = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
     res.end(html)
   }
+  if (url.startsWith('/covers/')) {
+    if (!req.headers.referer) {
+      res.writeHead(403).end('referer required')
+      return
+    }
+    res.writeHead(200, { 'content-type': 'image/jpeg' })
+    res.end(Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+    return
+  }
   if (url.startsWith('/search')) return send(SEARCH_HTML)
   if (url.startsWith('/book/1/toc')) return send(TOC_HTML)
   if (url.startsWith('/book/1')) return send(INFO_HTML)
@@ -109,7 +118,14 @@ try {
   if (books[0].name !== '规则之书') throw new Error(`书名解析错误：${books[0].name}`)
   if (books[0].author !== '测试笔名') throw new Error(`作者解析错误：${books[0].author}`)
   if (!books[0].bookUrl.startsWith(origin)) throw new Error(`书籍地址未补全：${books[0].bookUrl}`)
-  console.log(`  ✓ 搜索 → 《${books[0].name}》 / ${books[0].author}（相对链接已补全）`)
+  if (!books[0].coverUrl.startsWith(origin) || !books[0].coverUrl.endsWith('/covers/1.jpg')) {
+    throw new Error(`封面地址未补全：${books[0].coverUrl}`)
+  }
+  const coverResponse = await fetch(
+    `${base}/reader3/cover?path=${encodeURIComponent(books[0].coverUrl)}&referer=${encodeURIComponent(origin + '/')}`,
+  )
+  if (!coverResponse.ok) throw new Error(`封面代理失败：HTTP ${coverResponse.status}`)
+  console.log(`  ✓ 搜索 → 《${books[0].name}》 / ${books[0].author}（相对链接和封面已补全）`)
 
   const info = await call('/reader3/getBookInfo', { method: 'POST', body: { url: books[0].bookUrl, bookSourceUrl: origin } })
   if (info.name !== '规则之书' || !info.intro.includes('简介')) throw new Error(`详情解析错误：${JSON.stringify(info)}`)

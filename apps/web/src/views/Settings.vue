@@ -21,6 +21,17 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.4.3',
+    date: '2026-11-23',
+    items: [
+      'EPUB 导入支持 EPUB3 导航目录、NCX 目录和内嵌封面，书仓分类导入后仍保留封面',
+      'TXT / DOCX / MOBI / PDF 没有内嵌封面时自动生成文字封面',
+      '书源搜索封面支持相对地址、协议相对地址，并带 Referer 走服务端代理',
+      '默认普通账号 reader 可在多用户模式下删除，重启后不再自动恢复',
+      '阅读设置改为两列布局，背景主题每行 5 个',
+    ],
+  },
+  {
     version: '1.4.2',
     date: '2026-11-23',
     items: [

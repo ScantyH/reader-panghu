@@ -191,7 +191,7 @@ try {
   check('子账号可手动排序且管理员仍最前', reordered.isSuccess === true && ordered.join(',') === 'admin,sub2,reader,sub1', ordered.join(','))
 
   const deleteDefault = await call('/reader3/deleteUser', { method: 'POST', token: admin.token, body: { username: 'reader' } })
-  check('默认账号不可删除', deleteDefault.isSuccess === false, deleteDefault.errorMsg)
+  check('默认普通账号可以删除', deleteDefault.isSuccess === true && deleteDefault.data?.deleted === 'reader', deleteDefault.errorMsg)
   const deleteSelf = await call('/reader3/deleteUser', { method: 'POST', token: admin.token, body: { username: 'admin' } })
   check('不能删除自己', deleteSelf.isSuccess === false, deleteSelf.errorMsg)
   const deleted = await call('/reader3/deleteUser', { method: 'POST', token: admin.token, body: { username: 'sub2' } })

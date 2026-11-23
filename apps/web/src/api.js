@@ -270,13 +270,22 @@ export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBu
 
 export const coverOf = (book) => {
   if (!book) return ''
-  if (book.customCoverUrl) return book.customCoverUrl
+  if (book.customCoverUrl) return withImageToken(book.customCoverUrl)
   const url = book.coverUrl || ''
   if (!url) return ''
+  if (/^(data:|blob:)/i.test(url)) return url
   // <img> 不带 x-auth-token 请求头，必须把 token 放进 query，否则只靠 Cookie 时容易 401。
   const token = getToken()
   const suffix = token ? `&token=${encodeURIComponent(token)}` : ''
-  return `${BASE}/cover?path=${encodeURIComponent(url)}${suffix}`
+  let referer = ''
+  try {
+    const page = new URL(book.bookUrl || book.origin || '')
+    if (/^https?:$/.test(page.protocol)) referer = page.origin + '/'
+  } catch {
+    /* 本地书或自定义 scheme 没有 referer */
+  }
+  const refererQuery = referer ? `&referer=${encodeURIComponent(referer)}` : ''
+  return `${BASE}/cover?path=${encodeURIComponent(url)}${refererQuery}${suffix}`
 }
 
 /** 给 /reader3/* 的图片代理补 token，<img> 无法携带自定义请求头 */

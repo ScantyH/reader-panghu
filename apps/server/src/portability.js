@@ -183,14 +183,13 @@ export function registerPortability(app, { store }) {
     return ok({ username, sources, rss })
   })
 
-  /** 删除账号（连带清掉它的会话） */
+  /** 删除账号（连带清掉它的会话）；默认账号也可以删除，但不能删除自己 */
   app.post('/reader3/deleteUser', async (req) => {
     if (!requireAdmin(req)) return fail('需要管理员权限')
     const username = String(req.body?.username || '').trim()
     const user = store.findUserByName(username)
     if (!user) return fail('用户不存在')
     if (user.id === (req.userId ?? 0)) return fail('不能删除自己')
-    if (user.id === 1) return fail('默认账号不可删除')
     store.deleteUser(user.id)
     return ok({ deleted: username })
   })

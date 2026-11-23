@@ -64,7 +64,8 @@ const txt = [
 const txtForm = new FormData()
 txtForm.append('file', new Blob([txt], { type: 'text/plain' }), '测试书.txt')
 const book = expectOk('uploadTxtBook', await call('/reader3/uploadTxtBook', { method: 'POST', body: txtForm }))
-console.log(`  local book: ${book.name} (${book.bookUrl})`)
+if (!book.customCoverUrl) throw new Error('TXT 未生成默认封面')
+console.log(`  local book: ${book.name} (${book.bookUrl}, cover ${book.customCoverUrl})`)
 
 const chapters = expectOk('getChapterList (local)', await call('/reader3/getChapterList', { method: 'POST', body: { bookUrl: book.bookUrl } }))
 if (chapters.length !== 3) throw new Error(`本地书应有 3 章，实际 ${chapters.length}`)

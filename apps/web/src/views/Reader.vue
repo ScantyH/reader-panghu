@@ -1647,41 +1647,43 @@ watch(chapterTitle, () => {
               <option v-for="item in FONT_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
           </label>
-          <div class="panel-row">
-            <span>字号</span>
-            <NumberStepper v-model="prefs.fontSize" :min="12" :max="32" :step="1" unit="px" />
-          </div>
-          <div class="panel-row">
-            <span>行距</span>
-            <NumberStepper v-model="prefs.lineHeight" :min="1.4" :max="2.8" :step="0.05" :precision="2" />
-          </div>
-          <div class="panel-row">
-            <span>段距</span>
-            <NumberStepper v-model="prefs.paragraphSpacing" :min="0" :max="2" :step="0.1" :precision="1" unit="em" />
-          </div>
-          <div class="panel-row">
-            <span>首行缩进</span>
-            <NumberStepper v-model="prefs.textIndent" :min="0" :max="3" :step="0.5" :precision="1" unit="em" />
-          </div>
-          <div class="panel-row">
-            <span>字距</span>
-            <NumberStepper v-model="prefs.letterSpacing" :min="0" :max="0.2" :step="0.01" :precision="2" unit="em" />
-          </div>
-          <div class="panel-row">
-            <span>页宽</span>
-            <NumberStepper v-model="prefs.pageWidth" :min="520" :max="1000" :step="20" unit="px" />
-          </div>
-          <div class="panel-row">
-            <span>页边距</span>
-            <NumberStepper v-model="prefs.pagePadding" :min="8" :max="64" :step="4" unit="px" />
-          </div>
-          <div class="panel-row">
-            <span>上留白</span>
-            <NumberStepper v-model="prefs.pageTop" :min="0" :max="160" :step="8" unit="px" />
-          </div>
-          <div class="panel-row">
-            <span>下留白</span>
-            <NumberStepper v-model="prefs.pageBottom" :min="0" :max="160" :step="8" unit="px" />
+          <div class="panel-grid">
+            <div class="panel-row">
+              <span>字号</span>
+              <NumberStepper v-model="prefs.fontSize" :min="12" :max="32" :step="1" unit="px" />
+            </div>
+            <div class="panel-row">
+              <span>行距</span>
+              <NumberStepper v-model="prefs.lineHeight" :min="1.4" :max="2.8" :step="0.05" :precision="2" />
+            </div>
+            <div class="panel-row">
+              <span>段距</span>
+              <NumberStepper v-model="prefs.paragraphSpacing" :min="0" :max="2" :step="0.1" :precision="1" unit="em" />
+            </div>
+            <div class="panel-row">
+              <span>首行缩进</span>
+              <NumberStepper v-model="prefs.textIndent" :min="0" :max="3" :step="0.5" :precision="1" unit="em" />
+            </div>
+            <div class="panel-row">
+              <span>字距</span>
+              <NumberStepper v-model="prefs.letterSpacing" :min="0" :max="0.2" :step="0.01" :precision="2" unit="em" />
+            </div>
+            <div class="panel-row">
+              <span>页宽</span>
+              <NumberStepper v-model="prefs.pageWidth" :min="520" :max="1000" :step="20" unit="px" />
+            </div>
+            <div class="panel-row">
+              <span>页边距</span>
+              <NumberStepper v-model="prefs.pagePadding" :min="8" :max="64" :step="4" unit="px" />
+            </div>
+            <div class="panel-row">
+              <span>上留白</span>
+              <NumberStepper v-model="prefs.pageTop" :min="0" :max="160" :step="8" unit="px" />
+            </div>
+            <div class="panel-row">
+              <span>下留白</span>
+              <NumberStepper v-model="prefs.pageBottom" :min="0" :max="160" :step="8" unit="px" />
+            </div>
           </div>
           <div class="panel-row">
             <span>对齐</span>
@@ -1721,17 +1723,19 @@ watch(chapterTitle, () => {
               <option v-for="voice in voices" :key="voice.voiceURI" :value="voice.voiceURI">{{ voice.name }}</option>
             </select>
           </label>
-          <div class="panel-row">
-            <span>语速</span>
-            <NumberStepper v-model="prefs.ttsRate" :min="0.5" :max="2" :step="0.1" :precision="1" unit="x" />
-          </div>
-          <div class="panel-row">
-            <span>音调</span>
-            <NumberStepper v-model="prefs.ttsPitch" :min="0.5" :max="2" :step="0.1" :precision="1" />
-          </div>
-          <div class="panel-row">
-            <span>音量</span>
-            <NumberStepper v-model="ttsVolumePercent" :min="0" :max="100" :step="5" unit="%" />
+          <div class="panel-grid">
+            <div class="panel-row">
+              <span>语速</span>
+              <NumberStepper v-model="prefs.ttsRate" :min="0.5" :max="2" :step="0.1" :precision="1" unit="x" />
+            </div>
+            <div class="panel-row">
+              <span>音调</span>
+              <NumberStepper v-model="prefs.ttsPitch" :min="0.5" :max="2" :step="0.1" :precision="1" />
+            </div>
+            <div class="panel-row">
+              <span>音量</span>
+              <NumberStepper v-model="ttsVolumePercent" :min="0" :max="100" :step="5" unit="%" />
+            </div>
           </div>
           <div class="row tts-actions">
             <button class="primary" @click="startTts">从头朗读</button>
@@ -2597,6 +2601,7 @@ watch(chapterTitle, () => {
 .settings-sheet {
   max-height: 82vh;
   overflow-y: auto;
+  container-type: inline-size;
   scrollbar-width: thin;
   scrollbar-color: rgba(127, 127, 127, 0.42) transparent;
 }
@@ -2670,9 +2675,25 @@ watch(chapterTitle, () => {
   font-size: 13px;
 }
 
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+}
+
+.panel-grid > .panel-row {
+  min-width: 0;
+}
+
+@container (max-width: 620px) {
+  .panel-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .panel-row > span:first-child {
   flex: none;
-  width: 72px;
+  width: 88px;
   opacity: 0.75;
 }
 
@@ -2745,13 +2766,15 @@ watch(chapterTitle, () => {
 }
 
 .swatches {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin: 6px 0 4px;
 }
 
 .theme-swatch {
-  flex: 1;
+  width: 100%;
+  min-width: 0;
   height: 44px;
   border-radius: 10px;
   border: 1px solid rgba(127, 127, 127, 0.25);

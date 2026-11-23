@@ -178,18 +178,21 @@ export function openDatabase(file) {
       /* 已存在 */
     }
   }
-  db.prepare('INSERT OR IGNORE INTO users (id, username, password, created_at) VALUES (?, ?, ?, ?)').run(
-    DEFAULT_USER_ID,
-    'reader',
-    null,
-    Date.now(),
-  )
-  db.prepare('INSERT OR IGNORE INTO book_groups (user_id, group_id, group_name, order_no) VALUES (?, ?, ?, ?)').run(
-    DEFAULT_USER_ID,
-    0,
-    '全部',
-    0,
-  )
+  const hasUsers = Number(db.prepare('SELECT COUNT(*) AS n FROM users').get().n) > 0
+  if (!hasUsers) {
+    db.prepare('INSERT OR IGNORE INTO users (id, username, password, created_at) VALUES (?, ?, ?, ?)').run(
+      DEFAULT_USER_ID,
+      'reader',
+      null,
+      Date.now(),
+    )
+    db.prepare('INSERT OR IGNORE INTO book_groups (user_id, group_id, group_name, order_no) VALUES (?, ?, ?, ?)').run(
+      DEFAULT_USER_ID,
+      0,
+      '全部',
+      0,
+    )
+  }
   return new Store(db)
 }
 
@@ -666,12 +669,13 @@ class Store {
   }
 
   /**
-   * 删除子账号及其全部数据（书、书源、RSS、分组、书签、替换规则、配置、会话）。
-   * 默认账号永远保留；返回是否真的删掉了。
+   * 删除账号及其全部数据（书、书源、RSS、分组、书签、替换规则、配置、会话）。
+   * 默认账号在开启多用户后也可以删除；删除后不会在下次启动时被重新种回。
+   * 返回是否真的删掉了。
    */
   deleteUser(userId) {
     const id = Number(userId)
-    if (!id || id === DEFAULT_USER_ID) return false
+    if (!id) return false
     if (!this.getUserById(id)) return false
     const books = this.db.prepare('SELECT book_url FROM books WHERE user_id = ?').all(id)
     this.db.exec('BEGIN')

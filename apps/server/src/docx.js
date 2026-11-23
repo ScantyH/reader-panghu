@@ -27,6 +27,14 @@ export function parseDocx(bytes) {
   if (!documentXml) throw new Error('不是有效的 DOCX（缺少 word/document.xml）')
   const xml = strFromU8(documentXml)
 
+  const imageExt = (path) => String(path).split('.').pop().toLowerCase()
+  const imageType = (path) =>
+    ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' })[imageExt(path)] || 'image/jpeg'
+  const coverPath =
+    Object.keys(files).find((path) => /^word\/media\/.+\.(jpe?g|png|gif|webp|svg)$/i.test(path)) ||
+    Object.keys(files).find((path) => /^docProps\/thumbnail\.(jpe?g|png|gif|webp)$/i.test(path))
+  const cover = coverPath ? files[coverPath] : null
+
   const paragraphs = []
   for (const match of xml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)) {
     const text = [...match[0].matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
@@ -58,6 +66,8 @@ export function parseDocx(bytes) {
 
   return {
     title,
+    cover,
+    coverType: coverPath ? imageType(coverPath) : null,
     chapters: chapters.map((chapter, index) => ({
       title: chapter.title || `第${index + 1}章`,
       text: chapter.lines.join('\n'),

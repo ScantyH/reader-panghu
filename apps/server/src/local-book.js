@@ -101,6 +101,8 @@ export function parseLocalBook(buffer, filename) {
       name: parsed.title || name.replace(/\.docx$/i, ''),
       author: '',
       intro: '',
+      cover: parsed.cover,
+      coverType: parsed.coverType,
       chapters: parsed.chapters,
       origin: 'local://docx',
     }
@@ -112,6 +114,8 @@ export function parseLocalBook(buffer, filename) {
       name: parsed.title || name.replace(/\.(mobi|azw3?)$/i, ''),
       author: parsed.author || '',
       intro: parsed.intro || '',
+      cover: parsed.cover,
+      coverType: parsed.coverType,
       chapters: parsed.chapters,
       origin: 'local://mobi',
     }

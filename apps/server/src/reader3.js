@@ -19,6 +19,7 @@ import { convertText } from './text-convert.js'
 import { extractContentImages, sourceTextToPlain } from './source-text.js'
 import { extractCards, extractDpMarkers } from './comment-markers.js'
 import { applySourceLine } from './source-tools.js'
+import { resolveCoverUrl } from './cover-url.js'
 import { cleanIntro, cleanText } from './text.js'
 import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
 
@@ -156,7 +157,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     origin: String(source.bookSourceUrl ?? ''),
     originName: String(source.bookSourceName ?? ''),
     originGroup: String(source.bookSourceGroup ?? ''),
-    coverUrl: String(book?.coverUrl ?? ''),
+    coverUrl: resolveCoverUrl(book?.coverUrl ?? book?.cover ?? book?.pic ?? book?.imageUrl ?? book?.image, book?.bookUrl, source?.bookSourceUrl),
     intro: sourceTextToPlain(book?.intro),
     kind: String(book?.kind ?? ''),
     lastChapter: String(book?.latestChapterTitle ?? ''),
@@ -170,7 +171,7 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     bookUrl: String(book?.bookUrl ?? existing?.bookUrl ?? ''),
     origin: String(source?.bookSourceUrl ?? existing?.origin ?? ''),
     originName: String(source?.bookSourceName ?? existing?.originName ?? ''),
-    coverUrl: String(book?.coverUrl ?? existing?.coverUrl ?? ''),
+    coverUrl: resolveCoverUrl(book?.coverUrl ?? book?.cover ?? book?.pic ?? book?.imageUrl ?? book?.image ?? existing?.coverUrl, book?.bookUrl, existing?.bookUrl, source?.bookSourceUrl),
     tocUrl: String(book?.tocUrl ?? existing?.tocUrl ?? ''),
     intro: sourceTextToPlain(cleanIntro(book?.intro ?? existing?.intro ?? '')),
     kind: String(book?.kind ?? existing?.kind ?? ''),
@@ -1358,8 +1359,21 @@ async function primeBook(book) {
   app.get('/reader3/cover', async (req, reply) => {
     const path = String(req.query?.path ?? '')
     if (!path) return reply.code(400).send('path is required')
+    const referer = String(req.query?.referer ?? '')
+    let target = path.trim()
+    if (target.startsWith('//')) target = `https:${target}`
+    if (!/^https?:\/\//i.test(target)) {
+      if (!referer) return reply.code(400).send('封面地址不是绝对地址')
+      try {
+        target = new URL(target, referer).href
+      } catch {
+        return reply.code(400).send('封面地址无效')
+      }
+    }
     try {
-      const upstream = await fetch(path, { headers: { 'user-agent': 'reader-panghu' } })
+      const headers = { 'user-agent': 'reader-panghu' }
+      if (/^https?:\/\//i.test(referer)) headers.referer = referer
+      const upstream = await fetch(target, { headers, signal: AbortSignal.timeout(20000) })
       if (!upstream.ok) return reply.code(502).send('封面获取失败')
       reply.header('cache-control', 'public, max-age=86400')
       reply.header('content-type', upstream.headers.get('content-type') || 'image/jpeg')
@@ -1394,12 +1408,13 @@ async function primeBook(book) {
   app.get('/reader3/bookCover/:id', async (req, reply) => {
     const id = String(req.params.id || '')
     if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.code(400).send('bad id')
-    for (const ext of ['.jpg', '.png', '.webp', '.gif']) {
+    for (const ext of ['.jpg', '.png', '.webp', '.gif', '.svg']) {
       try {
         const { createReadStream, existsSync } = await import('node:fs')
         const file = join(coversDir, id + ext)
         if (existsSync(file)) {
-          reply.header('content-type', ext === '.jpg' ? 'image/jpeg' : `image/${ext.slice(1)}`)
+          const type = ext === '.jpg' ? 'image/jpeg' : ext === '.svg' ? 'image/svg+xml' : `image/${ext.slice(1)}`
+          reply.header('content-type', type)
           return reply.send(createReadStream(file))
         }
       } catch {

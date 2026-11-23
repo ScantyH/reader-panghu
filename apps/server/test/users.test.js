@@ -97,3 +97,18 @@ test('老库 users 表缺列时自动补列', () => {
   assert.equal(store.getUserById(1).bookLimit, 5)
   store.db.close()
 })
+
+test('默认账号在多用户模式下可删除，重启后不会被重新种回', () => {
+  const file = tempFile()
+  const store = openDatabase(file)
+  store.createUser('boss', 'x', 'admin')
+  assert.ok(store.getUserById(1))
+  assert.equal(store.deleteUser(1), true)
+  assert.ok(!store.getUserById(1))
+  store.db.close()
+
+  const reopened = openDatabase(file)
+  assert.ok(!reopened.getUserById(1))
+  assert.ok(reopened.findUserByName('boss'))
+  reopened.db.close()
+})

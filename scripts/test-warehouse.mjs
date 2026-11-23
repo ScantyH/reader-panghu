@@ -43,8 +43,9 @@ try {
 
   const imported = await call('/reader3/warehouse/import', { method: 'POST', body: { path: '玄幻/书仓测试书.txt' } })
   if (!imported.book?.name) throw new Error('导入没有返回书')
+  if (!imported.book.customCoverUrl) throw new Error('书仓导入未生成封面')
   if (Number(imported.book.totalChapterNum) !== 3) throw new Error(`书仓本地书应有 3 章，实际 ${imported.book.totalChapterNum}`)
-  console.log(`  ✓ 导入书架 → 《${imported.book.name}》，${imported.book.totalChapterNum} 章`)
+  console.log(`  ✓ 导入书架 → 《${imported.book.name}》，${imported.book.totalChapterNum} 章，封面 ${imported.book.customCoverUrl}`)
 
   const shelf = await call('/reader3/getBookshelf')
   if (!shelf.some((book) => book.bookUrl === imported.book.bookUrl)) throw new Error('书不在书架里')

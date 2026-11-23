@@ -20,6 +20,7 @@ import { generateLegadoSource } from '@reader-panghu/legado-source'
 import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
 import { defaultDatabaseFile, openDatabase } from './db.js'
+import { resolveCoverUrl } from './cover-url.js'
 import { registerReader3 } from './reader3.js'
 import { registerReader3Extras } from './reader3-extras.js'
 import { registerAuth } from './auth.js'
@@ -103,7 +104,7 @@ function normalizeBook(book, req, source) {
     author: String(book?.author ?? ''),
     kind: String(book?.kind ?? ''),
     intro: cleanIntro(book?.intro),
-    coverUrl: String(book?.coverUrl ?? ''),
+    coverUrl: resolveCoverUrl(book?.coverUrl ?? book?.cover ?? book?.pic ?? book?.imageUrl ?? book?.image, book?.bookUrl, source?.bookSourceUrl),
     bookUrl: selfUrl(req, '/api/book', { source: sourceId(source), url: book?.bookUrl }),
     tocUrl: selfUrl(req, '/api/toc', { source: sourceId(source), url: book?.tocUrl || book?.bookUrl }),
     wordCount: String(book?.wordCount ?? ''),

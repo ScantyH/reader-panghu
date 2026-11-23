@@ -72,6 +72,17 @@ try {
   const warehouse = (await call('/reader3/warehouse?path=', { token })).data
   check('书仓分类按自定义顺序显示', warehouse.categories.map((item) => item.name).join(',') === '分类B,分类A', JSON.stringify(warehouse.categories.map((item) => item.name)))
 
+  const removeDefault = await call('/reader3/deleteUser', { method: 'POST', token, body: { username: 'reader' } })
+  check('默认普通账号可以删除', removeDefault.isSuccess === true, removeDefault.errorMsg)
+  const afterRemove = (await call('/reader3/getUserList', { token })).data
+  check('删除后用户列表不再出现 reader', !afterRemove.some((item) => item.username === 'reader'), JSON.stringify(afterRemove.map((item) => item.username)))
+
+  await stop()
+  await start()
+  const token2 = (await call('/reader3/login', { method: 'POST', body: { username: 'admin', password: 'secret123' } })).data.token
+  const afterRestart = (await call('/reader3/getUserList', { token: token2 })).data
+  check('重启后默认账号不会被重新种回', !afterRestart.some((item) => item.username === 'reader'), JSON.stringify(afterRestart.map((item) => item.username)))
+
   await stop()
   console.log(failures ? `\n账号/书仓 ${failures} 项失败` : '\n账号/书仓 checks passed')
   process.exit(failures ? 1 : 0)

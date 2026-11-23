@@ -20,6 +20,7 @@ import { parseEpub } from './epub.js'
 import { parseFeed } from './rss.js'
 import { parseMobi } from './mobi.js'
 import { extractPdfText } from './pdf.js'
+import { writeDefaultCover } from './default-cover.js'
 import { isChapterTitle } from './chapter-title.js'
 import { bookQuotaError, permissionsFor } from './user-perms.js'
 
@@ -61,6 +62,20 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
   const coversDir = join(dataDir, 'covers')
   mkdirSync(booksDir, { recursive: true })
   mkdirSync(coversDir, { recursive: true })
+
+  const coverExtFor = (type) =>
+    type === 'image/png' ? '.png' : type === 'image/webp' ? '.webp' : type === 'image/gif' ? '.gif' : type === 'image/svg+xml' ? '.svg' : '.jpg'
+
+  /** 把解析器带回的内嵌封面写进 covers 目录，返回自定义封面地址 */
+  const saveParsedCover = (parsed, uuid) => {
+    if (!parsed?.cover) return ''
+    writeFileSync(join(coversDir, uuid + coverExtFor(parsed.coverType)), Buffer.from(parsed.cover))
+    return `/reader3/bookCover/${uuid}`
+  }
+
+  const coverForParsed = (parsed, uuid, fallbackTitle, fallbackAuthor = '') =>
+    saveParsedCover(parsed, uuid) || writeDefaultCover(coversDir, fallbackTitle, fallbackAuthor)
+
   const timeoutMs = Number(options.timeoutMs || 45000)
 
   const editSourcesBlocked = (req) =>
@@ -306,13 +321,15 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
       content: chapter.content,
     }))
 
+    const bookName = filename.replace(/\.txt$/i, '')
     const book = store.saveBook({
-      name: filename.replace(/\.txt$/i, ''),
+      name: bookName,
       author: '',
       bookUrl,
       origin: 'local://txt',
       originName: '本地书籍',
       coverUrl: '',
+      customCoverUrl: writeDefaultCover(coversDir, bookName),
       tocUrl: '',
       intro: '',
       kind: '',
@@ -351,12 +368,7 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
       content: chapter.text,
     }))
 
-    let customCoverUrl = ''
-    if (parsed.cover) {
-      const ext = parsed.coverType === 'image/png' ? '.png' : parsed.coverType === 'image/webp' ? '.webp' : '.jpg'
-      writeFileSync(join(coversDir, uuid + ext), Buffer.from(parsed.cover))
-      customCoverUrl = `/reader3/bookCover/${uuid}`
-    }
+    const customCoverUrl = coverForParsed(parsed, uuid, parsed.title || filename.replace(/\.epub$/i, ''), parsed.author)
 
     const book = store.saveBook({
       name: parsed.title || filename.replace(/\.epub$/i, ''),
@@ -410,6 +422,7 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
       origin: 'local://docx',
       originName: '本地书籍',
       coverUrl: '',
+      customCoverUrl: coverForParsed(parsed, uuid, parsed.title || filename.replace(/\.docx?$/i, ''), ''),
       tocUrl: '',
       intro: '',
       kind: '',
@@ -454,6 +467,7 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
       origin: 'local://mobi',
       originName: '本地书籍',
       coverUrl: '',
+      customCoverUrl: coverForParsed(parsed, uuid, parsed.title || filename.replace(/\.(mobi|azw3?)$/i, ''), parsed.author || ''),
       tocUrl: '',
       intro: parsed.intro || '',
       kind: '',
@@ -499,6 +513,7 @@ export function registerReader3Extras(app, { store, dataDir, options = {} }) {
       origin: 'local://pdf',
       originName: '本地书籍',
       coverUrl: '',
+      customCoverUrl: writeDefaultCover(coversDir, filename.replace(/\.pdf$/i, '')),
       tocUrl: '',
       intro: '',
       kind: '',

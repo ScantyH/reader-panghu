@@ -70,9 +70,24 @@ function readExth(rec0, offset, end, encoding) {
     if (type === 503) meta.title = decode(value, encoding)
     if (type === 100) meta.author = decode(value, encoding)
     if (type === 524) meta.intro = decode(value, encoding)
+    if ((type === 201 || type === 202) && value.length >= 4) {
+      const offset = new DataView(value.buffer, value.byteOffset, value.byteLength).getUint32(0)
+      if (offset !== 0xffffffff) meta[type === 201 ? 'coverOffset' : 'thumbOffset'] = offset
+    }
     cursor += length
   }
   return meta
+}
+
+function imageTypeOf(bytes) {
+  if (!bytes || bytes.length < 12) return ''
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg'
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png'
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif'
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP') {
+    return 'image/webp'
+  }
+  return ''
 }
 
 export function splitChapters(text, fallbackTitle = '正文') {
@@ -147,5 +162,21 @@ export function parseMobi(bytes) {
 
   const chapters = splitChapters(text, title || '正文')
   if (!chapters.length) throw new Error('MOBI 里没有可读文字')
-  return { title: (title || '未命名').trim(), author: (meta.author || '').trim(), intro: (meta.intro || '').trim(), chapters }
+
+  const images = []
+  for (let index = textRecordCount + 1; index < numRecords; index++) {
+    const chunk = record(index)
+    const type = imageTypeOf(chunk)
+    if (type) images.push({ bytes: chunk, type })
+  }
+  const cover = images[Number.isInteger(meta.coverOffset) ? meta.coverOffset : 0] || images[0] || null
+
+  return {
+    title: (title || '未命名').trim(),
+    author: (meta.author || '').trim(),
+    intro: (meta.intro || '').trim(),
+    cover: cover ? Uint8Array.from(cover.bytes) : null,
+    coverType: cover?.type || null,
+    chapters,
+  }
 }
