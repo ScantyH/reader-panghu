@@ -3103,3 +3103,51 @@ body.dp-panel-open { overflow: hidden; }
   .reader-shell .settings-sheet,
   .reader-shell .dp-panel-sheet { width: 100% !important; }
 }
+
+/* 左侧导航桌面书架：封面 10 列、网格 8 列、横向 4 列，横向铺满内容区 */
+@media (min-width: 1700px) {
+  .app.nav-left .mode-cover {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    gap: 22px 16px;
+  }
+
+  /* 每行 8 本，卡片最多 180px，剩下的空间全部加到列间距上，最右侧贴边 */
+  .app.nav-left .mode-grid {
+    grid-template-columns: repeat(8, minmax(0, 180px));
+    justify-content: space-between;
+    column-gap: 0;
+    row-gap: 26px;
+  }
+
+  .app.nav-left .mode-grid .shelf-card {
+    width: 100%;
+    max-width: 180px;
+  }
+
+  /* 每行 4 本，封面和右侧信息一起放大，铺满整行 */
+  .app.nav-left .mode-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .app.nav-left .mode-list .shelf-card {
+    padding: 16px;
+    gap: 26px;
+  }
+
+  .app.nav-left .mode-list .shelf-cover {
+    width: 150px;
+  }
+
+  .app.nav-left .mode-list .shelf-title {
+    font-size: 16px;
+  }
+
+  .app.nav-left .mode-list .shelf-line {
+    font-size: 13.5px;
+  }
+
+  .app.nav-left .mode-list .shelf-intro {
+    -webkit-line-clamp: 4;
+  }
+}
