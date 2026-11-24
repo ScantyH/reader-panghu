@@ -6,12 +6,8 @@ import { desktopNavLayout } from './use-layout.js'
 
 const route = useRoute()
 const router = useRouter()
-const isBookshelfPath = () => window.location.pathname.startsWith('/bookshelf')
-const layoutRouteName = ref(isBookshelfPath() ? 'bookshelf' : route.name)
-
-function syncLayoutRoute() {
-  layoutRouteName.value = isBookshelfPath() ? 'bookshelf' : route.name
-}
+/** 左侧导航时，书架页要满铺；用路由实时推导，避免首页重定向后仍沿用旧值 */
+const layoutRouteName = computed(() => (route.path.startsWith('/bookshelf') ? 'bookshelf' : route.name))
 const toast = ref('')
 const headerQuery = ref('')
 const searchReadonly = ref(true)
@@ -157,7 +153,6 @@ function updateMobile() {
 }
 
 onMounted(() => {
-  layoutRouteName.value = isBookshelfPath() ? 'bookshelf' : route.name
   loadAuth()
   loadSidebarBooks()
   updateMobile()
@@ -274,7 +269,7 @@ function closeUserInfo(event) {
         </button>
       </div>
       <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in" @after-leave="syncLayoutRoute">
+        <transition name="fade" mode="out-in">
           <component :is="Component" />
         </transition>
       </router-view>

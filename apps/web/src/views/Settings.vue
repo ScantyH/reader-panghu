@@ -21,6 +21,16 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.4.6',
+    date: '2026-11-24',
+    items: ['修复网页版首次打开时书架页未满铺、需要刷新后才铺满的问题'],
+  },
+  {
+    version: '1.4.5',
+    date: '2026-11-23',
+    items: ['后端重启后要求重新登录', 'sessions 表新增 boot_id，启动时清理上一进程会话', '旧 token / cookie 在后端重启后返回 NEED_LOGIN'],
+  },
+  {
     version: '1.4.4',
     date: '2026-11-23',
     items: ['管理员可在用户管理中新建账号，并在创建时配置书籍/书源上限与 WebDAV、书仓、书源、RSS 权限'],
