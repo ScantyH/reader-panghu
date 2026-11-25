@@ -210,9 +210,10 @@ const visible = computed(() => {
   let list = books.value
   if (props.recentOnly) list = list.filter((book) => Number(book.durChapterTime) > 0)
   else if (activeGroup.value) list = list.filter((book) => Number(book.group || 0) === activeGroup.value)
-  // 最近阅读优先；没读过的用最近检查时间、书名兜底，保证同一屏内顺序稳定。
-  // 渲染顺序即 DOM 顺序，封面/网格模式按从左到右、从上到下排列。
+  // 最近加入的书排最前；其余仍按最近阅读 / 检查时间 / 书名排序
   return [...list].sort((a, b) => {
+    const byAdded = Number(b.addedAt || 0) - Number(a.addedAt || 0)
+    if (byAdded) return byAdded
     const byRead = Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0)
     if (byRead) return byRead
     const byCheck = Number(b.lastCheckTime || 0) - Number(a.lastCheckTime || 0)

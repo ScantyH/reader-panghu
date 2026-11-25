@@ -330,7 +330,14 @@ class Store {
     if (!url) throw new Error('bookUrl is required')
     const origin = String(book.origin || '')
     const existing = this.getBook(url, userId)
-    const merged = { ...existing, ...book, bookUrl: url, origin: origin || existing?.origin || '' }
+    const addedAt = existing ? Number(existing.addedAt || book.addedAt || 0) : Number(book.addedAt || Date.now())
+    const merged = {
+      ...existing,
+      ...book,
+      bookUrl: url,
+      origin: origin || existing?.origin || '',
+      addedAt,
+    }
     this.db
       .prepare(
         `INSERT INTO books (user_id, book_url, origin, json, updated_at) VALUES (?, ?, ?, ?, ?)

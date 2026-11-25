@@ -13,6 +13,7 @@ const pickerPendingSearch = ref(false)
 const results = ref([])
 const searching = ref(false)
 const picked = ref(null)
+const groups = ref([])
 const route = useRoute()
 const progress = ref({ seen: [], counts: {} })
 
@@ -114,12 +115,30 @@ async function search() {
   }
 }
 
+async function loadGroups() {
+  try {
+    groups.value = await api.groups()
+  } catch {
+    groups.value = []
+  }
+}
+
 async function pick(book) {
+  // 先用搜索结果立即打开窗口，详情在后台补；避免点击后等待网络
+  const key = `${book.origin}::${book.bookUrl}`
+  picked.value = { ...book, group: Number(book.group || 0) }
   try {
     const info = await api.bookInfo(book.bookUrl, book.origin)
-    picked.value = { ...info, origin: book.origin, originName: book.originName }
-  } catch (error) {
-    window.__toast?.(error.message)
+    if (!picked.value || `${picked.value.origin}::${picked.value.bookUrl}` !== key) return
+    picked.value = {
+      ...picked.value,
+      ...info,
+      group: picked.value.group || 0,
+      origin: book.origin,
+      originName: book.originName,
+    }
+  } catch {
+    /* 详情失败时仍可用搜索结果里的书名/作者/封面加入书架 */
   }
 }
 
@@ -151,6 +170,7 @@ async function addToShelf(book) {
 }
 
 onMounted(async () => {
+  void loadGroups()
   await loadBundles()
   const q = String(route.query.q || '').trim()
   if (q) {
@@ -198,7 +218,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <BookDetail v-if="picked" :book="picked" mode="search" @close="picked = null" @save="addToShelf" />
+    <BookDetail v-if="picked" :book="picked" :groups="groups" mode="search" @close="picked = null" @save="addToShelf" />
 
     <div v-if="showScope" class="sheet-backdrop" @click.self="showScope = false">
       <div class="sheet">

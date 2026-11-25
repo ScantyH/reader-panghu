@@ -9,12 +9,26 @@ const props = defineProps({
 })
 const emit = defineEmits(['close', 'save'])
 
-const draft = ref({ ...props.book })
+const draft = ref({ group: 0, ...props.book })
 const coverInput = ref(null)
 const busy = ref(false)
 const coverFailed = ref(false)
 
 const coverUrl = computed(() => coverOf(draft.value))
+const groupChoices = computed(() => [
+  { groupId: 0, groupName: '未分组' },
+  ...props.groups.filter((group) => Number(group.groupId) !== 0),
+])
+
+watch(
+  () => props.book,
+  (book) => {
+    if (!book) return
+    draft.value = { group: 0, ...book }
+    coverFailed.value = false
+  },
+  { deep: true },
+)
 
 async function pickCover(event) {
   const file = event.target.files?.[0]
@@ -68,10 +82,10 @@ function submit() {
         <input v-model="draft.kind" />
       </div>
 
-      <div v-if="mode === 'shelf'" class="field">
+      <div class="field">
         <label>分组</label>
-        <select v-model.number="draft.group" style="width: 100%; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px">
-          <option v-for="group in groups" :key="group.groupId" :value="group.groupId">{{ group.groupName }}</option>
+        <select v-model.number="draft.group">
+          <option v-for="group in groupChoices" :key="group.groupId" :value="group.groupId">{{ group.groupName }}</option>
         </select>
       </div>
 

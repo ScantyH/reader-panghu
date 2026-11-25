@@ -261,7 +261,7 @@ function closeUserInfo(event) {
       </div>
     </header>
 
-    <main class="app-main" :class="{ 'nav-constrained': showLeftNav && layoutRouteName !== 'bookshelf', 'stats-wide': route.name === 'stats' }">
+    <main class="app-main" :class="{ 'nav-constrained': showLeftNav && layoutRouteName !== 'bookshelf' && layoutRouteName !== 'search', 'stats-wide': route.name === 'stats' }">
       <div v-if="parent && !isMobile" class="page-back">
         <button class="page-back-btn" :title="`返回 ${parent.label}`" @click="goParent">
           <span aria-hidden="true">←</span>
