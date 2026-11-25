@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '2.0.1',
+    date: '2026-11-25',
+    items: ['修复重启后登录成功时，左侧最近阅读和右上角用户信息未加载、需要刷新才显示的问题'],
+  },
+  {
     version: '2.0.0',
     date: '2026-11-25',
     items: [

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, coverOf, isNativeApp, setToken } from './api.js'
 import { desktopNavLayout } from './use-layout.js'
@@ -151,6 +151,19 @@ const pageMeta = computed(() => PAGE_META[route.name] || { title: '胖虎阅读'
 function updateMobile() {
   isMobile.value = window.innerWidth <= 760
 }
+
+/** 登录页不渲染应用壳；登录成功回到书架时补拉用户信息和侧栏，避免等刷新 */
+function reloadShellData() {
+  loadAuth()
+  if (!isLogin() && !isReader()) loadSidebarBooks()
+}
+
+watch(
+  () => route.name,
+  (name, previous) => {
+    if (previous === 'login' && name !== 'login' && name !== 'reader') reloadShellData()
+  },
+)
 
 onMounted(() => {
   loadAuth()
