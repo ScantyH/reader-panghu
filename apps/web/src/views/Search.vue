@@ -40,6 +40,8 @@ const searching = ref(false)
 const picked = ref(null)
 const groups = ref([])
 const concurrency = ref(readConcurrency())
+const showConcurrency = ref(false)
+const concurrencyDraft = ref(concurrency.value)
 const route = useRoute()
 const progress = ref({ seen: [], counts: {} })
 
@@ -137,6 +139,23 @@ function confirmScope() {
   showScope.value = false
   if (pickerPendingSearch.value && keyword.value.trim()) search()
   pickerPendingSearch.value = false
+}
+
+function openConcurrency() {
+  concurrencyDraft.value = concurrency.value
+  showConcurrency.value = true
+}
+
+function confirmConcurrency() {
+  concurrency.value = concurrencyDraft.value
+  showConcurrency.value = false
+}
+
+function concurrencyHint(value) {
+  if (value <= 2) return '最稳，适合弱性能 NAS'
+  if (value <= 4) return '推荐，速度和负载比较均衡'
+  if (value <= 12) return '较快，占用更多资源'
+  return '极速，书源多时更明显'
 }
 
 async function search() {
@@ -254,11 +273,9 @@ onMounted(async () => {
       <button class="ghost m-search-scope" style="max-width: 340px" @click="openScope(false)">
         {{ scopeLabel }} · {{ selectedStats.searchable || totals.searchable }} 个源
       </button>
-      <label class="m-search-concurrency" title="并行搜索线程数">
-        <select v-model.number="concurrency" aria-label="并行搜索线程数">
-          <option v-for="value in CONCURRENCY_OPTIONS" :key="value" :value="value">{{ value }}并发线程</option>
-        </select>
-      </label>
+      <button class="ghost m-search-concurrency" title="并行搜索线程数" @click="openConcurrency">
+        {{ concurrency }}并发线程 <span aria-hidden="true">▾</span>
+      </button>
       <button class="primary m-search-btn" :disabled="searching" @click="search">搜索</button>
     </div>
 
@@ -305,6 +322,34 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <div v-if="showConcurrency" class="sheet-backdrop" @click.self="showConcurrency = false">
+      <div class="sheet">
+        <div class="sheet-handle" />
+        <h2 style="margin: 0 0 6px">并行搜索线程数</h2>
+        <p class="muted" style="font-size: 13px; margin: 0 0 12px">同时搜索的书源数量。线程越多越快，但更占 NAS 资源。</p>
+        <div class="list" style="max-height: 46vh; overflow: auto">
+          <label v-for="value in CONCURRENCY_OPTIONS" :key="value" class="list-item" style="cursor: pointer">
+            <input
+              v-model.number="concurrencyDraft"
+              type="radio"
+              name="search-concurrency"
+              :value="value"
+              style="width: auto"
+            />
+            <span style="flex: 1; min-width: 0">
+              <strong>{{ value }}并发线程</strong>
+              <span class="muted" style="font-size: 12px; margin-left: 6px">{{ concurrencyHint(value) }}</span>
+            </span>
+          </label>
+        </div>
+        <div class="row" style="gap: 8px; margin-top: 14px">
+          <div class="spacer" />
+          <button class="ghost" @click="showConcurrency = false">取消</button>
+          <button class="primary" @click="confirmConcurrency">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -312,12 +357,17 @@ onMounted(async () => {
 .m-search-concurrency {
   flex: none;
   width: 138px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
-.m-search-concurrency select {
-  width: 100%;
-  height: 42px;
-  padding: 0 10px;
+.m-search-concurrency span {
+  font-size: 10px;
+  opacity: 0.6;
 }
 
 @media (max-width: 760px) {
