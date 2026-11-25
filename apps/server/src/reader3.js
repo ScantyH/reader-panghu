@@ -1298,6 +1298,10 @@ async function primeBook(book) {
       .map((name) => name.trim())
       .filter(Boolean)
     const bundleSet = new Set(bundleList)
+    const requestedConcurrency = Number(req.query?.concurrency)
+    const concurrency = Math.min(30, Math.max(1, Number.isFinite(requestedConcurrency) && requestedConcurrency > 0 ? requestedConcurrency : 4))
+    const searchTimeoutMs = Math.max(2000, Number(process.env.SEARCH_TIMEOUT_MS || 8000))
+    let closed = false
 
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -1306,9 +1310,13 @@ async function primeBook(book) {
       'x-accel-buffering': 'no',
     })
     const send = (payload, event) => {
+      if (closed) return
       if (event) reply.raw.write(`event: ${event}\n`)
       reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`)
     }
+    reply.raw.on('close', () => {
+      closed = true
+    })
 
     try {
       if (!keyword) {
@@ -1321,19 +1329,31 @@ async function primeBook(book) {
           if (group) return source.bookSourceGroup === group
           return true
         })
-        for (const source of sources) {
-          try {
-            const books = await withRuntime(source.bookSourceUrl, (runtime) => runtime.search(keyword, 1))
-            const mapped = (Array.isArray(books) ? books : []).map((book) => toSearchBook(book, source))
-            if (mapped.length) send(ok(mapped))
-          } catch (error) {
-            send(fail(`${source.bookSourceName}: ${error.message}`))
+        let cursor = 0
+        const worker = async () => {
+          while (!closed) {
+            const source = sources[cursor++]
+            if (!source) return
+            try {
+              const books = await Promise.race([
+                withRuntime(source.bookSourceUrl, (runtime) => runtime.search(keyword, 1)),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('搜索超时')), searchTimeoutMs)),
+              ])
+              if (closed) return
+              const mapped = (Array.isArray(books) ? books : []).map((book) => toSearchBook(book, source))
+              if (mapped.length) send(ok(mapped))
+            } catch (error) {
+              if (!closed) send(fail(`${source.bookSourceName}: ${error.message}`))
+            }
           }
         }
+        await Promise.all(Array.from({ length: Math.min(concurrency, sources.length) }, worker))
       }
     } finally {
-      send({}, 'end')
-      reply.raw.end()
+      if (!closed) {
+        send({}, 'end')
+        reply.raw.end()
+      }
     }
   })
 

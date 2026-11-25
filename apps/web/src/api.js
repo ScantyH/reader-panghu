@@ -242,12 +242,13 @@ export const api = {
 }
 
 /** SSE multi-source search: onBooks per source batch, resolves when the stream ends. */
-export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBundle, bookSourceBundles }, onBooks) {
+export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBundle, bookSourceBundles, concurrency }, onBooks) {
   const query = new URLSearchParams({ key })
   if (bookSourceUrl) query.set('bookSourceUrl', bookSourceUrl)
   if (bookSourceGroup) query.set('bookSourceGroup', bookSourceGroup)
   if (bookSourceBundle) query.set('bookSourceBundle', bookSourceBundle)
   if (Array.isArray(bookSourceBundles) && bookSourceBundles.length) query.set('bookSourceBundles', bookSourceBundles.join(','))
+  if (concurrency) query.set('concurrency', String(concurrency))
   const source = new EventSource(`${BASE}${withToken(`/searchBookMultiSSE?${query}`)}`)
   return new Promise((resolve, reject) => {
     source.onmessage = (event) => {

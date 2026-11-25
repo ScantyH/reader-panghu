@@ -96,7 +96,7 @@ const sseBooks = await new Promise((resolve, reject) => {
     controller.abort()
     reject(new Error('SSE timeout'))
   }, 120000)
-  fetch(`${base}/reader3/searchBookMultiSSE?key=${encodeURIComponent(keyword)}`, { signal: controller.signal })
+  fetch(`${base}/reader3/searchBookMultiSSE?key=${encodeURIComponent(keyword)}&concurrency=4`, { signal: controller.signal })
     .then(async (response) => {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()

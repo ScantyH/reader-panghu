@@ -1,8 +1,33 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf, searchStream } from '../api.js'
+
+const CONCURRENCY_OPTIONS = [1, 2, 4, 8, 12, 18, 24, 30]
+const CONCURRENCY_KEY = 'searchConcurrency'
+const BUNDLES_KEY = 'searchBundles'
+
+function readConcurrency() {
+  try {
+    const value = Number(localStorage.getItem(CONCURRENCY_KEY))
+    return CONCURRENCY_OPTIONS.includes(value) ? value : 4
+  } catch {
+    return 4
+  }
+}
+
+/** 没保存过返回 null；保存过 [] 表示用户主动清空选择。 */
+function readBundles() {
+  try {
+    const raw = localStorage.getItem(BUNDLES_KEY)
+    if (raw === null) return null
+    const value = JSON.parse(raw)
+    return Array.isArray(value) ? value.filter((name) => typeof name === 'string') : null
+  } catch {
+    return null
+  }
+}
 
 const keyword = ref('')
 const bundles = ref([])
@@ -14,8 +39,29 @@ const results = ref([])
 const searching = ref(false)
 const picked = ref(null)
 const groups = ref([])
+const concurrency = ref(readConcurrency())
 const route = useRoute()
 const progress = ref({ seen: [], counts: {} })
+
+watch(concurrency, (value) => {
+  try {
+    localStorage.setItem(CONCURRENCY_KEY, String(value))
+  } catch {
+    /* ignore */
+  }
+})
+
+watch(
+  selectedBundles,
+  (value) => {
+    try {
+      localStorage.setItem(BUNDLES_KEY, JSON.stringify(value))
+    } catch {
+      /* ignore */
+    }
+  },
+  { deep: true },
+)
 
 const totals = computed(() =>
   bundles.value.reduce(
@@ -53,7 +99,12 @@ async function loadBundles() {
       window.__toast?.('还没有可用的书源，先去「书源」页导入')
       return
     }
-    if (bundles.value.length === 1) selectedBundles.value = [bundles.value[0].name]
+    const saved = readBundles()
+    if (saved !== null) {
+      selectedBundles.value = saved.filter((name) => bundles.value.some((bundle) => bundle.name === name))
+    } else if (bundles.value.length === 1) {
+      selectedBundles.value = [bundles.value[0].name]
+    }
   } catch (error) {
     window.__toast?.(error.message)
   }
@@ -99,7 +150,9 @@ async function search() {
   progress.value = { seen: [], counts: {} }
   searching.value = true
   try {
-    await searchStream({ key, bookSourceBundles: selectedBundles.value }, (books) => {
+    await searchStream(
+      { key, bookSourceBundles: selectedBundles.value, concurrency: concurrency.value },
+      (books) => {
       const dedupe = new Set(results.value.map((book) => `${book.origin}::${book.bookUrl}`))
       results.value = [...results.value, ...books.filter((book) => !dedupe.has(`${book.origin}::${book.bookUrl}`))]
       const origins = new Set(books.map((book) => book.origin || '未知'))
@@ -201,6 +254,11 @@ onMounted(async () => {
       <button class="ghost m-search-scope" style="max-width: 340px" @click="openScope(false)">
         {{ scopeLabel }} · {{ selectedStats.searchable || totals.searchable }} 个源
       </button>
+      <label class="m-search-concurrency" title="并行搜索线程数">
+        <select v-model.number="concurrency" aria-label="并行搜索线程数">
+          <option v-for="value in CONCURRENCY_OPTIONS" :key="value" :value="value">{{ value }}并发线程</option>
+        </select>
+      </label>
       <button class="primary m-search-btn" :disabled="searching" @click="search">搜索</button>
     </div>
 
@@ -251,6 +309,24 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.m-search-concurrency {
+  flex: none;
+  width: 138px;
+}
+
+.m-search-concurrency select {
+  width: 100%;
+  height: 42px;
+  padding: 0 10px;
+}
+
+@media (max-width: 760px) {
+  .m-search-concurrency {
+    flex: 1 1 140px;
+    width: auto;
+  }
+}
+
 .select-all-btn.active {
   color: #fff;
   background: var(--color-danger, #c0392b);
