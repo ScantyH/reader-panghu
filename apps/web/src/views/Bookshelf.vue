@@ -209,6 +209,7 @@ async function switchToSource(candidate) {
 const visible = computed(() => {
   let list = books.value
   if (props.recentOnly) list = list.filter((book) => Number(book.durChapterTime) > 0)
+  else if (activeGroup.value === 'ungrouped') list = list.filter((book) => Number(book.group || 0) === 0)
   else if (activeGroup.value) list = list.filter((book) => Number(book.group || 0) === activeGroup.value)
   // 最近加入的书排最前；其余仍按最近阅读 / 检查时间 / 书名排序
   return [...list].sort((a, b) => {
@@ -238,6 +239,11 @@ function updateMobile() {
 }
 
 const tabs = computed(() => groups.value.filter((group) => group.groupId !== 0 || groups.value.length === 1))
+/** 未分组单独一栏；“全部”仍对应 activeGroup 0 */
+const ungroupedCount = computed(() => books.value.filter((book) => Number(book.group || 0) === 0).length)
+watch(ungroupedCount, (count) => {
+  if (!count && activeGroup.value === 'ungrouped') activeGroup.value = 0
+})
 
 const unread = (book) => {
   const total = Number(book.totalChapterNum || 0)
@@ -349,7 +355,9 @@ function readText(book) {
 
 /** 分组名 */
 function groupName(book) {
-  const group = tabs.value.find((item) => item.groupId === Number(book.group || 0))
+  const groupId = Number(book.group || 0)
+  if (!groupId) return '未分组'
+  const group = tabs.value.find((item) => item.groupId === groupId)
   return group?.groupName || '未分组'
 }
 
@@ -494,6 +502,14 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
 
     <div v-if="!recentOnly" class="group-tabs">
       <button class="group-tab" :class="{ active: activeGroup === 0 }" @click="activeGroup = 0">全部</button>
+      <button
+        v-if="ungroupedCount"
+        class="group-tab"
+        :class="{ active: activeGroup === 'ungrouped' }"
+        @click="activeGroup = 'ungrouped'"
+      >
+        未分组
+      </button>
       <button
         v-for="group in tabs.filter((item) => item.groupId !== 0)"
         :key="group.groupId"

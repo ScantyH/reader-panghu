@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '1.4.10',
+    date: '2026-11-25',
+    items: ['书架分组标签在「全部」和自定义分组之间增加「未分组」，没有未分组书籍时自动隐藏'],
+  },
+  {
     version: '1.4.9',
     date: '2026-11-25',
     items: [
