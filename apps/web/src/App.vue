@@ -64,7 +64,7 @@ const activeNav = computed(() => {
 
 async function loadSidebarBooks() {
   try {
-    const list = await api.bookshelf()
+    const list = await api.recentBooks(3)
     sidebarBooks.value = [...list]
       .sort((a, b) => Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0))
       .slice(0, 3)

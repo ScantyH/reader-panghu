@@ -105,6 +105,7 @@ export const api = {
 
   // shelf
   bookshelf: () => request('/getBookshelf'),
+  recentBooks: (limit = 3) => request(`/getRecentBooks?limit=${Number(limit) || 3}`),
   shelfWithCache: () => request('/getShelfBookWithCacheInfo'),
   deleteBookCache: (bookUrl) => request('/deleteBookCache', { method: 'POST', body: { bookUrl } }),
   saveBook: (book) => request('/saveBook', { method: 'POST', body: book }),

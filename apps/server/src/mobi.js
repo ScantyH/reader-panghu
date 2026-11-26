@@ -10,7 +10,7 @@
  * (encryption !== 0). Both throw a readable error instead of producing garbage.
  */
 
-import { isChapterTitle } from './chapter-title.js'
+import { splitPlainTextChapters } from './chapter-title.js'
 
 function palmDocDecompress(bytes) {
   const out = []
@@ -90,23 +90,8 @@ function imageTypeOf(bytes) {
   return ''
 }
 
-export function splitChapters(text, fallbackTitle = '正文') {
-  const lines = String(text).replace(/\r\n?/g, '\n').split('\n')
-  const chapters = []
-  let current = { title: fallbackTitle, lines: [] }
-  for (const line of lines) {
-    if (isChapterTitle(line)) {
-      if (current.lines.join('').trim()) chapters.push(current)
-      current = { title: line.trim(), lines: [] }
-    } else {
-      current.lines.push(line)
-    }
-  }
-  if (current.lines.join('').trim()) chapters.push(current)
-  return chapters.map((chapter, index) => ({
-    title: chapter.title || `第${index + 1}章`,
-    text: chapter.lines.join('\n').trim(),
-  }))
+export function splitChapters(text, fallbackTitle = '开始') {
+  return splitPlainTextChapters(text, { fallbackTitle })
 }
 
 /** @param {Uint8Array} bytes */

@@ -8,6 +8,7 @@
  */
 
 import { strFromU8, unzipSync } from 'fflate'
+import { normalizeChapterTitle } from './chapter-title.js'
 
 const escapeHtml = (text) => text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
 
@@ -237,7 +238,9 @@ export function parseEpub(bytes) {
     if (text.length < 2) continue
     const heading = /<h[1-2][^>]*>([\s\S]*?)<\/h[1-2]>/i.exec(html)?.[1]
     chapters.push({
-      title: tocTitles.get(item.href.split('#')[0]) || stripTags(heading || '') || `第${chapters.length + 1}章`,
+      title:
+        normalizeChapterTitle(tocTitles.get(item.href.split('#')[0]) || stripTags(heading || '')) ||
+        `第${chapters.length + 1}章`,
       text,
     })
   }

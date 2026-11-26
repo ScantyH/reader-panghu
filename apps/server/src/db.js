@@ -399,6 +399,14 @@ class Store {
     return row ? JSON.parse(row.json) : null
   }
 
+  /** 只取某一章的标题，避免为了书架显示而反序列化整本目录。 */
+  getChapterTitle(bookUrl, origin, index = 0) {
+    const row = this.db
+      .prepare(`SELECT json_extract(json, '$[' || ? || '].title') AS title FROM chapters WHERE book_url = ? AND origin = ?`)
+      .get(String(Math.max(0, Math.floor(Number(index) || 0))), bookUrl, origin)
+    return row?.title ? String(row.title) : ''
+  }
+
   saveChapters(bookUrl, origin, chapters) {
     this.db
       .prepare(

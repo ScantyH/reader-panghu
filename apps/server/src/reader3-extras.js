@@ -21,7 +21,7 @@ import { parseFeed } from './rss.js'
 import { parseMobi } from './mobi.js'
 import { extractPdfText } from './pdf.js'
 import { writeDefaultCover } from './default-cover.js'
-import { isChapterTitle } from './chapter-title.js'
+import { splitPlainTextChapters } from './chapter-title.js'
 import { bookQuotaError, permissionsFor } from './user-perms.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
@@ -36,24 +36,12 @@ function decodeText(buffer) {
   }
 }
 
-/** Split a plain-text book into chapters, keeping the preamble as chapter 1. */
+/** Split a plain-text book into chapters; no headings → auto-split around 10k chars. */
 export function splitTxtChapters(text) {
-  const lines = text.replace(/\r\n/g, '\n').split('\n')
-  const chapters = []
-  let current = { title: '开始', lines: [] }
-  for (const line of lines) {
-    if (isChapterTitle(line)) {
-      if (current.lines.join('').trim()) chapters.push(current)
-      current = { title: line.trim(), lines: [] }
-    } else {
-      current.lines.push(line)
-    }
-  }
-  if (current.lines.join('').trim()) chapters.push(current)
-  return chapters.map((chapter, index) => ({
+  return splitPlainTextChapters(text).map((chapter, index) => ({
     title: chapter.title,
     index,
-    content: chapter.lines.join('\n').trim(),
+    content: chapter.text,
   }))
 }
 

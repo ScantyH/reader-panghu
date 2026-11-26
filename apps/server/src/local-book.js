@@ -10,7 +10,7 @@ import { parseDocx } from './docx.js'
 import { parseEpub } from './epub.js'
 import { parseMobi } from './mobi.js'
 import { extractPdfText } from './pdf.js'
-import { isChapterTitle } from './chapter-title.js'
+import { splitPlainTextChapters } from './chapter-title.js'
 
 export function decodeText(buffer) {
   try {
@@ -20,23 +20,11 @@ export function decodeText(buffer) {
   }
 }
 
-/** 纯文本分章 */
-export function splitTextChapters(text, fallbackTitle = '正文') {
-  const lines = String(text).replace(/\r\n?/g, '\n').split('\n')
-  const chapters = []
-  let current = { title: fallbackTitle, lines: [] }
-  for (const line of lines) {
-    if (isChapterTitle(line)) {
-      if (current.lines.join('').trim()) chapters.push(current)
-      current = { title: line.trim(), lines: [] }
-    } else {
-      current.lines.push(line)
-    }
-  }
-  if (current.lines.join('').trim()) chapters.push(current)
-  return chapters.map((chapter, index) => ({
-    title: chapter.title || `第${index + 1}章`,
-    text: chapter.lines.join('\n').trim(),
+/** 纯文本分章；没有明显章节标题时按约 10000 字自动分段 */
+export function splitTextChapters(text, fallbackTitle = '开始') {
+  return splitPlainTextChapters(text, { fallbackTitle }).map((chapter) => ({
+    title: chapter.title,
+    text: chapter.text,
   }))
 }
 
@@ -128,7 +116,7 @@ export function parseLocalBook(buffer, filename) {
       name: meta.name,
       author: meta.author,
       intro: '',
-      chapters: splitTextChapters(text, '正文'),
+      chapters: splitTextChapters(text, '开始'),
       origin: 'local://pdf',
     }
   }
@@ -140,7 +128,7 @@ export function parseLocalBook(buffer, filename) {
     name: meta.name,
     author: meta.author,
     intro: '',
-    chapters: splitTextChapters(text, '正文'),
+    chapters: splitTextChapters(text, '开始'),
     origin: 'local://txt',
   }
 }

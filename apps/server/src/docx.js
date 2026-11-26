@@ -7,7 +7,7 @@
  */
 
 import { strFromU8, unzipSync } from 'fflate'
-import { isChapterTitle } from './chapter-title.js'
+import { isChapterTitle, normalizeChapterTitle } from './chapter-title.js'
 
 function decodeEntities(text) {
   return String(text)
@@ -57,7 +57,7 @@ export function parseDocx(bytes) {
   for (const paragraph of paragraphs) {
     if (isChapterTitle(paragraph)) {
       if (current.lines.length) chapters.push(current)
-      current = { title: paragraph, lines: [] }
+      current = { title: normalizeChapterTitle(paragraph) || paragraph, lines: [] }
     } else {
       current.lines.push(paragraph)
     }

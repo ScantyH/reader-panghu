@@ -299,12 +299,21 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   /** 老书没存过已读章节名时，从缓存的目录里补一次，保证书架能显示章节名称 */
   const withReadTitle = (book) => {
     if (String(book.durChapterTitle || '').trim()) return book
-    const chapters = store.getChapters(book.bookUrl, book.origin)
-    const title = Array.isArray(chapters) ? chapters[Math.max(0, Number(book.durChapterIndex) || 0)]?.title : ''
+    // 没读过的书不查目录；读过的书只取当前章标题，不再反序列化整本目录。
+    if (!(Number(book.durChapterTime) > 0 || Number(book.durChapterIndex) > 0)) return book
+    const title = store.getChapterTitle(book.bookUrl, book.origin, Number(book.durChapterIndex) || 0)
     return title ? { ...book, durChapterTitle: title } : book
   }
 
   app.get('/reader3/getBookshelf', async () => ok(store.listBooks().map(withReadTitle)))
+
+  /** 侧栏最近阅读只取几本，避免每次进入页面都传回整架书。 */
+  app.get('/reader3/getRecentBooks', async (req) => {
+    const limit = Math.min(20, Math.max(1, Number(req.query?.limit) || 3))
+    const books = store.listBooks()
+    const recent = books.filter((book) => Number(book.durChapterTime) > 0)
+    return ok((recent.length ? recent : books).slice(0, limit).map(withReadTitle))
+  })
 
   app.get('/reader3/getShelfBookWithCacheInfo', async () => {
     const books = store.listBooks().map(withReadTitle).map((book) => ({
