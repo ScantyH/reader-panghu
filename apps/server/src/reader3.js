@@ -23,7 +23,7 @@ import { applySourceLine } from './source-tools.js'
 import { resolveCoverUrl } from './cover-url.js'
 import { cleanIntro, cleanText } from './text.js'
 import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
-import { scheduleShelfRepair } from './shelf-repair.js'
+import { scheduleShelfRepair, reparseBookToc } from './shelf-repair.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
@@ -330,6 +330,20 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
   app.post('/reader3/getShelfBook', async (req) => {
     const book = store.getBook(String(req.body?.url ?? ''))
     return book ? ok(book) : fail('书籍不在书架中')
+  })
+
+  /** 手动重新识别本地上传书的目录；App 确认后调用。 */
+  app.post('/reader3/reparseBookToc', async (req) => {
+    try {
+      const result = await reparseBookToc({
+        store,
+        dataDir,
+        bookUrl: String(req.body?.bookUrl ?? ''),
+      })
+      return ok(result)
+    } catch (error) {
+      return fail(error.message || '重新识别目录失败')
+    }
   })
 
 /** 已加入书架但还没抓过目录的书：后台补目录 + 首章 + 末章 */

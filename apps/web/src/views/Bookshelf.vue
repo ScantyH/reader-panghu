@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import BookDetail from '../components/BookDetail.vue'
 import { api, coverOf } from '../api.js'
 import { shelfCorners, shelfCornerModes } from '../use-shelf-corners.js'
+import { sortBooks } from '../use-shelf-sort.js'
 
 const props = defineProps({ recentOnly: { type: Boolean, default: false } })
 
@@ -207,14 +208,6 @@ async function switchToSource(candidate) {
   }
 }
 
-const activityAt = (book) =>
-  Math.max(
-    Number(book.addedAt || 0),
-    Number(book.durChapterTime || 0),
-    // 检查更新时只有真的发现新章节才算一次书架变动，普通检查不重排
-    book.hasUpdate ? Number(book.lastCheckTime || 0) : 0,
-  )
-
 const visible = computed(() => {
   let list = books.value
   if (props.recentOnly) list = list.filter((book) => Number(book.durChapterTime) > 0)
@@ -224,13 +217,8 @@ const visible = computed(() => {
   if (query) {
     list = list.filter((book) => `${book.name || ''} ${book.author || ''}`.toLowerCase().includes(query))
   }
-  // 最近有变动的书排最前：新加入、刚阅读、刚发现新章节都算变动；
-  // 更早变动的按时间往后排，同一分组内同样生效。
-  return [...list].sort((a, b) => {
-    const byActivity = activityAt(b) - activityAt(a)
-    if (byActivity) return byActivity
-    return String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN')
-  })
+  // 排序方式来自「设置 → 布局设定」；新章节只显示角标，不参与排序
+  return sortBooks(list)
 })
 
 const groupOptions = computed(() => {

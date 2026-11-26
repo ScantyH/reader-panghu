@@ -3194,3 +3194,30 @@ body.dp-panel-open { overflow: hidden; }
 @media (max-width: 1100px) {
   .shelf-search { width: 190px; }
 }
+
+/* 设置 → 布局设定：书架排序 */
+.shelf-sort-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shelf-sort-row {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--color-border-light);
+  border-radius: 12px;
+  background: var(--color-bg-elevated);
+}
+
+.shelf-sort-row.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg, #fdf3e6);
+}
+
+.shelf-sort-check {
+  flex: none;
+  color: var(--color-primary);
+  font-size: 17px;
+  font-weight: 700;
+}

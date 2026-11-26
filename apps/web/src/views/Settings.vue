@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, setToken } from '../api.js'
 import { useSortable } from '../use-sortable.js'
 import { desktopNavLayout, setDesktopNavLayout } from '../use-layout.js'
+import { SHELF_SORT_OPTIONS, setShelfSort, shelfSort } from '../use-shelf-sort.js'
 import { CORNER_ITEMS, CORNER_MODES, CORNER_SLOTS, shelfCorners, shelfCornerModes, setCorner, setCornerMode } from '../use-shelf-corners.js'
 
 const route = useRoute()
@@ -20,6 +21,15 @@ const SECTIONS = [
 ]
 
 const CHANGELOG = [
+  {
+    version: '2.0.6',
+    date: '2026-11-26',
+    items: [
+      '发现新章节不再改变书架顺序，只保留新章节提示',
+      '设置 → 布局设定新增书架排序：最近变动 / 最近加入 / 最近阅读 / 书名 A-Z / 作者 A-Z',
+      '排序方式保存在本地，立即应用到全部、未分组和每个自定义分组',
+    ],
+  },
   {
     version: '2.0.5',
     date: '2026-11-26',
@@ -1124,6 +1134,25 @@ onMounted(load)
                   <span class="layout-option-label">左侧导航</span>
                 </button>
               </div>
+            </div>
+          </div>
+          <div class="settings-card">
+            <div class="settings-card-title">书架排序</div>
+            <p class="layout-hint" style="margin: 0 0 10px">排序会立即应用到书架，包括全部、未分组和每个自定义分组。</p>
+            <div class="shelf-sort-options">
+              <button
+                v-for="option in SHELF_SORT_OPTIONS"
+                :key="option.value"
+                class="settings-row shelf-sort-row"
+                :class="{ active: shelfSort === option.value }"
+                @click="setShelfSort(option.value)"
+              >
+                <div class="settings-row-main">
+                  <div class="settings-row-title">{{ option.label }}</div>
+                  <div class="settings-row-desc">{{ option.desc }}</div>
+                </div>
+                <span v-if="shelfSort === option.value" class="shelf-sort-check">✓</span>
+              </button>
             </div>
           </div>
         </template>
