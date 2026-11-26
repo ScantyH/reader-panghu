@@ -50,7 +50,7 @@ const dataDir = mkdtempSync(join(tmpdir(), 'reader-panghu-verify-'))
 console.log(`临时实例：port=${port} data=${dataDir}`)
 
 const server = spawn(process.execPath, ['apps/server/src/index.js'], {
-  env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, LOG_LEVEL: 'warn' },
+  env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, LOG_LEVEL: 'warn', DISABLE_SHELF_REPAIR: '1' },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
 

@@ -23,6 +23,7 @@ import { applySourceLine } from './source-tools.js'
 import { resolveCoverUrl } from './cover-url.js'
 import { cleanIntro, cleanText } from './text.js'
 import { bookQuotaError, permissionsFor, sourceQuotaError } from './user-perms.js'
+import { scheduleShelfRepair } from './shelf-repair.js'
 
 const ok = (data) => ({ isSuccess: true, errorMsg: '', data })
 const fail = (errorMsg, data = null) => ({ isSuccess: false, errorMsg, data })
@@ -1775,6 +1776,7 @@ const cacheKey = (book) => `${book.origin || ''}|${book.bookUrl}`
     return ok(store.saveBook({ ...book, hasUpdate: false, newChapterCount: 0 }))
   })
 
+  scheduleShelfRepair({ app, store, dataDir, withRuntime })
   app.log.info(`[reader3] registered · sources=${store.listSources().length} books=${store.listBooks().length}`)
 }
 
