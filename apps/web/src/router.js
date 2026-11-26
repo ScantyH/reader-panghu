@@ -15,6 +15,7 @@ import Login from './views/Login.vue'
 import Settings from './views/Settings.vue'
 import Users from './views/Users.vue'
 import BookDetailPage from './views/BookDetailPage.vue'
+import NetworkBooks from './views/NetworkBooks.vue'
 
 export default createRouter({
   history: createWebHistory(),
@@ -30,6 +31,7 @@ export default createRouter({
     { path: '/bookmarks', name: 'bookmarks', component: Bookmarks },
     { path: '/replace', name: 'replace', component: ReplaceRules },
     { path: '/cache', name: 'cache', component: CacheManage },
+    { path: '/network-books', name: 'network-books', component: NetworkBooks },
     { path: '/stats', name: 'stats', component: Stats },
     { path: '/webdav', name: 'webdav', component: Webdav },
     { path: '/login', name: 'login', component: Login },

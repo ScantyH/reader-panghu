@@ -21,6 +21,15 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '2.0.2',
+    date: '2026-11-26',
+    items: [
+      '搜索页右上角增加「停止搜索」按钮，可随时中断并行搜索',
+      '书籍管理新增网络书籍管理，可把网络小说下载为 TXT / EPUB',
+      '书架右上角增加书架内搜索，可按书名/作者过滤',
+    ],
+  },
+  {
     version: '2.0.1',
     date: '2026-11-25',
     items: ['修复重启后登录成功时，左侧最近阅读和右上角用户信息未加载、需要刷新才显示的问题'],
@@ -1001,6 +1010,13 @@ onMounted(load)
               <div class="settings-row-main">
                 <div class="settings-row-title">书仓</div>
                 <div class="settings-row-desc">批量上传本地书籍、按分类导入书架</div>
+              </div>
+            </router-link>
+            <router-link class="settings-row link" to="/network-books">
+              <div class="settings-row-icon">🌐</div>
+              <div class="settings-row-main">
+                <div class="settings-row-title">网络书籍管理</div>
+                <div class="settings-row-desc">把网络小说下载为 TXT / EPUB</div>
               </div>
             </router-link>
           </div>

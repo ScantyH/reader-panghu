@@ -242,7 +242,7 @@ export const api = {
 }
 
 /** SSE multi-source search: onBooks per source batch, resolves when the stream ends. */
-export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBundle, bookSourceBundles, concurrency }, onBooks) {
+export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBundle, bookSourceBundles, concurrency }, onBooks, signal) {
   const query = new URLSearchParams({ key })
   if (bookSourceUrl) query.set('bookSourceUrl', bookSourceUrl)
   if (bookSourceGroup) query.set('bookSourceGroup', bookSourceGroup)
@@ -251,6 +251,23 @@ export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBu
   if (concurrency) query.set('concurrency', String(concurrency))
   const source = new EventSource(`${BASE}${withToken(`/searchBookMultiSSE?${query}`)}`)
   return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      source.close()
+      if (signal) signal.removeEventListener('abort', onAbort)
+      if (error) reject(error)
+      else resolve()
+    }
+    const onAbort = () => finish()
+    if (signal) {
+      if (signal.aborted) {
+        finish()
+        return
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
     source.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data)
@@ -259,15 +276,40 @@ export function searchStream({ key, bookSourceUrl, bookSourceGroup, bookSourceBu
         /* ignore malformed frame */
       }
     }
-    source.addEventListener('end', () => {
-      source.close()
-      resolve()
-    })
-    source.onerror = () => {
-      source.close()
-      reject(new Error('搜索连接中断'))
-    }
+    source.addEventListener('end', () => finish())
+    source.onerror = () => finish(new Error('搜索连接中断'))
   })
+}
+
+/** 下载网络书为 TXT / EPUB，返回 Blob 与建议文件名。 */
+export async function downloadBook(bookUrl, format = 'txt') {
+  const query = new URLSearchParams({ bookUrl, format })
+  const token = getToken()
+  const response = await fetch(`${BASE}${withToken(`/exportBook?${query}`)}`, {
+    headers: token ? { 'x-auth-token': token } : undefined,
+    credentials: 'same-origin',
+  })
+  if (!response.ok) {
+    let message = `下载失败：HTTP ${response.status}`
+    try {
+      const payload = await response.json()
+      if (payload?.errorMsg) message = payload.errorMsg
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message)
+  }
+  const disposition = response.headers.get('content-disposition') || ''
+  let filename = `book.${format}`
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+  if (encoded) {
+    try {
+      filename = decodeURIComponent(encoded[1])
+    } catch {
+      /* keep fallback */
+    }
+  }
+  return { blob: await response.blob(), filename }
 }
 
 export const coverOf = (book) => {

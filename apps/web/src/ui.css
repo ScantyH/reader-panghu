@@ -3144,3 +3144,53 @@ body.dp-panel-open { overflow: hidden; }
     -webkit-line-clamp: 4;
   }
 }
+
+/* 书架右上角：书架内搜索 */
+.shelf-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 230px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-elevated);
+  flex: none;
+}
+
+.shelf-search > span {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.shelf-search input[type='search'] {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+}
+
+.shelf-search input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.shelf-search button {
+  flex: none;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (max-width: 1100px) {
+  .shelf-search { width: 190px; }
+}

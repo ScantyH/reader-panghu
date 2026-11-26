@@ -37,6 +37,8 @@ const showScope = ref(false)
 const pickerPendingSearch = ref(false)
 const results = ref([])
 const searching = ref(false)
+let searchRun = 0
+let searchController = null
 const picked = ref(null)
 const groups = ref([])
 const concurrency = ref(readConcurrency())
@@ -168,23 +170,39 @@ async function search() {
   results.value = []
   progress.value = { seen: [], counts: {} }
   searching.value = true
+  const run = ++searchRun
+  searchController = new AbortController()
   try {
     await searchStream(
       { key, bookSourceBundles: selectedBundles.value, concurrency: concurrency.value },
       (books) => {
-      const dedupe = new Set(results.value.map((book) => `${book.origin}::${book.bookUrl}`))
-      results.value = [...results.value, ...books.filter((book) => !dedupe.has(`${book.origin}::${book.bookUrl}`))]
-      const origins = new Set(books.map((book) => book.origin || '未知'))
-      const nextCounts = { ...progress.value.counts }
-      for (const origin of origins) nextCounts[origin] = (nextCounts[origin] || 0) + books.filter((book) => (book.origin || '未知') === origin).length
-      const seen = [...new Set([...progress.value.seen, ...origins])]
-      progress.value = { seen, counts: nextCounts }
-    })
+        const dedupe = new Set(results.value.map((book) => `${book.origin}::${book.bookUrl}`))
+        results.value = [...results.value, ...books.filter((book) => !dedupe.has(`${book.origin}::${book.bookUrl}`))]
+        const origins = new Set(books.map((book) => book.origin || '未知'))
+        const nextCounts = { ...progress.value.counts }
+        for (const origin of origins) nextCounts[origin] = (nextCounts[origin] || 0) + books.filter((book) => (book.origin || '未知') === origin).length
+        const seen = [...new Set([...progress.value.seen, ...origins])]
+        progress.value = { seen, counts: nextCounts }
+      },
+      searchController.signal,
+    )
   } catch {
     // 单个书源失败时服务端已经跳过；连接中断也保留已拿到的结果，不再弹错误
   } finally {
-    searching.value = false
+    if (run === searchRun) {
+      searching.value = false
+      searchController = null
+    }
   }
+}
+
+function stopSearch() {
+  if (!searching.value) return
+  searchRun += 1
+  searchController?.abort()
+  searchController = null
+  searching.value = false
+  window.__toast?.('已停止搜索')
 }
 
 async function loadGroups() {
@@ -258,6 +276,7 @@ onMounted(async () => {
     <div class="page-head">
       <h1>搜索</h1>
       <div class="spacer" />
+      <button v-if="searching" class="ghost m-search-stop" @click="stopSearch">停止搜索</button>
       <span v-if="searching" class="badge accent">搜索中… {{ progressText }}</span>
       <span v-else-if="results.length" class="badge">{{ results.length }} 个结果</span>
     </div>
@@ -354,6 +373,13 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.m-search-stop {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  color: var(--color-danger, #c0392b);
+}
+
 .m-search-concurrency {
   flex: none;
   width: 138px;

@@ -13,6 +13,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
+import { strToU8, zipSync } from 'fflate'
 import { SourceError, createRuntime } from '@reader-panghu/source-runtime'
 import { createRuleRuntime } from './rule-runtime.js'
 import { convertText } from './text-convert.js'
@@ -33,6 +34,107 @@ const SOURCE_BUNDLE_LIMIT = (() => {
 })()
 
 const now = () => Date.now()
+
+const escapeXml = (value) =>
+  String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char])
+
+const exportFileBase = (book) =>
+  String(book?.name || 'book')
+    .replace(/[\\/:*?"<>|\r\n]/g, '_')
+    .trim()
+    .slice(0, 80) || 'book'
+
+function buildTxtFile(book, chapters) {
+  const lines = [book.name || '未命名', `作者：${book.author || '未知作者'}`]
+  const intro = String(book.intro || '').trim()
+  if (intro) lines.push('', '简介：', intro)
+  for (const chapter of chapters) {
+    lines.push('', '', chapter.title || '', '', chapter.text || '')
+  }
+  return lines.join('\n')
+}
+
+function buildEpubFile(book, chapters) {
+  const title = book.name || '未命名'
+  const author = book.author || '未知作者'
+  const bookId = `urn:uuid:${randomUUID()}`
+  const files = {}
+  files['mimetype'] = [strToU8('application/epub+zip'), { level: 0 }]
+  files['META-INF/container.xml'] = strToU8(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n' +
+      '  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>\n' +
+      '</container>',
+  )
+  files['OEBPS/style.css'] = strToU8(
+    'body { font-family: serif; line-height: 1.7; margin: 1.2em; }\n' +
+      'h1 { font-size: 1.4em; margin: 0 0 1em; }\n' +
+      'p { margin: 0 0 0.7em; text-indent: 2em; }\n',
+  )
+
+  const navItems = []
+  const spineItems = []
+  const ncxPoints = []
+  chapters.forEach((chapter, index) => {
+    const id = `chapter-${index + 1}`
+    const href = `${id}.xhtml`
+    const chapterTitle = chapter.title || `第${index + 1}章`
+    const paragraphs = String(chapter.text || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => `<p>${escapeXml(line)}</p>`)
+      .join('\n')
+    files[`OEBPS/${href}`] = strToU8(
+      '<?xml version="1.0" encoding="utf-8"?>\n' +
+        '<!DOCTYPE html>\n' +
+        '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh-CN">\n' +
+        `<head><meta charset="utf-8"/><title>${escapeXml(chapterTitle)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>\n` +
+        `<body><h1>${escapeXml(chapterTitle)}</h1>\n${paragraphs}\n</body></html>`,
+    )
+    navItems.push(`<li><a href="${href}">${escapeXml(chapterTitle)}</a></li>`)
+    spineItems.push(`<itemref idref="${id}"/>`)
+    ncxPoints.push(
+      `<navPoint id="nav-${index + 1}" playOrder="${index + 1}"><navLabel><text>${escapeXml(chapterTitle)}</text></navLabel><content src="${href}"/></navPoint>`,
+    )
+  })
+
+  files['OEBPS/nav.xhtml'] = strToU8(
+    '<?xml version="1.0" encoding="utf-8"?>\n' +
+      '<!DOCTYPE html>\n' +
+      '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh-CN">\n' +
+      `<head><meta charset="utf-8"/><title>${escapeXml(title)}</title></head><body>\n` +
+      `<nav epub:type="toc" id="toc"><h1>${escapeXml(title)}</h1><ol>${navItems.join('')}</ol></nav>\n` +
+      '</body></html>',
+  )
+  files['OEBPS/toc.ncx'] = strToU8(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">\n' +
+      `<head><meta name="dtb:uid" content="${escapeXml(bookId)}"/></head>\n` +
+      `<docTitle><text>${escapeXml(title)}</text></docTitle>\n` +
+      `<navMap>${ncxPoints.join('')}</navMap>\n</ncx>`,
+  )
+  files['OEBPS/content.opf'] = strToU8(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">\n' +
+      `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n` +
+      `<dc:identifier id="bookid">${escapeXml(bookId)}</dc:identifier>\n` +
+      `<dc:title>${escapeXml(title)}</dc:title>\n` +
+      `<dc:creator>${escapeXml(author)}</dc:creator>\n` +
+      '<dc:language>zh-CN</dc:language>\n' +
+      `<meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}</meta>\n` +
+      '</metadata>\n<manifest>\n' +
+      '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>\n' +
+      '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>\n' +
+      '<item id="css" href="style.css" media-type="text/css"/>\n' +
+      chapters
+        .map((_, index) => `<item id="chapter-${index + 1}" href="chapter-${index + 1}.xhtml" media-type="application/xhtml+xml"/>`)
+        .join('\n') +
+      '\n</manifest>\n' +
+      `<spine toc="ncx">${spineItems.join('')}</spine>\n</package>`,
+  )
+  return zipSync(files)
+}
 
 export function registerReader3(app, { store, dataDir, options = {} }) {
   const coversDir = join(dataDir, 'covers')
@@ -839,6 +941,79 @@ async function primeBook(book) {
       }
     }
     return ok({ cached, requested: limit, totalCached: store.countChapterTexts(cacheKey(book)) })
+  })
+
+  /** 把网络书完整抓取并导出为 TXT / EPUB。 */
+  app.get('/reader3/exportBook', async (req, reply) => {
+    const bookUrl = String(req.query?.bookUrl ?? '')
+    const format = String(req.query?.format ?? 'txt').toLowerCase() === 'epub' ? 'epub' : 'txt'
+    const book = store.getBook(bookUrl)
+    if (!book) return reply.code(404).send(fail('书籍不存在'))
+
+    try {
+      let exported = []
+      if (/^local:\/\//i.test(String(book.origin || ''))) {
+        const stored = store.getChapters(`${book.bookUrl}#content`, book.origin) || []
+        exported = stored
+          .map((chapter, index) => ({
+            title: chapter.title || `第${index + 1}章`,
+            text: applyReplaceRules(cleanText(chapter.content || '', { dropImages: true }), store.listReplaceRules()),
+          }))
+          .filter((chapter) => chapter.text.trim())
+      } else {
+        let chapters = store.getChapters(book.bookUrl, book.origin) || []
+        if (!chapters.length) {
+          const fetched = await withRuntime(book.origin, (runtime) => runtime.chapter(book.tocUrl || book.bookUrl))
+          chapters = (Array.isArray(fetched) ? fetched : []).map((chapter, index) => ({
+            title: String(chapter?.name ?? `第${index + 1}章`),
+            url: String(chapter?.chapterId ?? ''),
+            index: Number(chapter?.index ?? index),
+            isVolume: Boolean(chapter?.isVolume),
+          }))
+          if (chapters.length) store.saveChapters(book.bookUrl, book.origin, chapters)
+        }
+        const maxChapters = Math.max(1, Number(process.env.EXPORT_MAX_CHAPTERS || 3000))
+        const targets = chapters.filter((chapter) => chapter.url && !chapter.isVolume).slice(0, maxChapters)
+        if (!targets.length) return reply.code(422).send(fail('没有可导出的章节'))
+
+        const key = `${book.origin || ''}|${book.bookUrl}`
+        const results = new Array(targets.length)
+        let cursor = 0
+        const worker = async () => {
+          while (cursor < targets.length) {
+            const index = cursor++
+            const chapter = targets[index]
+            let text = store.getChapterText(key, chapter.url)
+            if (!text) {
+              try {
+                const raw = await Promise.race([
+                  withRuntime(book.origin, (runtime) => runtime.content(chapter.url)),
+                  new Promise((_, reject) => setTimeout(() => reject(new Error('章节获取超时')), 15000)),
+                ])
+                text = applyReplaceRules(cleanText(raw, { dropImages: true }), store.listReplaceRules())
+                if (text) store.saveChapterText(key, book.origin, chapter.url, text)
+              } catch {
+                text = '（本章内容获取失败）'
+              }
+            }
+            results[index] = { title: chapter.title || `第${index + 1}章`, text }
+          }
+        }
+        await Promise.all(Array.from({ length: Math.min(4, targets.length) }, worker))
+        exported = results.filter(Boolean)
+      }
+
+      if (!exported.length) return reply.code(422).send(fail('没有可导出的正文'))
+      const base = exportFileBase(book)
+      const filename = `${base}.${format}`
+      reply.header('content-disposition', `attachment; filename="book.${format}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+      if (format === 'epub') {
+        return reply.type('application/epub+zip').send(Buffer.from(buildEpubFile(book, exported)))
+      }
+      return reply.type('text/plain; charset=utf-8').send(Buffer.from(`\ufeff${buildTxtFile(book, exported)}`, 'utf8'))
+    } catch (error) {
+      return reply.code(502).send(fail(`导出失败：${error.message}`))
+    }
   })
 
   app.post('/reader3/deleteBookCache', async (req) => {

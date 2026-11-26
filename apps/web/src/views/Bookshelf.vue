@@ -24,6 +24,7 @@ const sourceLoading = ref(false)
 const sourceSwitching = ref('')
 const pressing = ref('')
 const layout = ref(localStorage.getItem('shelfLayout') || 'cover')
+const shelfQuery = ref('')
 const infoBook = ref(null)
 const selectMode = ref(route.query.manage === '1')
 const selected = ref([])
@@ -211,6 +212,10 @@ const visible = computed(() => {
   if (props.recentOnly) list = list.filter((book) => Number(book.durChapterTime) > 0)
   else if (activeGroup.value === 'ungrouped') list = list.filter((book) => Number(book.group || 0) === 0)
   else if (activeGroup.value) list = list.filter((book) => Number(book.group || 0) === activeGroup.value)
+  const query = shelfQuery.value.trim().toLowerCase()
+  if (query) {
+    list = list.filter((book) => `${book.name || ''} ${book.author || ''}`.toLowerCase().includes(query))
+  }
   // 最近加入的书排最前；其余仍按最近阅读 / 检查时间 / 书名排序
   return [...list].sort((a, b) => {
     const byAdded = Number(b.addedAt || 0) - Number(a.addedAt || 0)
@@ -446,6 +451,11 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
       <h1>{{ recentOnly ? '最近阅读' : '书架' }}</h1>
       <span class="badge">{{ visible.length }} 本</span>
       <div class="spacer" />
+      <label class="shelf-search">
+        <span aria-hidden="true">🔍</span>
+        <input v-model="shelfQuery" type="search" placeholder="搜索书架书名 / 作者" />
+        <button v-if="shelfQuery" type="button" aria-label="清空搜索" @click="shelfQuery = ''">×</button>
+      </label>
       <div class="layout-toggle" role="group" aria-label="布局切换">
         <button :class="{ active: layout === 'cover' }" title="封面模式" aria-label="封面模式" @click="setLayout('cover')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2.5" /></svg>
@@ -522,7 +532,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
     </div>
 
     <div v-if="!visible.length" class="empty">
-      书架还是空的。去「设置 → 书架 → 导入本地书」加一本，或去「搜索」找书。
+      {{ shelfQuery ? '没有找到匹配的书籍' : '书架还是空的。去「设置 → 书架 → 导入本地书」加一本，或去「搜索」找书。' }}
     </div>
 
     <div v-if="selectMode" class="row" style="margin-bottom: 12px; flex-wrap: wrap">

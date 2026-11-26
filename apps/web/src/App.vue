@@ -20,6 +20,7 @@ const PARENTS = {
   warehouse: { label: '书架管理', to: '/settings/shelf' },
   bookmarks: { label: '书架管理', to: '/settings/shelf' },
   cache: { label: '书架管理', to: '/settings/shelf' },
+  'network-books': { label: '书籍管理', to: '/settings/books' },
   replace: { label: '书架管理', to: '/settings/shelf' },
   webdav: { label: '数据管理', to: '/settings/data' },
   users: { label: '账号管理', to: '/settings/account' },
