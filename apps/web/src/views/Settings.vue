@@ -21,6 +21,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '2.0.5',
+    date: '2026-11-26',
+    items: ['书架改为按最近变动排序：新加入、刚阅读、刚发现新章节的书自动排第一，适用于全部、未分组和每个自定义分组'],
+  },
+  {
     version: '2.0.4',
     date: '2026-11-26',
     items: [

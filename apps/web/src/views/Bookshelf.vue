@@ -207,6 +207,14 @@ async function switchToSource(candidate) {
   }
 }
 
+const activityAt = (book) =>
+  Math.max(
+    Number(book.addedAt || 0),
+    Number(book.durChapterTime || 0),
+    // 检查更新时只有真的发现新章节才算一次书架变动，普通检查不重排
+    book.hasUpdate ? Number(book.lastCheckTime || 0) : 0,
+  )
+
 const visible = computed(() => {
   let list = books.value
   if (props.recentOnly) list = list.filter((book) => Number(book.durChapterTime) > 0)
@@ -216,14 +224,11 @@ const visible = computed(() => {
   if (query) {
     list = list.filter((book) => `${book.name || ''} ${book.author || ''}`.toLowerCase().includes(query))
   }
-  // 最近加入的书排最前；其余仍按最近阅读 / 检查时间 / 书名排序
+  // 最近有变动的书排最前：新加入、刚阅读、刚发现新章节都算变动；
+  // 更早变动的按时间往后排，同一分组内同样生效。
   return [...list].sort((a, b) => {
-    const byAdded = Number(b.addedAt || 0) - Number(a.addedAt || 0)
-    if (byAdded) return byAdded
-    const byRead = Number(b.durChapterTime || 0) - Number(a.durChapterTime || 0)
-    if (byRead) return byRead
-    const byCheck = Number(b.lastCheckTime || 0) - Number(a.lastCheckTime || 0)
-    if (byCheck) return byCheck
+    const byActivity = activityAt(b) - activityAt(a)
+    if (byActivity) return byActivity
     return String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN')
   })
 })
@@ -251,6 +256,7 @@ watch(ungroupedCount, (count) => {
 })
 
 const unread = (book) => {
+
   const total = Number(book.totalChapterNum || 0)
   if (!total) return 0
   const read = Number(book.durChapterIndex || 0) + 1
