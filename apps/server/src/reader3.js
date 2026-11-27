@@ -338,7 +338,8 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
       const result = await reparseBookToc({
         store,
         dataDir,
-        bookUrl: String(req.body?.bookUrl ?? ''),
+        bookUrl: String(req.body?.bookUrl ?? req.body?.url ?? ''),
+        userId: req.userId,
       })
       return ok(result)
     } catch (error) {

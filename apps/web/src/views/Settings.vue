@@ -22,6 +22,11 @@ const SECTIONS = [
 
 const CHANGELOG = [
   {
+    version: '2.0.7',
+    date: '2026-11-27',
+    items: ['新增 /reader3/reparseBookToc 后端接口，供 App「重新识别目录」调用；只处理本地书并保留阅读进度'],
+  },
+  {
     version: '2.0.6',
     date: '2026-11-26',
     items: [

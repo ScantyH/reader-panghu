@@ -168,9 +168,9 @@ async function repairNetworkBook({ store, withRuntime, book, userId }) {
  * 手动重新识别一本本地书的目录（App「重新识别目录」调用）。
  * 与启动修复不同：这里允许章节数变少，由用户确认后主动覆盖。
  */
-export async function reparseBookToc({ store, dataDir, bookUrl }) {
+export async function reparseBookToc({ store, dataDir, bookUrl, userId }) {
   const url = String(bookUrl || '')
-  const book = store.getBook(url)
+  const book = store.getBook(url, userId)
   if (!book) throw new Error('书籍不在书架中')
   if (!/^local:\/\//i.test(String(book.origin || ''))) {
     throw new Error('只有本地上传的书籍支持重新识别目录')
@@ -181,7 +181,7 @@ export async function reparseBookToc({ store, dataDir, bookUrl }) {
   const next = (parsed.chapters || []).filter((chapter) => String(chapter.text || '').trim())
   if (!next.length) throw new Error('没有识别到任何章节')
   const old = store.getChapters(book.bookUrl, book.origin) || []
-  const entries = saveChapters(store, book, next)
+  const entries = saveChapters(store, book, next, userId)
   const index = remapProgress(book, old, entries)
   const patch = {
     totalChapterNum: entries.length,
@@ -190,17 +190,20 @@ export async function reparseBookToc({ store, dataDir, bookUrl }) {
     durChapterIndex: index,
   }
   if (Number(book.durChapterTime) > 0) patch.durChapterTitle = entries[index]?.title || book.durChapterTitle || ''
-  store.saveBook({ ...book, ...patch })
+  store.saveBook({ ...book, ...patch }, userId)
   return {
     bookUrl: book.bookUrl,
     oldCount: old.length,
     newCount: entries.length,
+    totalChapterNum: entries.length,
+    latestChapterTitle: entries.at(-1)?.title || '',
     progressIndex: index,
     titles: entries.slice(0, 20).map((chapter) => chapter.title),
   }
 }
 
-export function scheduleShelfRepair({ app, store, dataDir, withRuntime }) {  if (process.env.DISABLE_SHELF_REPAIR === '1') return
+export function scheduleShelfRepair({ app, store, dataDir, withRuntime }) {
+  if (process.env.DISABLE_SHELF_REPAIR === '1') return
   const markerPath = join(dataDir, '.shelf-repair.json')
   const marker = readJson(markerPath)
   if (marker?.version === SHELF_REPAIR_VERSION) return
