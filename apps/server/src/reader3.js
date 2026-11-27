@@ -186,7 +186,17 @@ export function registerReader3(app, { store, dataDir, options = {} }) {
     const runtime = { ...(source._runtime || {}) }
     const key = String(runtime.key || '')
     delete runtime.key
-    return { ...source, _runtime: runtime, hasKey: Boolean(key), keyHint: key ? key.slice(-4) : '', keyCheck: source._keyCheck || null }
+    return {
+      ...source,
+      _runtime: runtime,
+      hasKey: Boolean(key),
+      requiresKey: Boolean(
+        source._keyRequired ||
+        /pyqdGetKey|qdEnsureKey|source\/check|source\/hotfix/i.test(String(source.html || '')),
+      ),
+      keyHint: key ? key.slice(-4) : '',
+      keyCheck: source._keyCheck || null,
+    }
   }
   // 网页与 App 订阅同一条 SSE 流：任一设备写入进度，其它在线设备立刻收到，
   // 不必等轮询；断线时客户端自己降级为定时查询。
@@ -1163,6 +1173,13 @@ async function primeBook(book) {
         type: source.html ? 'webview' : 'rule',
         invalid: Boolean(source.invalid),
         hasKey: Boolean(source._runtime?.key),
+        keyHint: String(source._runtime?.key || '').slice(-4),
+        keyCheck: source._keyCheck || null,
+        hasExplore: Boolean(source.exploreUrl || source.ruleExplore?.findUrl),
+        requiresKey: Boolean(
+          source._keyRequired ||
+          /pyqdGetKey|qdEnsureKey|source\/check|source\/hotfix/i.test(String(source.html || '')),
+        ),
       })),
     ),
   )
@@ -1498,6 +1515,12 @@ async function primeBook(book) {
       .map((name) => name.trim())
       .filter(Boolean)
     const bundleSet = new Set(bundleList)
+    const sourceUrlSet = new Set(
+      String(req.query?.bookSourceUrls || '')
+        .split(',')
+        .map((url) => url.trim())
+        .filter(Boolean),
+    )
     const requestedConcurrency = Number(req.query?.concurrency)
     const concurrency = Math.min(30, Math.max(1, Number.isFinite(requestedConcurrency) && requestedConcurrency > 0 ? requestedConcurrency : 4))
     const searchTimeoutMs = Math.max(2000, Number(process.env.SEARCH_TIMEOUT_MS || 8000))
@@ -1523,6 +1546,7 @@ async function primeBook(book) {
         send(fail('请输入搜索关键词'))
       } else {
         const sources = enabledSources().filter((source) => {
+          if (sourceUrlSet.size) return sourceUrlSet.has(source.bookSourceUrl)
           if (sourceUrl) return source.bookSourceUrl === sourceUrl
           if (bundleSet.size) return bundleSet.has(String(source._bundle || '未归类'))
           if (bundle) return String(source._bundle || '未归类') === bundle

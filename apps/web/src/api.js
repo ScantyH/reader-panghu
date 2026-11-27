@@ -135,6 +135,7 @@ export const api = {
   sources: () => request('/getBookSources'),
   sourceBundles: () => request('/getSourceBundles'),
   sourceList: () => request('/getBookSourceList'),
+  bookSource: (bookSourceUrl) => request('/getBookSource', { method: 'POST', body: { bookSourceUrl } }),
   sourceLines: (bookSourceUrl) => request('/getSourceLines?bookSourceUrl=' + encodeURIComponent(bookSourceUrl)),
   setSourceLine: (bookSourceUrl, line) =>
     request('/setSourceLine', { method: 'POST', body: { bookSourceUrl, name: line.name, url: line.url } }),
@@ -163,7 +164,15 @@ export const api = {
   saveReadingTime: (payload) => request('/saveReadingTime', { method: 'POST', body: payload }),
   readingStats: () => request('/getReadingStats'),
   webdavList: (payload) => request('/webdavList', { method: 'POST', body: payload }),
-  exportBookSources: () => fetch('/reader3/exportBookSources').then((r) => r.blob()),
+  exportBookSources: async () => {
+    const token = getToken()
+    const response = await fetch(`/reader3${withToken('/exportBookSources')}`, {
+      headers: token ? { 'x-auth-token': token } : undefined,
+      credentials: 'same-origin',
+    })
+    if (!response.ok) throw new Error(`导出书源失败：HTTP ${response.status}`)
+    return response.blob()
+  },
   exportBackup: () => fetch('/reader3/exportBackup').then((r) => r.blob()),
   userList: () => request('/getUserList'),
   createUser: (payload) => request('/createUser', { method: 'POST', body: payload }),

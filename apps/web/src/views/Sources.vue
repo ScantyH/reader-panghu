@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api.js'
 import { useSortable } from '../use-sortable.js'
 import Rss from './Rss.vue'
@@ -112,7 +112,7 @@ let keyCheckRunning = false
 const bundles = computed(() => {
   const map = new Map()
   for (const source of sources.value) {
-    const name = String(source._bundle || '未归类')
+    const name = String(source.bundle || '未归类')
     if (!map.has(name)) map.set(name, { name, count: 0, enabledCount: 0 })
     const row = map.get(name)
     row.count += 1
@@ -186,7 +186,7 @@ async function moveBundle(bundle, delta) {
   const urls = []
   for (const name of names) {
     for (const source of sources.value) {
-      if (String(source._bundle || '未归类') === name) urls.push(source.bookSourceUrl)
+      if (String(source.bundle || '未归类') === name) urls.push(source.bookSourceUrl)
     }
   }
   try {
@@ -199,23 +199,35 @@ async function moveBundle(bundle, delta) {
 }
 
 const groups = computed(() => [...new Set(sources.value.map((item) => item.bookSourceGroup || ''))].filter(Boolean))
-const filtered = computed(() =>
+const matched = computed(() =>
   sources.value.filter((source) => {
-    if (expanded.value && String(source._bundle || '未归类') !== expanded.value) return false
+    if (expanded.value && String(source.bundle || '未归类') !== expanded.value) return false
     if (groupFilter.value && (source.bookSourceGroup || '') !== groupFilter.value) return false
     const q = keywordFilter.value.trim()
     if (!q) return true
     return (source.bookSourceName || '').includes(q) || (source.bookSourceUrl || '').includes(q)
   }),
 )
-const exploreable = computed(() => sources.value.filter((item) => item.exploreUrl || item.ruleExplore?.findUrl))
+
+/** 展开批次时先渲染 100 条，避免一次插入 1600+ 行卡住页面。 */
+const SOURCE_PAGE_SIZE = 100
+const sourcePage = ref(1)
+const filtered = computed(() => matched.value.slice(0, sourcePage.value * SOURCE_PAGE_SIZE))
+watch([expanded, keywordFilter, groupFilter], () => {
+  sourcePage.value = 1
+})
+
+function showMoreSources() {
+  sourcePage.value += 1
+}
+const exploreable = computed(() => sources.value.filter((item) => item.hasExplore))
 const invalidCount = computed(() => sources.value.filter((item) => item.invalid === true).length)
-const webviewCount = computed(() => sources.value.filter((item) => item.html).length)
+const webviewCount = computed(() => sources.value.filter((item) => item.type === 'webview').length)
 
 async function load() {
   loading.value = true
   try {
-    const [list, limit] = await Promise.all([api.sources(), api.sourceBundleLimit().catch(() => ({ limit: 100 }))])
+    const [list, limit] = await Promise.all([api.sourceList(), api.sourceBundleLimit().catch(() => ({ limit: 100 }))])
     sources.value = list
     bundleLimit.value = Number(limit?.limit) || 100
     void maybeCheckKeys(list)
@@ -235,7 +247,7 @@ async function maybeCheckKeys(list) {
   keyChecking.value = true
   try {
     await api.checkSourceKeys()
-    sources.value = await api.sources()
+    sources.value = await api.sourceList()
   } catch {
     /* 检测失败下次再试 */
   } finally {
@@ -281,14 +293,20 @@ async function importFile(event) {
 }
 
 async function exportSources() {
-  const blob = await api.exportBookSources()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'book-sources.json'
-  link.click()
-  URL.revokeObjectURL(url)
-  window.__toast?.('已导出 ' + sources.value.length + ' 个书源')
+  try {
+    const blob = await api.exportBookSources()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'book-sources.json'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+    window.__toast?.('已导出 ' + sources.value.length + ' 个书源')
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
 }
 
 async function importRemote() {
@@ -345,7 +363,7 @@ async function saveSourceOrder() {
   await api.reorderSources(sources.value.map((item) => item.bookSourceUrl))
 }
 
-const bundleNameOf = (source) => String(source._bundle || '未归类')
+const bundleNameOf = (source) => String(source.bundle || '未归类')
 const bundleIds = computed(() => bundles.value.map((bundle) => bundle.name))
 const expandedSourceIds = computed(() =>
   sources.value.filter((source) => bundleNameOf(source) === expanded.value).map((source) => source.bookSourceUrl),
@@ -454,8 +472,18 @@ async function saveEdited(json) {
   }
 }
 
+/** 列表接口是轻量数据，编辑前单独取完整书源，避免把规则/脚本覆盖掉。 */
+async function editSource(source) {
+  try {
+    const full = await api.bookSource(source.bookSourceUrl)
+    editing.value = JSON.stringify(full, null, 2)
+  } catch (error) {
+    window.__toast?.(error.message)
+  }
+}
+
 async function runCheck() {
-  const targets = filtered.value.map((item) => item.bookSourceUrl)
+  const targets = matched.value.map((item) => item.bookSourceUrl)
   if (!targets.length) return
   checking.value = true
   checkResults.value = []
@@ -559,6 +587,7 @@ onMounted(load)
       <h1>书源</h1>
       <span class="badge">{{ sources.length }} 个 · WebView {{ webviewCount }} · 失效 {{ invalidCount }}</span>
       <div class="spacer" />
+      <button class="ghost" :disabled="loading" @click="exportSources">导出 JSON</button>
       <button class="ghost" :disabled="loading" @click="load">刷新</button>
     </div>
 
@@ -614,12 +643,12 @@ onMounted(load)
 
       <template v-if="expanded">
         <div class="row" style="margin: 14px 0 10px; flex-wrap: wrap">
-          <span class="badge">{{ expanded }} · {{ filtered.length }} 个</span>
+          <span class="badge">{{ expanded }} · {{ matched.length }} 个</span>
           <div class="spacer" />
           <input v-model="keywordFilter" placeholder="搜索名称或地址" style="min-width: 180px" />
         </div>
 
-        <div v-if="!filtered.length" class="empty">没有匹配的书源</div>
+        <div v-if="!matched.length" class="empty">没有匹配的书源</div>
         <div v-else class="list">
           <div
             v-for="source in filtered"
@@ -632,10 +661,10 @@ onMounted(load)
             <div style="flex: 1; min-width: 0">
               <div class="row" style="gap: 6px; flex-wrap: wrap">
                 <strong>{{ source.bookSourceName }}</strong>
-                <span class="badge" :class="{ accent: source.html }">{{ source.html ? 'WebView' : '规则' }}</span>
+                <span class="badge" :class="{ accent: source.type === 'webview' }">{{ source.type === 'webview' ? 'WebView' : '规则' }}</span>
                 <span v-if="source.bookSourceGroup" class="badge">{{ source.bookSourceGroup }}</span>
                 <span
-                  v-if="source.html"
+                  v-if="source.type === 'webview'"
                   class="badge"
                   :class="keyBadgeClass(source)"
                   :title="keyBadgeTitle(source)"
@@ -651,12 +680,18 @@ onMounted(load)
               </div>
             </div>
             <button class="ghost" title="固定到顶部，全部书源搜索时最先搜它" @click="pinSource(source)">固定</button>
-            <button v-if="source.html" class="ghost" @click="openSourceLines(source)">线路</button>
-            <button v-if="source.html" class="ghost" @click="editSourceKey(source)">密钥</button>
+            <button v-if="source.type === 'webview'" class="ghost" @click="openSourceLines(source)">线路</button>
+            <button v-if="source.type === 'webview'" class="ghost" @click="editSourceKey(source)">密钥</button>
             <button class="ghost" @click="toggle(source)">{{ source.enabled === false ? '启用' : '禁用' }}</button>
-            <button class="ghost" @click="editing = JSON.stringify(source, null, 2)">编辑</button>
+            <button class="ghost" @click="editSource(source)">编辑</button>
             <button class="ghost" @click="removeSource(source)">删除</button>
           </div>
+        </div>
+
+        <div v-if="filtered.length < matched.length" class="row" style="justify-content: center; margin-top: 12px">
+          <button class="ghost" @click="showMoreSources">
+            加载更多（已显示 {{ filtered.length }} / {{ matched.length }}）
+          </button>
         </div>
       </template>
 
@@ -715,7 +750,7 @@ onMounted(load)
         <div class="spacer" />
         <span v-if="checkProgress" class="badge">{{ checkProgress }}</span>
         <button class="primary" :disabled="checking" @click="runCheck">
-          {{ checking ? '检测中…' : `检测 ${filtered.length} 个书源` }}
+          {{ checking ? '检测中…' : `检测 ${matched.length} 个书源` }}
         </button>
         <button class="ghost" @click="purgeInvalid">删除已标记失效</button>
       </div>
